@@ -14,6 +14,7 @@ Run:  GETXAPI_KEY=xxxxx python3 scripts/collect_twitter.py
 import datetime
 import json
 import os
+import re
 import sys
 import time
 from collections import defaultdict
@@ -38,6 +39,9 @@ WATCHLIST_BATCH_SIZE = 15
 WATCHLIST_MAX_PAGES = 3       # safety cap per batch
 RESEARCH_MAX_PAGES = 1        # one page (~20 results) per research query
 WATCHLIST_LOOKBACK_HOURS = 14 # overlap with previous run is acceptable
+RESEARCH_LOOKBACK_HOURS = 12  # research searches were pulling years-old tweets
+
+URL_RE = re.compile(r"https?://[^\s]+")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WATCHLIST_PATH = REPO_ROOT / "config" / "twitter_watchlist.txt"
@@ -86,6 +90,18 @@ def log(msg):
 def chunked(seq, size):
     for i in range(0, len(seq), size):
         yield seq[i:i + size]
+
+
+def build_query(core, lookback_hours):
+    """Wrap the OR group in parens (so the trailing operators bind to the whole
+    group, not just the last term) and constrain to a recent time window.
+
+    `since_time:` takes epoch seconds; if the provider ignores it, the
+    post-fetch created_at filter still trims anything older than the window.
+    """
+    since_epoch = int((datetime.datetime.now(datetime.timezone.utc)
+                       - datetime.timedelta(hours=lookback_hours)).timestamp())
+    return f"({core}) -filter:retweets since_time:{since_epoch}"
 
 
 def load_watchlist():
@@ -164,24 +180,35 @@ def parse_created_at(value):
         return None
 
 
-def extract_urls(raw):
+def extract_urls(raw, text=""):
+    """Prefer expanded URLs from entities; fall back to URLs in the tweet text
+    (the API may not return a populated entities block)."""
     urls = []
     entities = _first(raw, "entities", default={}) or {}
     for u in (entities.get("urls") or []):
         expanded = _first(u, "expanded_url", "expandedUrl", "unwound_url", "url")
         if expanded:
             urls.append(expanded)
+    if not urls and text:
+        urls = [m.rstrip(".,);]") for m in URL_RE.findall(text)]
     return list(dict.fromkeys(urls))
 
 
 def extract_images(raw):
     images = []
-    for container_key in ("extendedEntities", "extended_entities", "entities"):
-        container = _first(raw, container_key, default={}) or {}
+    containers = []
+    for key in ("extendedEntities", "extended_entities", "entities"):
+        container = _first(raw, key, default={})
+        if isinstance(container, dict):
+            containers.append(container)
+    if isinstance(raw.get("media"), list):
+        containers.append({"media": raw["media"]})
+    for container in containers:
         for m in (container.get("media") or []):
             mtype = _first(m, "type", default="")
-            if mtype in ("photo", "image", ""):
-                url = _first(m, "media_url_https", "media_url", "mediaUrl", "url")
+            if mtype in ("photo", "image", "animated_gif", ""):
+                url = _first(m, "media_url_https", "media_url", "mediaUrl",
+                             "media_url_large", "url")
                 if url:
                     images.append(url)
     return list(dict.fromkeys(images))
@@ -231,7 +258,7 @@ def normalize_tweet(raw, source, search_query=None):
         "is_thread": False,
         "thread_tweets": None,
         "full_text": text,
-        "urls": extract_urls(raw),
+        "urls": extract_urls(raw, text),
         "images": extract_images(raw),
         "source": source,
         "search_query": search_query,
@@ -378,32 +405,52 @@ def main():
     accounts = load_watchlist()
     log(f"Loaded {len(accounts)} watchlist accounts")
 
+    # Set TWITTER_DEBUG_RAW=1 to dump raw API objects for schema debugging.
+    debug_raw = os.environ.get("TWITTER_DEBUG_RAW") == "1"
+    raw_samples = []
+    raw_empty_author = []
+
+    def capture(raw, normalized_tweet):
+        if not debug_raw:
+            return
+        if len(raw_samples) < 8:
+            raw_samples.append(raw)
+        if not normalized_tweet["author_username"] and len(raw_empty_author) < 8:
+            raw_empty_author.append(raw)
+
     normalized = []
     api_calls = 0
+    now = datetime.datetime.now(datetime.timezone.utc)
+    watchlist_cutoff = now - datetime.timedelta(hours=WATCHLIST_LOOKBACK_HOURS)
+    research_cutoff = now - datetime.timedelta(hours=RESEARCH_LOOKBACK_HOURS)
 
     # --- Stream A: watchlist ---
-    cutoff = (datetime.datetime.now(datetime.timezone.utc)
-              - datetime.timedelta(hours=WATCHLIST_LOOKBACK_HOURS))
     batches = list(chunked(accounts, WATCHLIST_BATCH_SIZE))
     for i, batch in enumerate(batches, 1):
-        query = " OR ".join(f"from:{a}" for a in batch) + " -filter:retweets"
+        query = build_query(" OR ".join(f"from:{a}" for a in batch),
+                            WATCHLIST_LOOKBACK_HOURS)
         log(f"Watchlist batch {i}/{len(batches)} ({len(batch)} accounts)")
         raws, calls = api_search(api_key, query, WATCHLIST_MAX_PAGES)
         api_calls += calls
         for raw in raws:
             t = normalize_tweet(raw, "watchlist")
-            if t["_created_dt"] is not None and t["_created_dt"] < cutoff:
+            if t["_created_dt"] is not None and t["_created_dt"] < watchlist_cutoff:
                 continue  # outside the lookback window
             normalized.append(t)
+            capture(raw, t)
 
     # --- Stream B: institutional research searches ---
     for i, query in enumerate(RESEARCH_SEARCHES, 1):
-        full_query = f"{query} -filter:retweets"
+        full_query = build_query(query, RESEARCH_LOOKBACK_HOURS)
         log(f"Research search {i}/{len(RESEARCH_SEARCHES)}: {query[:60]}")
         raws, calls = api_search(api_key, full_query, RESEARCH_MAX_PAGES)
         api_calls += calls
         for raw in raws:
-            normalized.append(normalize_tweet(raw, "research_search", query))
+            t = normalize_tweet(raw, "research_search", query)
+            if t["_created_dt"] is not None and t["_created_dt"] < research_cutoff:
+                continue  # drop stale results the time operator may have missed
+            normalized.append(t)
+            capture(raw, t)
 
     # --- Deduplicate by tweet id across both streams (keep first seen) ---
     deduped = []
@@ -423,7 +470,6 @@ def main():
     items = detect_threads(deduped)
     thread_count = sum(1 for t in items if t.get("is_thread"))
 
-    now = datetime.datetime.now(datetime.timezone.utc)
     out_dir = OUTPUT_ROOT / now.strftime("%Y-%m-%d_%H%M")
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "tweets.json"
@@ -443,6 +489,18 @@ def main():
 
     out_path.write_text(json.dumps(output, ensure_ascii=False, indent=2),
                         encoding="utf-8")
+
+    if debug_raw:
+        debug_path = out_dir / "_raw_sample.json"
+        debug_path.write_text(json.dumps({
+            "note": ("Raw API tweet objects for schema debugging. 'samples' = "
+                     "first objects seen; 'empty_author_samples' = objects whose "
+                     "author_username came out empty."),
+            "samples": raw_samples,
+            "empty_author_samples": raw_empty_author,
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        log(f"DEBUG: wrote {len(raw_samples)} samples + "
+            f"{len(raw_empty_author)} empty-author samples to {debug_path.name}")
 
     log("=" * 50)
     log(f"Saved {out_path.relative_to(REPO_ROOT)}")
