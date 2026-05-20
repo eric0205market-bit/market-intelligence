@@ -1,0 +1,43 @@
+name: Collect Twitter
+
+on:
+  schedule:
+    - cron: '0 6,18 * * *'   # 08:00 & 20:00 CEST
+  workflow_dispatch:
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Collect tweets
+        env:
+          GETXAPI_KEY: ${{ secrets.GETXAPI_KEY }}
+        run: python scripts/collect_twitter.py
+
+      - name: Commit and push to claude/twitter-data
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          # Stage the data branch from current main; the merge-to-main workflow
+          # auto-merges any push to claude/** back into main.
+          git checkout -B claude/twitter-data
+          git add raw/twitter
+          if git diff --cached --quiet; then
+            echo "No new data to commit"
+            exit 0
+          fi
+          git commit -m "data: twitter collection $(date -u '+%Y-%m-%d %H:%M')"
+          git push --force origin claude/twitter-data
