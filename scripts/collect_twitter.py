@@ -17,6 +17,7 @@ import os
 import re
 import sys
 import time
+import urllib.parse
 from collections import defaultdict
 from pathlib import Path
 
@@ -39,9 +40,12 @@ WATCHLIST_BATCH_SIZE = 15
 WATCHLIST_MAX_PAGES = 3       # safety cap per batch
 RESEARCH_MAX_PAGES = 1        # one page (~20 results) per research query
 WATCHLIST_LOOKBACK_HOURS = 14 # overlap with previous run is acceptable
-RESEARCH_LOOKBACK_HOURS = 12  # research searches were pulling years-old tweets
+RESEARCH_LOOKBACK_HOURS = 14  # match watchlist window (was pulling years-old)
 
-URL_RE = re.compile(r"https?://[^\s]+")
+TCO_RE = re.compile(r"https://t\.co/\w+")
+MAX_URL_RESOLUTIONS = 100     # cap t.co HEAD requests per run
+URL_RESOLVE_TIMEOUT = 5       # seconds per t.co resolution
+SELF_DOMAINS = ("x.com", "twitter.com", "t.co")  # dropped from final urls
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WATCHLIST_PATH = REPO_ROOT / "config" / "twitter_watchlist.txt"
@@ -180,18 +184,86 @@ def parse_created_at(value):
         return None
 
 
-def extract_urls(raw, text=""):
-    """Prefer expanded URLs from entities; fall back to URLs in the tweet text
-    (the API may not return a populated entities block)."""
-    urls = []
+def collect_url_candidates(raw, text):
+    """Return [{"tco", "resolved"}] from entities (already expanded) plus any
+    t.co links found in the tweet text (resolved later, in a budgeted pass)."""
+    candidates = []
+    seen = set()
     entities = _first(raw, "entities", default={}) or {}
     for u in (entities.get("urls") or []):
-        expanded = _first(u, "expanded_url", "expandedUrl", "unwound_url", "url")
-        if expanded:
-            urls.append(expanded)
-    if not urls and text:
-        urls = [m.rstrip(".,);]") for m in URL_RE.findall(text)]
-    return list(dict.fromkeys(urls))
+        tco = _first(u, "url")
+        resolved = _first(u, "expanded_url", "expandedUrl", "unwound_url")
+        if not (tco or resolved):
+            continue
+        candidates.append({"tco": tco, "resolved": resolved})
+        if tco:
+            seen.add(tco)
+        if resolved:
+            seen.add(resolved)
+    for match in TCO_RE.findall(text or ""):
+        if match not in seen:
+            seen.add(match)
+            candidates.append({"tco": match, "resolved": None})
+    return candidates
+
+
+def resolve_tco(url):
+    """Follow redirects to a t.co's destination. Returns None on failure."""
+    try:
+        r = requests.head(url, allow_redirects=True, timeout=URL_RESOLVE_TIMEOUT)
+        return r.url
+    except Exception:  # noqa: BLE001 - network boundary
+        return None
+
+
+def is_external(url):
+    """True if the URL is not an x.com / twitter.com / t.co self-link."""
+    try:
+        host = urllib.parse.urlparse(url).netloc.lower()
+    except Exception:  # noqa: BLE001
+        return True
+    host = host.split("@")[-1].split(":")[0]
+    return not any(host == d or host.endswith("." + d) for d in SELF_DOMAINS)
+
+
+def resolve_and_finalize_urls(tweets, budget=MAX_URL_RESOLUTIONS):
+    """Resolve t.co links (research_search tweets first), then write each
+    tweet's final ``urls`` list of {tco, resolved}, dropping self-links.
+
+    Returns the number of HEAD requests actually made.
+    """
+    cache = {}
+    used = 0
+    ordered = sorted(
+        tweets, key=lambda t: 0 if t.get("source") == "research_search" else 1)
+    for t in ordered:
+        for cand in t.get("_url_candidates", []):
+            tco = cand.get("tco")
+            if cand.get("resolved") is not None or not tco:
+                continue
+            if tco in cache:
+                cand["resolved"] = cache[tco]
+            elif used < budget:
+                resolved = resolve_tco(tco)
+                cache[tco] = resolved
+                cand["resolved"] = resolved
+                used += 1
+            # over budget: leave resolved=None (keep the raw t.co)
+
+    for t in tweets:
+        final = []
+        seen = set()
+        for cand in t.get("_url_candidates", []):
+            resolved = cand.get("resolved")
+            if resolved and not is_external(resolved):
+                continue  # drop self-links once we know the destination
+            key = resolved or cand.get("tco")
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            final.append({"tco": cand.get("tco"), "resolved": resolved})
+        t["urls"] = final
+    return used
 
 
 def extract_images(raw):
@@ -231,6 +303,23 @@ def normalize_tweet(raw, source, search_query=None):
     created_dt = parse_created_at(created_raw)
     text = _first(raw, "text", "full_text", "fullText", default="")
 
+    # Author handle can live in several places; fall back to 'unknown' so the
+    # field is never empty and tweet_url is still buildable.
+    author_username = _first(author, "userName", "username", "screen_name",
+                             "handle", default="")
+    if not author_username:
+        user_obj = _first(raw, "user", "author", default={}) or {}
+        author_username = (
+            _first(user_obj, "screen_name", "userName", "username", "handle",
+                   default="")
+            or _first(raw, "username", "screen_name", "userName", default="")
+            or "unknown"
+        )
+
+    tweet_id = str(_first(raw, "id", "id_str", "tweet_id", default=""))
+    tweet_url = (f"https://x.com/{author_username}/status/{tweet_id}"
+                 if author_username and tweet_id else None)
+
     quoted = _first(raw, "quoted_tweet", "quotedTweet", "quoted_status")
     if isinstance(quoted, dict):
         is_quote = True
@@ -240,10 +329,10 @@ def normalize_tweet(raw, source, search_query=None):
         quoted_text = None
 
     return {
-        "id": str(_first(raw, "id", "id_str", "tweet_id", default="")),
+        "id": tweet_id,
+        "tweet_url": tweet_url,
         "text": text,
-        "author_username": _first(author, "userName", "username", "screen_name",
-                                  "handle", default=""),
+        "author_username": author_username,
         "author_name": _first(author, "name", "displayName", default=""),
         "author_followers": _first(author, "followers", "followers_count",
                                    "followersCount", default=0),
@@ -258,10 +347,11 @@ def normalize_tweet(raw, source, search_query=None):
         "is_thread": False,
         "thread_tweets": None,
         "full_text": text,
-        "urls": extract_urls(raw, text),
+        "urls": [],  # finalized in resolve_and_finalize_urls()
         "images": extract_images(raw),
         "source": source,
         "search_query": search_query,
+        "_url_candidates": collect_url_candidates(raw, text),
         "_in_reply_to_id": _first(raw, "inReplyToId", "in_reply_to_status_id_str",
                                   "in_reply_to_id"),
         "_in_reply_to_username": _first(raw, "inReplyToUsername",
@@ -273,6 +363,18 @@ def normalize_tweet(raw, source, search_query=None):
 
 def strip_internal(tweet):
     return {k: v for k, v in tweet.items() if not k.startswith("_")}
+
+
+ENGAGEMENT_FIELDS = ("likes", "retweets", "replies", "author_followers")
+
+
+def strip_engagement(tweet):
+    """Copy of a tweet with engagement metrics removed (recursively for the
+    tweets nested inside a thread) so the routine sees no popularity signal."""
+    out = {k: v for k, v in tweet.items() if k not in ENGAGEMENT_FIELDS}
+    if out.get("thread_tweets"):
+        out["thread_tweets"] = [strip_engagement(x) for x in out["thread_tweets"]]
+    return out
 
 
 # --- API call ---------------------------------------------------------------
@@ -382,14 +484,18 @@ def merge_thread(members):
     head = strip_internal(members[0])
     combined = "\n\n".join((m.get("text") or "").strip()
                            for m in members if (m.get("text") or "").strip())
-    urls, images = [], []
+    urls, seen_urls, images = [], set(), []
     for m in members:
-        urls.extend(m.get("urls") or [])
+        for u in (m.get("urls") or []):
+            key = u.get("resolved") or u.get("tco") if isinstance(u, dict) else u
+            if key and key not in seen_urls:
+                seen_urls.add(key)
+                urls.append(u)
         images.extend(m.get("images") or [])
     head["is_thread"] = True
     head["thread_tweets"] = [strip_internal(m) for m in members]
     head["full_text"] = combined
-    head["urls"] = list(dict.fromkeys(urls))
+    head["urls"] = urls
     head["images"] = list(dict.fromkeys(images))
     return head
 
@@ -466,6 +572,10 @@ def main():
     watchlist_count = sum(1 for t in deduped if t["source"] == "watchlist")
     research_count = sum(1 for t in deduped if t["source"] == "research_search")
 
+    # --- Resolve t.co links and finalize urls (research_search prioritized) ---
+    resolved_count = resolve_and_finalize_urls(deduped)
+    log(f"Resolved {resolved_count} t.co links (cap {MAX_URL_RESOLUTIONS}/run)")
+
     # --- Thread detection (also strips internal helper fields) ---
     items = detect_threads(deduped)
     thread_count = sum(1 for t in items if t.get("is_thread"))
@@ -490,6 +600,14 @@ def main():
     out_path.write_text(json.dumps(output, ensure_ascii=False, indent=2),
                         encoding="utf-8")
 
+    # Second file for the Cloud Routine: same data, engagement metrics removed
+    # so the model curates on substance, not popularity.
+    routine_output = dict(output)
+    routine_output["tweets"] = [strip_engagement(t) for t in items]
+    routine_path = out_dir / "tweets_for_routine.json"
+    routine_path.write_text(json.dumps(routine_output, ensure_ascii=False, indent=2),
+                            encoding="utf-8")
+
     if debug_raw:
         debug_path = out_dir / "_raw_sample.json"
         debug_path.write_text(json.dumps({
@@ -504,10 +622,12 @@ def main():
 
     log("=" * 50)
     log(f"Saved {out_path.relative_to(REPO_ROOT)}")
+    log(f"      {routine_path.relative_to(REPO_ROOT)} (no engagement fields)")
     log(f"  total tweets (unique): {len(deduped)}")
     log(f"  threads detected:      {thread_count}")
     log(f"  watchlist tweets:      {watchlist_count}")
     log(f"  research tweets:       {research_count}")
+    log(f"  t.co resolved:         {resolved_count}")
     log(f"  API calls made:        {api_calls}")
     log(f"  estimated cost (USD):  {output['estimated_cost_usd']}")
     log("=" * 50)
