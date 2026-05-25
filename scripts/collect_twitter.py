@@ -2,11 +2,16 @@
 """Collect tweets from GetXAPI for the Market Intelligence platform.
 
 Two collection streams:
-  A) Watchlist accounts from config/twitter_watchlist.txt, batched 15 per query.
+  A) Watchlist accounts (active = non-'delete' in config/twitter_classification.json),
+     batched 15 per query.
   B) Hardcoded institutional-research keyword searches.
 
-Same-author thread replies are merged into single items. Output is written to
-raw/twitter/YYYY-MM-DD_HHMM/tweets.json (UTC timestamp).
+Same-author thread replies are merged into single items. Output is written under
+raw/twitter/YYYY-MM-DD_HHMM/ (UTC timestamp):
+  tweets.json                   full collection (all fields)
+  tweets_for_routine.json       full collection, engagement fields stripped
+  tweets_{alpha,data,shitpost}.json          per-category splits
+  tweets_for_routine_{alpha,data}.json       per-category, engagement stripped
 
 Run:  GETXAPI_KEY=xxxxx python3 scripts/collect_twitter.py
 """
@@ -18,7 +23,7 @@ import re
 import sys
 import time
 import urllib.parse
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import requests
@@ -49,7 +54,12 @@ SELF_DOMAINS = ("x.com", "twitter.com", "t.co")  # dropped from final urls
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WATCHLIST_PATH = REPO_ROOT / "config" / "twitter_watchlist.txt"
+CLASSIFICATION_PATH = REPO_ROOT / "config" / "twitter_classification.json"
 OUTPUT_ROOT = REPO_ROOT / "raw" / "twitter"
+
+# Categories written to split files; 'delete' accounts are skipped entirely.
+SPLIT_CATEGORIES = ("alpha", "data", "shitpost")
+ROUTINE_CATEGORIES = ("alpha", "data")  # per-category routine files (no engagement)
 
 RESEARCH_SEARCHES = [
     # Major banks
@@ -119,6 +129,34 @@ def load_watchlist():
         if handle and not handle.startswith("#"):
             accounts.append(handle)
     return list(dict.fromkeys(accounts))
+
+
+def load_classification():
+    """Return {handle: category} from twitter_classification.json, or {} if the
+    file is missing/unparseable (caller falls back to the plain watchlist)."""
+    if not CLASSIFICATION_PATH.exists():
+        log(f"Classification not found at {CLASSIFICATION_PATH}")
+        return {}
+    try:
+        data = json.loads(CLASSIFICATION_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception as exc:  # noqa: BLE001
+        log(f"! Failed to parse classification: {exc}")
+        return {}
+
+
+def split_by_category(tweets, classification):
+    """Bucket tweets by their author's category (case-insensitive). 'delete'
+    authors are dropped; anyone not in the map lands in 'unclassified'."""
+    lookup = {k.lower(): v for k, v in classification.items()}
+    result = {"alpha": [], "data": [], "shitpost": [], "unclassified": []}
+    for tweet in tweets:
+        author = (tweet.get("author_username") or "").lower()
+        category = lookup.get(author, "unclassified")
+        if category == "delete":
+            continue
+        result.get(category, result["unclassified"]).append(tweet)
+    return result
 
 
 # --- Response parsing (defensive — provider field names can vary) -----------
@@ -508,8 +546,14 @@ def main():
         log("ERROR: GETXAPI_KEY environment variable not set")
         sys.exit(1)
 
-    accounts = load_watchlist()
-    log(f"Loaded {len(accounts)} watchlist accounts")
+    classification = load_classification()
+    if classification:
+        accounts = [a for a, c in classification.items() if c != "delete"]
+        log(f"Classification: {len(classification)} accounts, "
+            f"{len(accounts)} active (non-delete) to collect")
+    else:
+        accounts = load_watchlist()
+        log(f"No classification — falling back to watchlist ({len(accounts)})")
 
     # Set TWITTER_DEBUG_RAW=1 to dump raw API objects for schema debugging.
     debug_raw = os.environ.get("TWITTER_DEBUG_RAW") == "1"
@@ -608,6 +652,38 @@ def main():
     routine_path.write_text(json.dumps(routine_output, ensure_ascii=False, indent=2),
                             encoding="utf-8")
 
+    # Split output by author category (additional files; tweets.json stays full).
+    meta = {k: v for k, v in output.items() if k != "tweets"}
+    split = split_by_category(items, classification)
+
+    def write_split(category, tweets, strip):
+        payload = dict(meta)
+        payload["category"] = category
+        payload["tweets"] = [strip_engagement(t) for t in tweets] if strip else tweets
+        payload["total_tweets"] = len(payload["tweets"])
+        prefix = "tweets_for_routine_" if strip else "tweets_"
+        (out_dir / f"{prefix}{category}.json").write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    for category in SPLIT_CATEGORIES:
+        write_split(category, split[category], strip=False)
+    for category in ROUTINE_CATEGORIES:
+        write_split(category, split[category], strip=True)
+
+    # Stats: category by author, but research_search tweets counted as 'research'.
+    cat_counts = Counter()
+    classification_lc = {k.lower(): v for k, v in classification.items()}
+    for t in items:
+        if t.get("source") == "research_search":
+            cat_counts["research"] += 1
+        else:
+            cat_counts[classification_lc.get(
+                (t.get("author_username") or "").lower(), "unclassified")] += 1
+    images_count = sum(1 for t in items if t.get("images"))
+    by_category = ", ".join(
+        f"{c}={cat_counts.get(c, 0)}"
+        for c in ("alpha", "data", "shitpost", "research", "unclassified"))
+
     if debug_raw:
         debug_path = out_dir / "_raw_sample.json"
         debug_path.write_text(json.dumps({
@@ -620,16 +696,17 @@ def main():
         log(f"DEBUG: wrote {len(raw_samples)} samples + "
             f"{len(raw_empty_author)} empty-author samples to {debug_path.name}")
 
-    log("=" * 50)
-    log(f"Saved {out_path.relative_to(REPO_ROOT)}")
-    log(f"      {routine_path.relative_to(REPO_ROOT)} (no engagement fields)")
-    log(f"  total tweets (unique): {len(deduped)}")
-    log(f"  threads detected:      {thread_count}")
-    log(f"  watchlist tweets:      {watchlist_count}")
-    log(f"  research tweets:       {research_count}")
-    log(f"  t.co resolved:         {resolved_count}")
-    log(f"  API calls made:        {api_calls}")
-    log(f"  estimated cost (USD):  {output['estimated_cost_usd']}")
+    split_files = ([f"tweets_{c}.json" for c in SPLIT_CATEGORIES]
+                   + [f"tweets_for_routine_{c}.json" for c in ROUTINE_CATEGORIES])
+
+    log("=== Twitter Collection Complete ===")
+    log(f"Total: {len(deduped)} tweets")
+    log(f"By category: {by_category}")
+    log(f"Images: {images_count} tweets with images")
+    log(f"Threads: {thread_count}  |  t.co resolved: {resolved_count}")
+    log(f"API calls: {api_calls}  |  est. cost: ${output['estimated_cost_usd']}")
+    log(f"Output dir: {out_dir.relative_to(REPO_ROOT)}")
+    log(f"  tweets.json, tweets_for_routine.json + {', '.join(split_files)}")
     log("=" * 50)
 
 
