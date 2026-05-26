@@ -44,8 +44,8 @@ COST_PER_CALL_USD = 0.001
 WATCHLIST_BATCH_SIZE = 15
 WATCHLIST_MAX_PAGES = 3       # safety cap per batch
 RESEARCH_MAX_PAGES = 1        # one page (~20 results) per research query
-WATCHLIST_LOOKBACK_HOURS = 14 # overlap with previous run is acceptable
-RESEARCH_LOOKBACK_HOURS = 14  # match watchlist window (was pulling years-old)
+WATCHLIST_LOOKBACK_HOURS = 13 # overlap with previous run is acceptable
+RESEARCH_LOOKBACK_HOURS = 13  # match watchlist window (research currently disabled)
 
 TCO_RE = re.compile(r"https://t\.co/\w+")
 MAX_URL_RESOLUTIONS = 100     # cap t.co HEAD requests per run
@@ -589,18 +589,22 @@ def main():
             normalized.append(t)
             capture(raw, t)
 
+    # === RESEARCH SEARCH DISABLED ===
+    # 28 keyword searches produced 0 useful results (all target prices, no research screenshots)
+    # Will be redesigned with analyst-name searches + filter:images
+    # See ARCHITECTURE_v3.md for bank research discovery plan
     # --- Stream B: institutional research searches ---
-    for i, query in enumerate(RESEARCH_SEARCHES, 1):
-        full_query = build_query(query, RESEARCH_LOOKBACK_HOURS)
-        log(f"Research search {i}/{len(RESEARCH_SEARCHES)}: {query[:60]}")
-        raws, calls = api_search(api_key, full_query, RESEARCH_MAX_PAGES)
-        api_calls += calls
-        for raw in raws:
-            t = normalize_tweet(raw, "research_search", query)
-            if t["_created_dt"] is not None and t["_created_dt"] < research_cutoff:
-                continue  # drop stale results the time operator may have missed
-            normalized.append(t)
-            capture(raw, t)
+    # for i, query in enumerate(RESEARCH_SEARCHES, 1):
+    #     full_query = build_query(query, RESEARCH_LOOKBACK_HOURS)
+    #     log(f"Research search {i}/{len(RESEARCH_SEARCHES)}: {query[:60]}")
+    #     raws, calls = api_search(api_key, full_query, RESEARCH_MAX_PAGES)
+    #     api_calls += calls
+    #     for raw in raws:
+    #         t = normalize_tweet(raw, "research_search", query)
+    #         if t["_created_dt"] is not None and t["_created_dt"] < research_cutoff:
+    #             continue  # drop stale results the time operator may have missed
+    #         normalized.append(t)
+    #         capture(raw, t)
 
     # --- Deduplicate by tweet id across both streams (keep first seen) ---
     deduped = []
