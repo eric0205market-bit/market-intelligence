@@ -433,6 +433,20 @@ def strip_engagement(tweet):
     return out
 
 
+def strip_empty(tweet):
+    """Copy of a tweet with empty fields removed: keys whose value is None,
+    "", [], or {}. Engagement-flagged values like 0 or False are kept (they
+    are meaningful, not empty). Recurses into nested thread_tweets."""
+    out = {}
+    for k, v in tweet.items():
+        if v is None or v == "" or v == [] or v == {}:
+            continue
+        out[k] = v
+    if isinstance(out.get("thread_tweets"), list):
+        out["thread_tweets"] = [strip_empty(x) for x in out["thread_tweets"]]
+    return out
+
+
 # --- API call ---------------------------------------------------------------
 
 def api_search(api_key, query, max_pages):
@@ -801,15 +815,22 @@ def main():
     for category in ROUTINE_CATEGORIES:
         write_split(category, split[category], strip=True)
 
-    # Copy the routine files to data/twitter/latest/ so Claude Code routines
-    # (which clone the repo) always find the most recent data at a stable
-    # path. The timestamped raw/twitter/<ts>/ folder remains the immutable
-    # archive; this directory is overwritten each run.
+    # Write compact, empty-field-stripped routine files to data/twitter/latest/
+    # so Claude Desktop routines (which clone the repo and can't reliably read
+    # huge pretty files in one chunk) get a 2-3x smaller payload. The
+    # timestamped raw/twitter/<ts>/ folder remains the pretty archive.
     LATEST_DIR.mkdir(parents=True, exist_ok=True)
     for name in DRIVE_FILES:
         src = out_dir / name
-        if src.exists():
-            (LATEST_DIR / name).write_bytes(src.read_bytes())
+        if not src.exists():
+            continue
+        payload = json.loads(src.read_text(encoding="utf-8"))
+        if isinstance(payload.get("tweets"), list):
+            payload["tweets"] = [strip_empty(t) for t in payload["tweets"]]
+        (LATEST_DIR / name).write_text(
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
 
     # Mirror the routine files to Google Drive. Best-effort: any failure here
     # is logged but does not abort the run — the JSON on disk is the source
