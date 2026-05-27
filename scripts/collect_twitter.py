@@ -58,9 +58,10 @@ CLASSIFICATION_PATH = REPO_ROOT / "config" / "twitter_classification.json"
 OUTPUT_ROOT = REPO_ROOT / "raw" / "twitter"
 
 # --- Google Drive upload ----------------------------------------------------
-SERVICE_ACCOUNT_FILE = REPO_ROOT / "service-account.json"
+# OAuth2 user credentials: token.json contains the refresh token from a prior
+# completed auth flow; the access token is refreshed lazily as needed.
+TOKEN_FILE = REPO_ROOT / "token.json"
 DRIVE_FOLDER_ID = "1hASNdzKkHqmVKa0EiwJNOT6rnsMVn_xS"
-DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
 # Files mirrored to Drive after each run. Note: alpha/data use the
 # engagement-stripped routine variants; shitpost uses the full file because
 # volume / sentiment counts need the raw signals.
@@ -554,22 +555,39 @@ def merge_thread(members):
 # --- Google Drive upload ----------------------------------------------------
 
 def _load_drive_credentials():
-    """Return google service-account Credentials or None if not configured.
+    """Return OAuth2 user Credentials or None if not configured.
 
-    Source priority: GOOGLE_SERVICE_ACCOUNT_JSON env var (raw JSON, used by the
-    GitHub Action) > service-account.json file at the repo root.
+    Source priority: token.json at the repo root > GOOGLE_OAUTH_TOKEN_JSON
+    env var (raw JSON, used by the GitHub Action). Both carry the refresh
+    token from a prior completed OAuth flow. If the access token is expired
+    we refresh it, and (file source only) write the updated token back so the
+    next run starts from a fresh expiry.
     """
-    from google.oauth2 import service_account  # noqa: WPS433 - lazy import
+    from google.oauth2.credentials import Credentials  # noqa: WPS433 - lazy
+    from google.auth.transport.requests import Request  # noqa: WPS433 - lazy
 
-    env_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
-    if env_json:
-        info = json.loads(env_json)
-        return service_account.Credentials.from_service_account_info(
-            info, scopes=DRIVE_SCOPES)
-    if SERVICE_ACCOUNT_FILE.exists():
-        return service_account.Credentials.from_service_account_file(
-            str(SERVICE_ACCOUNT_FILE), scopes=DRIVE_SCOPES)
-    return None
+    creds = None
+    persist_to_file = False
+    if TOKEN_FILE.exists():
+        creds = Credentials.from_authorized_user_file(str(TOKEN_FILE))
+        persist_to_file = True
+    else:
+        env_json = os.environ.get("GOOGLE_OAUTH_TOKEN_JSON")
+        if env_json:
+            creds = Credentials.from_authorized_user_info(json.loads(env_json))
+
+    if creds is None:
+        return None
+
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        if persist_to_file:
+            try:
+                TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
+            except Exception as exc:  # noqa: BLE001 - non-fatal
+                log(f"! Drive: could not persist refreshed token "
+                    f"to {TOKEN_FILE.name}: {exc}")
+    return creds
 
 
 def _upload_one(service, file_path, folder_id):
@@ -620,8 +638,8 @@ def upload_to_drive(out_dir):
         log(f"! Drive upload skipped: bad credentials: {exc}")
         return
     if creds is None:
-        log("! Drive upload skipped: set GOOGLE_SERVICE_ACCOUNT_JSON or "
-            "place service-account.json at the repo root")
+        log("! Drive upload skipped: place token.json at the repo root or "
+            "set GOOGLE_OAUTH_TOKEN_JSON")
         return
 
     try:
