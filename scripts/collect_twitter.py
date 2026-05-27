@@ -57,6 +57,19 @@ WATCHLIST_PATH = REPO_ROOT / "config" / "twitter_watchlist.txt"
 CLASSIFICATION_PATH = REPO_ROOT / "config" / "twitter_classification.json"
 OUTPUT_ROOT = REPO_ROOT / "raw" / "twitter"
 
+# --- Google Drive upload ----------------------------------------------------
+SERVICE_ACCOUNT_FILE = REPO_ROOT / "service-account.json"
+DRIVE_FOLDER_ID = "1hASNdzKkHqmVKa0EiwJNOT6rnsMVn_xS"
+DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
+# Files mirrored to Drive after each run. Note: alpha/data use the
+# engagement-stripped routine variants; shitpost uses the full file because
+# volume / sentiment counts need the raw signals.
+DRIVE_FILES = (
+    "tweets_for_routine_alpha.json",
+    "tweets_for_routine_data.json",
+    "tweets_shitpost.json",
+)
+
 # Categories written to split files; 'delete' accounts are skipped entirely.
 SPLIT_CATEGORIES = ("alpha", "data", "shitpost")
 ROUTINE_CATEGORIES = ("alpha", "data")  # per-category routine files (no engagement)
@@ -538,6 +551,98 @@ def merge_thread(members):
     return head
 
 
+# --- Google Drive upload ----------------------------------------------------
+
+def _load_drive_credentials():
+    """Return google service-account Credentials or None if not configured.
+
+    Source priority: GOOGLE_SERVICE_ACCOUNT_JSON env var (raw JSON, used by the
+    GitHub Action) > service-account.json file at the repo root.
+    """
+    from google.oauth2 import service_account  # noqa: WPS433 - lazy import
+
+    env_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+    if env_json:
+        info = json.loads(env_json)
+        return service_account.Credentials.from_service_account_info(
+            info, scopes=DRIVE_SCOPES)
+    if SERVICE_ACCOUNT_FILE.exists():
+        return service_account.Credentials.from_service_account_file(
+            str(SERVICE_ACCOUNT_FILE), scopes=DRIVE_SCOPES)
+    return None
+
+
+def _upload_one(service, file_path, folder_id):
+    """Create or update a single file by name within the target folder."""
+    from googleapiclient.http import MediaFileUpload  # noqa: WPS433 - lazy
+
+    name = file_path.name
+    # Escape single quotes in case a future filename ever contains one.
+    safe_name = name.replace("'", "\\'")
+    query = (f"name = '{safe_name}' and '{folder_id}' in parents "
+             f"and trashed = false")
+    existing = service.files().list(
+        q=query, fields="files(id, name)",
+        supportsAllDrives=True, includeItemsFromAllDrives=True,
+    ).execute().get("files", [])
+
+    media = MediaFileUpload(str(file_path), mimetype="application/json",
+                            resumable=False)
+    if existing:
+        file_id = existing[0]["id"]
+        result = service.files().update(
+            fileId=file_id, media_body=media,
+            fields="id", supportsAllDrives=True,
+        ).execute()
+    else:
+        result = service.files().create(
+            body={"name": name, "parents": [folder_id]},
+            media_body=media, fields="id", supportsAllDrives=True,
+        ).execute()
+    return result["id"]
+
+
+def upload_to_drive(out_dir):
+    """Best-effort mirror of DRIVE_FILES into the configured Drive folder.
+
+    Any failure is logged and swallowed — collection has already succeeded
+    and the raw data is safe in the repo regardless of upload outcome.
+    """
+    try:
+        from googleapiclient.discovery import build  # noqa: WPS433 - lazy
+    except ImportError as exc:
+        log(f"! Drive upload skipped: google API client not installed ({exc})")
+        return
+
+    try:
+        creds = _load_drive_credentials()
+    except Exception as exc:  # noqa: BLE001 - boundary, just log
+        log(f"! Drive upload skipped: bad credentials: {exc}")
+        return
+    if creds is None:
+        log("! Drive upload skipped: set GOOGLE_SERVICE_ACCOUNT_JSON or "
+            "place service-account.json at the repo root")
+        return
+
+    try:
+        service = build("drive", "v3", credentials=creds,
+                        cache_discovery=False)
+    except Exception as exc:  # noqa: BLE001
+        log(f"! Drive upload skipped: could not build client: {exc}")
+        return
+
+    for name in DRIVE_FILES:
+        path = out_dir / name
+        if not path.exists():
+            log(f"! Drive upload: {name} missing locally — skipped")
+            continue
+        try:
+            file_id = _upload_one(service, path, DRIVE_FOLDER_ID)
+            log(f"Uploaded {name} to Drive (ID: {file_id})")
+        except Exception as exc:  # noqa: BLE001 - one file failure shouldn't stop the rest
+            log(f"! Drive upload failed for {name}: {exc}")
+
+
 # --- Main -------------------------------------------------------------------
 
 def main():
@@ -673,6 +778,11 @@ def main():
         write_split(category, split[category], strip=False)
     for category in ROUTINE_CATEGORIES:
         write_split(category, split[category], strip=True)
+
+    # Mirror the routine files to Google Drive. Best-effort: any failure here
+    # is logged but does not abort the run — the JSON on disk is the source
+    # of truth and is already committed by the workflow regardless.
+    upload_to_drive(out_dir)
 
     # Stats: category by author, but research_search tweets counted as 'research'.
     cat_counts = Counter()
