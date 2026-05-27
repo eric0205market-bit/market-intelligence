@@ -56,6 +56,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 WATCHLIST_PATH = REPO_ROOT / "config" / "twitter_watchlist.txt"
 CLASSIFICATION_PATH = REPO_ROOT / "config" / "twitter_classification.json"
 OUTPUT_ROOT = REPO_ROOT / "raw" / "twitter"
+# Stable mirror of the latest routine files. Downstream consumers (the
+# routines, which clone this repo) read from this fixed path; raw/twitter/
+# keeps the timestamped history.
+LATEST_DIR = REPO_ROOT / "data" / "twitter" / "latest"
 
 # --- Google Drive upload ----------------------------------------------------
 # OAuth2 user credentials: token.json contains the refresh token from a prior
@@ -796,6 +800,16 @@ def main():
         write_split(category, split[category], strip=False)
     for category in ROUTINE_CATEGORIES:
         write_split(category, split[category], strip=True)
+
+    # Copy the routine files to data/twitter/latest/ so Claude Code routines
+    # (which clone the repo) always find the most recent data at a stable
+    # path. The timestamped raw/twitter/<ts>/ folder remains the immutable
+    # archive; this directory is overwritten each run.
+    LATEST_DIR.mkdir(parents=True, exist_ok=True)
+    for name in DRIVE_FILES:
+        src = out_dir / name
+        if src.exists():
+            (LATEST_DIR / name).write_bytes(src.read_bytes())
 
     # Mirror the routine files to Google Drive. Best-effort: any failure here
     # is logged but does not abort the run — the JSON on disk is the source
