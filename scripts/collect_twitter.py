@@ -769,6 +769,14 @@ def main():
             seen.add(tid)
         deduped.append(t)
 
+    # Don't overwrite good data with an empty collection (e.g. total API
+    # failure). Exit without writing data/twitter/latest/ or any output, so
+    # the workflow finds nothing to commit and main keeps the last good data.
+    if len(deduped) == 0:
+        log("No tweets collected — skipping all writes to preserve existing "
+            "data/twitter/latest/. Exiting without changes.")
+        sys.exit(0)
+
     watchlist_count = sum(1 for t in deduped if t["source"] == "watchlist")
     research_count = sum(1 for t in deduped if t["source"] == "research_search")
 

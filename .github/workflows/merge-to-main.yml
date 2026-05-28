@@ -20,16 +20,18 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git checkout main 2>/dev/null || git checkout -b main
-          git merge ${{ github.sha }} --no-edit -m "Auto-merge from routine run"
-
-      - name: Inject back button into reports
-        run: python3 scripts/inject_back_button.py
-
-      - name: Generate index.html
-        run: python3 scripts/update_dashboard.py
-
-      - name: Commit and push
-        run: |
+          # Prefer incoming data on conflict; never abort the run.
+          git merge ${{ github.sha }} --no-edit -X theirs || true
+          # index.html / reports are derived files — regenerate them fresh on
+          # main so any conflict in them is resolved deterministically.
+          python3 scripts/inject_back_button.py && git add reports
+          python3 scripts/update_dashboard.py && git add index.html
           git add -A
-          git commit -m "Auto-merge + update index" --allow-empty
-          git push origin main
+          git commit -m "Auto-merge + update index" --allow-empty || true
+
+      - name: Push to main (retry with rebase)
+        run: |
+          for i in 1 2 3; do
+            git push origin main && break
+            git pull --rebase origin main
+          done
