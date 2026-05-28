@@ -96,6 +96,18 @@ Find tweets that are UNUSUALLY substantive for shitpost accounts:
 4. Don't analyze or editorialize — just scan and report
 5. Keep summaries short (1-2 sentences per outlier)
 
+### VERIFICATION CHECKLIST (do this AFTER completing the report)
+
+Before outputting, verify:
+
+- [ ] Every author's tweets scanned for tickers? If an author has 3+ tweets and zero ticker mentions, double-check — they may use project names instead of $TICKER format.
+- [ ] Every author with 3+ tweets appears somewhere in the output (tickers or outliers)? If not, review their tweets.
+- [ ] Every tweet > 200 characters flagged as outlier? These are unusually long for shitpost accounts.
+- [ ] Every tweet with images from a normally text-only author flagged as outlier?
+- [ ] Volume numbers correct? total_tweets + active_authors + silent_authors should match the input.
+
+If any check fails, go back and fix before outputting the JSON.
+
 ## STEP 3: FETCH TEMPLATE
 
 Use web_fetch to get the HTML template:
