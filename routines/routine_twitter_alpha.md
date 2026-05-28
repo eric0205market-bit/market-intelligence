@@ -177,10 +177,10 @@ cd market-intelligence
 git checkout -b claude/twitter-alpha-$(date +%Y%m%d_%H%M)
 
 mkdir -p reports
-# Save HTML file as reports/twitter_alpha_YYYY-MM-DD.html
+# Save HTML file as reports/twitter_alpha_YYYY-MM-DD_HHMM.html  (HHMM = current UTC time, e.g. $(date -u +%H%M))
 
 git add reports/
-git commit -m "Twitter Alpha: YYYY-MM-DD — N items from M authors"
+git commit -m "Twitter Alpha: YYYY-MM-DD HH:MM — N items from M authors"
 git push origin HEAD
 ```
 

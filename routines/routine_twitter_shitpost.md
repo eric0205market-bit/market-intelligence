@@ -135,10 +135,10 @@ cd market-intelligence
 git checkout -b claude/twitter-shitpost-$(date +%Y%m%d_%H%M)
 
 mkdir -p reports
-# Save HTML file as reports/twitter_shitpost_YYYY-MM-DD.html
+# Save HTML file as reports/twitter_shitpost_YYYY-MM-DD_HHMM.html  (HHMM = current UTC time, e.g. $(date -u +%H%M))
 
 git add reports/
-git commit -m "Shitpost Radar: YYYY-MM-DD — N tickers, M outliers"
+git commit -m "Shitpost Radar: YYYY-MM-DD HH:MM — N tickers, M outliers"
 git push origin HEAD
 ```
 

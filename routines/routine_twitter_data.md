@@ -160,10 +160,10 @@ cd market-intelligence
 git checkout -b claude/twitter-data-$(date +%Y%m%d_%H%M)
 
 mkdir -p reports
-# Save HTML file as reports/twitter_data_YYYY-MM-DD.html
+# Save HTML file as reports/twitter_data_YYYY-MM-DD_HHMM.html  (HHMM = current UTC time, e.g. $(date -u +%H%M))
 
 git add reports/
-git commit -m "Twitter Data: YYYY-MM-DD — N items, M data points"
+git commit -m "Twitter Data: YYYY-MM-DD HH:MM — N items, M data points"
 git push origin HEAD
 ```
 
