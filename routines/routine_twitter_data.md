@@ -123,6 +123,18 @@ External links for other routines.
 5. **Coverage target: 90%+** — almost nothing is noise in Data accounts.
 6. **Include created_at** for each item — freshness matters.
 
+### VERIFICATION CHECKLIST (do this AFTER completing the report)
+
+Before outputting, verify:
+
+- [ ] Coverage ≥ 90% of unique authors? If below, you are filtering too aggressively — go back and add the missing authors' tweets.
+- [ ] Every author who posted 2+ tweets: do they have at least 1 item in the report? If not, go back and add.
+- [ ] Every tweet with images/charts: is it in the report? Charts ARE the content for Data accounts — never drop a chart.
+- [ ] after_filter should be ≥ 80% of total_tweets. If you filtered more than 20%, your noise threshold is too high for Data accounts. Go back and include more.
+- [ ] Any author completely missing from the report? Review their tweets — Data accounts rarely post noise.
+
+If any check fails, go back and fix before outputting the JSON.
+
 ## STEP 3: FETCH TEMPLATE
 
 Use web_fetch to get the HTML template:
