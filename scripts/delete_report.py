@@ -55,6 +55,41 @@ def tracked_set():
     return set(git("ls-files", capture=True).stdout.splitlines())
 
 
+def current_branch():
+    return git("rev-parse", "--abbrev-ref", "HEAD", capture=True).stdout.strip()
+
+
+def is_dirty():
+    return bool(git("status", "--porcelain", capture=True).stdout.strip())
+
+
+def delete_matches(matches):
+    """git-rm tracked matches and unlink untracked ones (only those present on
+    the current checkout). Returns the number of files removed."""
+    tracked = tracked_set()
+    removed = 0
+    tracked_present = [r for r in matches
+                       if r in tracked and (REPO_ROOT / r).exists()]
+    if tracked_present:
+        git("rm", "--quiet", "--", *tracked_present)
+        removed += len(tracked_present)
+    for rel in matches:
+        if rel not in tracked and (REPO_ROOT / rel).exists():
+            try:
+                (REPO_ROOT / rel).unlink()
+                removed += 1
+            except OSError as exc:
+                print(f"  ! could not remove untracked {rel}: {exc}")
+    return removed
+
+
+def regenerate_dashboard():
+    if UPDATE_DASHBOARD.exists():
+        subprocess.run([sys.executable, str(UPDATE_DASHBOARD)],
+                       cwd=str(REPO_ROOT), check=False)
+        git("add", "index.html", check=False)
+
+
 def prune_empty_dirs():
     """Remove now-empty directories left under the search roots (not the roots)."""
     for name in SEARCH_DIRS:
@@ -106,32 +141,44 @@ def main():
         print("Aborted. Nothing changed.")
         return
 
-    tracked = tracked_set()
-    tracked_matches = [r for r in matches if r in tracked]
-    untracked_matches = [r for r in matches if r not in tracked]
+    # Deletions must always land on main so the live dashboard updates,
+    # regardless of which branch is checked out. If we're not on main, set the
+    # user's working state aside, switch to an up-to-date main, do the cleanup
+    # there, then return the user to their branch and restore their changes.
+    original_branch = current_branch()
+    switched = stashed = False
+    if original_branch != "main":
+        if is_dirty():
+            git("stash", "push", "-u", "-m", "delete_report: preserve work",
+                check=False)
+            stashed = True
+        git("checkout", "main", check=False)
+        switched = True
+        git("pull", "--ff-only", "origin", "main", check=False)
 
-    if tracked_matches:
-        git("rm", "--quiet", "--", *tracked_matches)
-    for rel in untracked_matches:
-        try:
-            (REPO_ROOT / rel).unlink()
-        except OSError as exc:
-            print(f"  ! could not remove untracked {rel}: {exc}")
-
+    removed = delete_matches(matches)
     prune_empty_dirs()
+    regenerate_dashboard()
 
-    # Regenerate the dashboard so it no longer lists the removed reports.
-    if UPDATE_DASHBOARD.exists():
-        subprocess.run([sys.executable, str(UPDATE_DASHBOARD)],
-                       cwd=str(REPO_ROOT), check=False)
-        git("add", "index.html", check=False)
-
-    git("commit", "-m", f"cleanup: remove {label}", check=False)
-    push = git("push", check=False)
-    if push.returncode != 0:
-        print("Committed locally, but push failed — push manually when ready.")
+    if git("diff", "--cached", "--quiet", check=False).returncode == 0:
+        print("Nothing to delete on main (matched files were not present there).")
     else:
-        print("Done.")
+        git("commit", "-m", f"cleanup: remove {label}", check=False)
+        push = git("push", "origin", "main", check=False)
+        if push.returncode != 0:
+            print("Committed on main, but push failed — run "
+                  "'git push origin main' manually.")
+        else:
+            print(f"Removed {removed} file(s); committed and pushed to main.")
+
+    if switched:
+        back = git("checkout", original_branch, check=False)
+        if back.returncode != 0:
+            print(f"! Could not switch back to {original_branch}; you are on main.")
+        elif stashed:
+            pop = git("stash", "pop", check=False)
+            if pop.returncode != 0:
+                print("! Could not restore stashed changes; see 'git stash list'.")
 
 
 if __name__ == "__main__":
