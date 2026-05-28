@@ -66,11 +66,14 @@ LATEST_DIR = REPO_ROOT / "data" / "twitter" / "latest"
 # completed auth flow; the access token is refreshed lazily as needed.
 TOKEN_FILE = REPO_ROOT / "token.json"
 DRIVE_FOLDER_ID = "1hASNdzKkHqmVKa0EiwJNOT6rnsMVn_xS"
-# Files mirrored to Drive after each run. Note: alpha/data use the
-# engagement-stripped routine variants; shitpost uses the full file because
-# volume / sentiment counts need the raw signals.
+# Routine files mirrored to Drive after each run — read from data/twitter/latest/
+# (the same compact files the routines consume). The alpha file is split A-L /
+# M-Z so each part is small enough for Claude Desktop to read whole; data uses
+# the engagement-stripped variant; shitpost uses the full file because volume /
+# sentiment counts need the raw signals.
 DRIVE_FILES = (
-    "tweets_for_routine_alpha.json",
+    "tweets_for_routine_alpha_1.json",
+    "tweets_for_routine_alpha_2.json",
     "tweets_for_routine_data.json",
     "tweets_shitpost.json",
 )
@@ -447,6 +450,14 @@ def strip_empty(tweet):
     return out
 
 
+def author_part(author_username):
+    """Partition authors into the alpha split: A-L -> 1, M-Z -> 2 by the first
+    character of author_username (case-insensitive). Digits, symbols, and empty
+    names fall into part 1 (deterministic)."""
+    first = (author_username or "")[:1].lower()
+    return 2 if first >= "m" else 1
+
+
 # --- API call ---------------------------------------------------------------
 
 def api_search(api_key, query, max_pages):
@@ -817,25 +828,48 @@ def main():
 
     # Write compact, empty-field-stripped routine files to data/twitter/latest/
     # so Claude Desktop routines (which clone the repo and can't reliably read
-    # huge pretty files in one chunk) get a 2-3x smaller payload. The
-    # timestamped raw/twitter/<ts>/ folder remains the pretty archive.
+    # huge pretty files in one chunk) get a 2-3x smaller payload. The alpha file
+    # is additionally split by author (A-L / M-Z) into two parts so each is
+    # small enough to read whole. The timestamped raw/twitter/<ts>/ folder keeps
+    # the single, pretty archive files unchanged.
     LATEST_DIR.mkdir(parents=True, exist_ok=True)
-    for name in DRIVE_FILES:
-        src = out_dir / name
-        if not src.exists():
-            continue
-        payload = json.loads(src.read_text(encoding="utf-8"))
+
+    def write_latest(dest_name, payload):
         if isinstance(payload.get("tweets"), list):
             payload["tweets"] = [strip_empty(t) for t in payload["tweets"]]
-        (LATEST_DIR / name).write_text(
+        (LATEST_DIR / dest_name).write_text(
             json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-            encoding="utf-8",
-        )
+            encoding="utf-8")
 
-    # Mirror the routine files to Google Drive. Best-effort: any failure here
-    # is logged but does not abort the run — the JSON on disk is the source
-    # of truth and is already committed by the workflow regardless.
-    upload_to_drive(out_dir)
+    # Alpha: split into two parts by author (A-L -> 1, M-Z -> 2). Each part
+    # keeps every original meta field plus part/total_parts.
+    alpha_src = out_dir / "tweets_for_routine_alpha.json"
+    if alpha_src.exists():
+        alpha = json.loads(alpha_src.read_text(encoding="utf-8"))
+        alpha_meta = {k: v for k, v in alpha.items() if k != "tweets"}
+        parts = {1: [], 2: []}
+        for tweet in alpha.get("tweets", []):
+            parts[author_part(tweet.get("author_username"))].append(tweet)
+        for part_no in (1, 2):
+            payload = dict(alpha_meta)
+            payload["part"] = part_no
+            payload["total_parts"] = 2
+            payload["tweets"] = parts[part_no]
+            write_latest(f"tweets_for_routine_alpha_{part_no}.json", payload)
+        # Drop the now-obsolete single-file mirror if a prior run left one.
+        (LATEST_DIR / "tweets_for_routine_alpha.json").unlink(missing_ok=True)
+
+    # Data + Shitpost: single compact files (unchanged).
+    for name in ("tweets_for_routine_data.json", "tweets_shitpost.json"):
+        src = out_dir / name
+        if src.exists():
+            write_latest(name, json.loads(src.read_text(encoding="utf-8")))
+
+    # Mirror the routine files to Google Drive from data/twitter/latest/ (where
+    # the split alpha parts live). Best-effort: any failure here is logged but
+    # does not abort the run — the JSON on disk is the source of truth and is
+    # already committed by the workflow regardless.
+    upload_to_drive(LATEST_DIR)
 
     # Stats: category by author, but research_search tweets counted as 'research'.
     cat_counts = Counter()

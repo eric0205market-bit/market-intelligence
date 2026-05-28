@@ -4,18 +4,21 @@
 
 ## STEP 1: FETCH DATA
 
-Clone the repository and read the data file:
+Clone the repository and read BOTH alpha data files:
 
 ```bash
 git clone https://github.com/eric0205market-bit/market-intelligence.git
 cd market-intelligence
 ```
 
-Read the file: `data/twitter/latest/tweets_for_routine_alpha.json`
+Read these 2 files and combine their tweets arrays into one:
 
-This is your input — a JSON array of tweets from ALPHA accounts. Read the ENTIRE file contents. Do not skip, truncate, or summarize the JSON.
+* `data/twitter/latest/tweets_for_routine_alpha_1.json` (authors A-L)
+* `data/twitter/latest/tweets_for_routine_alpha_2.json` (authors M-Z)
 
-If the file is missing or empty, stop and report: "No alpha data file found."
+This is your input — a JSON array of tweets from ALPHA accounts. Read BOTH files ENTIRELY. Do not skip, truncate, or summarize. Combine all tweets from both files before processing.
+
+If either file is missing or empty, stop and report: "No alpha data file found."
 
 ## STEP 2: PROCESS
 
