@@ -87,15 +87,6 @@ def fmt_time(time):
     return f"{time[:2]}:{time[2:]}"
 
 
-def day_label(day, anchor):
-    delta = (anchor - day).days
-    if delta == 0:
-        return "Today"
-    if delta == 1:
-        return "Yesterday"
-    return day.strftime("%a %b %d")
-
-
 def render_card(report):
     meta = type_meta(report["type"])
     t = fmt_time(report["time"])
@@ -109,24 +100,27 @@ def render_card(report):
 
 
 def render_top_section(reports):
+    """Two rows: 'Latest' = most recent report of each type, 'Previous' =
+    second most recent of each type (regardless of calendar day). Each card
+    carries its own date/time; the row header is just the label."""
     if not reports:
         return '<p class="empty">No reports yet.</p>'
-    distinct_days = sorted({r["day"] for r in reports}, reverse=True)
-    anchor = distinct_days[0]
+    by_type = {}
+    for r in reports:
+        by_type.setdefault(r["type"], []).append(r)
+    for items in by_type.values():
+        items.sort(key=lambda r: r["sort_key"], reverse=True)  # newest first
+    types = ordered_types(by_type)
     rows = []
-    for day in distinct_days[:2]:
-        day_reports = [r for r in reports if r["day"] == day]
-        latest_by_type = {}
-        for r in sorted(day_reports, key=lambda r: r["sort_key"]):
-            latest_by_type[r["type"]] = r  # later sort_key wins -> newest
+    for rank, label in ((0, "Latest"), (1, "Previous")):
         cards = "".join(
-            render_card(latest_by_type[t]) for t in ordered_types(latest_by_type))
-        rows.append(
-            f'<div class="day-row"><div class="day-label">'
-            f'<span>{day_label(day, anchor)}</span>'
-            f'<span class="date mono">{day.isoformat()}</span></div>'
-            f'<div class="cards">{cards}</div></div>'
-        )
+            render_card(by_type[t][rank]) for t in types if len(by_type[t]) > rank)
+        if cards:
+            rows.append(
+                f'<div class="day-row"><div class="day-label">'
+                f'<span>{label}</span></div>'
+                f'<div class="cards">{cards}</div></div>'
+            )
     return "".join(rows)
 
 
