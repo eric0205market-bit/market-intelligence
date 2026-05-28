@@ -106,6 +106,19 @@ def prune_empty_dirs():
                     pass
 
 
+def do_deletion(matches, label):
+    """git-rm matches, regenerate the dashboard, and commit on the current HEAD.
+    Returns the number of files removed (0 means nothing was staged, so no
+    commit was made)."""
+    removed = delete_matches(matches)
+    prune_empty_dirs()
+    regenerate_dashboard()
+    if git("diff", "--cached", "--quiet", check=False).returncode == 0:
+        return 0
+    git("commit", "-m", f"cleanup: remove {label}", check=False)
+    return removed
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Delete repo files matching report pattern(s).")
@@ -141,29 +154,40 @@ def main():
         print("Aborted. Nothing changed.")
         return
 
-    # Deletions must always land on main so the live dashboard updates,
-    # regardless of which branch is checked out. If we're not on main, set the
-    # user's working state aside, switch to an up-to-date main, do the cleanup
-    # there, then return the user to their branch and restore their changes.
+    # Deletions must always land on a clean, up-to-date main so the live
+    # dashboard updates and the push is never rejected as non-fast-forward,
+    # regardless of which branch is checked out.
     original_branch = current_branch()
     switched = stashed = False
+
+    # 1. Start clean and up to date on main: stash work, switch, sync.
+    if is_dirty():
+        git("stash", "push", "-u", "-m", "delete_report: preserve work", check=False)
+        stashed = True
     if original_branch != "main":
-        if is_dirty():
-            git("stash", "push", "-u", "-m", "delete_report: preserve work",
-                check=False)
-            stashed = True
         git("checkout", "main", check=False)
         switched = True
-        git("pull", "--ff-only", "origin", "main", check=False)
+    git("pull", "origin", "main", check=False)
 
-    removed = delete_matches(matches)
-    prune_empty_dirs()
-    regenerate_dashboard()
+    # 2. Delete + regenerate dashboard + commit on main.
+    removed = do_deletion(matches, label)
 
-    if git("diff", "--cached", "--quiet", check=False).returncode == 0:
+    if not removed:
         print("Nothing to delete on main (matched files were not present there).")
     else:
-        git("commit", "-m", f"cleanup: remove {label}", check=False)
+        # 3. Re-sync onto the latest remote before pushing, so we never push
+        #    from a stale state. If the rebase conflicts (e.g. the churning
+        #    index.html), drop our commit, hard-sync to remote, and re-apply
+        #    the deletions on top of current main.
+        git("fetch", "origin", "main", check=False)
+        rebased = git("rebase", "origin/main", check=False)
+        if rebased.returncode != 0:
+            git("rebase", "--abort", check=False)
+            pulled = git("pull", "--rebase", "origin", "main", check=False)
+            if pulled.returncode != 0:
+                git("rebase", "--abort", check=False)
+                git("reset", "--hard", "origin/main", check=False)
+                removed = do_deletion(matches, label)
         push = git("push", "origin", "main", check=False)
         if push.returncode != 0:
             print("Committed on main, but push failed — run "
@@ -171,14 +195,16 @@ def main():
         else:
             print(f"Removed {removed} file(s); committed and pushed to main.")
 
+    # 4. Return the user to their branch and restore their stashed work.
     if switched:
         back = git("checkout", original_branch, check=False)
         if back.returncode != 0:
             print(f"! Could not switch back to {original_branch}; you are on main.")
-        elif stashed:
-            pop = git("stash", "pop", check=False)
-            if pop.returncode != 0:
-                print("! Could not restore stashed changes; see 'git stash list'.")
+            return
+    if stashed:
+        pop = git("stash", "pop", check=False)
+        if pop.returncode != 0:
+            print("! Could not restore stashed changes; see 'git stash list'.")
 
 
 if __name__ == "__main__":
