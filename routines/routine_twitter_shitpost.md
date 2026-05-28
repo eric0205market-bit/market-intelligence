@@ -89,6 +89,8 @@ Find tweets that are UNUSUALLY substantive for shitpost accounts:
 }
 ```
 
+IMPORTANT: total_authors = use the category_accounts field from the input metadata, NOT watchlist_accounts. If category_accounts is missing, count unique authors in the tweets array and add ~30% for typically silent accounts.
+
 ### RULES
 1. Process ALL tweets — don't skip any
 2. Ticker detection: be broad — $BTC, "bitcoin", "btc", project names all count

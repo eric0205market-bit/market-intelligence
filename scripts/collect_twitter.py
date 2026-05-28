@@ -834,7 +834,15 @@ def main():
     # the single, pretty archive files unchanged.
     LATEST_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Unique watchlist accounts per category (e.g. shitpost ~35), so routines
+    # report total_authors for THEIR category instead of the cross-category
+    # watchlist_accounts total.
+    category_account_counts = Counter(classification.values())
+
     def write_latest(dest_name, payload):
+        category = payload.get("category")
+        if category:
+            payload["category_accounts"] = category_account_counts.get(category, 0)
         if isinstance(payload.get("tweets"), list):
             payload["tweets"] = [strip_empty(t) for t in payload["tweets"]]
         (LATEST_DIR / dest_name).write_text(
