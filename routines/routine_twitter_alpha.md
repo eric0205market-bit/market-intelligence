@@ -2,6 +2,13 @@
 # Model: Opus 4.6+
 # Trigger: 2x/day after collection
 
+## STEP 0 — FRESHNESS GATE (MANDATORY, RUN FIRST)
+Before anything else, verify the input is from the current collection cycle:
+
+    python3 scripts/check_freshness.py data/twitter/latest/tweets_for_routine_alpha_1.json data/twitter/latest/tweets_for_routine_alpha_2.json --max-age-hours 6
+
+If it exits non-zero / prints "FRESHNESS GATE FAILED": STOP. Generate nothing, write no JSON/HTML, commit/push nothing. Output a one-line abort note including the script's message, then end the run. Continue to the steps below ONLY if the gate PASSES.
+
 ## STEP 1: FETCH DATA
 
 Clone the repository and read BOTH alpha data files:
