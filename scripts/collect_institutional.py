@@ -335,8 +335,10 @@ def find_date_in_text(text):
 
     Labelled dates ("Published: ...", "Date: ...") are preferred over loose
     matches because they are far more likely to be the publication date rather
-    than a date mentioned in the body."""
-    head = (text or "")[:1500]
+    than a date mentioned in the body. Window bumped to 5000 chars so dates
+    that sit past a long nav/header (e.g. PGIM ~1700 chars in) are still caught
+    — label-first ordering keeps loose body dates a last resort."""
+    head = (text or "")[:5000]
     for m in LABEL_DATE_RE.finditer(head):
         d = parse_date(m.group(1).strip())
         if d:
@@ -436,6 +438,40 @@ def _time_date(html):
     return None
 
 
+# Inline JSON state blobs (Next.js __NEXT_DATA__, hydration props, etc.) often
+# carry the publication date as a date-keyed value. We match both raw and
+# backslash-escaped JSON forms so escaped script payloads work too. The value
+# is intentionally bounded ([^"\\]{0,30}) so we never run away into the next
+# field. Only date-shaped keys are accepted — never raw "any ISO" — to avoid
+# grabbing compliance/session/copyright dates elsewhere on the page.
+_JSON_STATE_DATE_KEYS = (
+    "datepublished", "publishedat", "publishedon", "publisheddate",
+    "publish_date", "publication_date", "publicationdate",
+    "postdate", "post_date", "articledate", "article_date",
+    "displaydate", "releasedate", "release_date", "date",
+)
+JSON_STATE_DATE_RE = re.compile(
+    r'(?:\\"|")(' + "|".join(_JSON_STATE_DATE_KEYS) + r')(?:\\"|")\s*:\s*'
+    r'(?:\\"|")(\d{4}-\d{2}-\d{2}[^"\\]{0,30})',
+    re.I,
+)
+
+
+def _json_state_date(html):
+    """Catch dates embedded in inline JSON state (Next.js / Nuxt / hydration
+    blobs). Handles both raw and backslash-escaped JSON. Prefers explicit
+    publish-ish keys over the generic 'date'."""
+    found = {}
+    for k, v in JSON_STATE_DATE_RE.findall(html):
+        found.setdefault(k.lower(), []).append(v)
+    for key in _JSON_STATE_DATE_KEYS:   # priority = declaration order above
+        for v in found.get(key, ()):
+            d = parse_date(v)
+            if d:
+                return d
+    return None
+
+
 def _html_to_text(html):
     """Crude tag strip for the visible-text date fallback."""
     h = re.sub(r"(?is)<(script|style|noscript|template)\b.*?</\1>", " ", html)
@@ -448,7 +484,7 @@ def extract_date(html, url):
     order: JSON-LD -> meta tags -> <time> -> URL path -> visible text.
     Returns a datetime.date or None. Pure function (testable on saved HTML)."""
     if html:
-        for layer in (_jsonld_date, _meta_date, _time_date):
+        for layer in (_jsonld_date, _meta_date, _time_date, _json_state_date):
             d = layer(html)
             if d:
                 return d
@@ -456,7 +492,12 @@ def extract_date(html, url):
     if d:
         return d
     if html:
-        return find_date_in_text(_html_to_text(html))
+        # Cap the HTML-stripped scan tightly: full-HTML strip mixes nav, body,
+        # and footer (compliance/disclosure expiration dates live in footers
+        # and would otherwise become false positives). The cleaner pass-2
+        # fallback uses extract_article's main-body-only text where the wider
+        # 5000-char window is safe.
+        return find_date_in_text(_html_to_text(html)[:1500])
     return None
 
 
