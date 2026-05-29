@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -28,19 +30,25 @@ jobs:
           GOOGLE_OAUTH_TOKEN_JSON: ${{ secrets.GOOGLE_OAUTH_TOKEN_JSON }}
         run: python scripts/collect_twitter.py
 
-      - name: Commit and push to claude/twitter-data
+      - name: Commit data to main
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          # Stage the data branch from current main; the merge-to-main workflow
-          # auto-merges any push to claude/** back into main.
-          git checkout -B claude/twitter-data
-          # Only stage data here. index.html / reports are generated on main
-          # (post-merge) to avoid them diverging on both branches and conflicting.
+          # Commit collection data directly to main. Pushes made by Actions with
+          # the default GITHUB_TOKEN do not trigger other workflows, so the old
+          # claude/twitter-data -> merge-to-main hop never fired and data was
+          # stranded on the branch. Committing straight to main removes that
+          # dependency. Only data is staged here (no index.html / reports —
+          # those are generated on main by merge-to-main for routine pushes,
+          # which use a real token and so still trigger it).
+          git checkout main 2>/dev/null || git checkout -b main
           git add raw/twitter data/twitter/latest
           if git diff --cached --quiet; then
             echo "No new data to commit"
             exit 0
           fi
           git commit -m "data: twitter collection $(date -u '+%Y-%m-%d %H:%M')"
-          git push --force origin claude/twitter-data
+          for i in 1 2 3; do
+            git push origin main && break
+            git pull --rebase origin main
+          done
