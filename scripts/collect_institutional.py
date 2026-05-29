@@ -494,6 +494,23 @@ def collect_anchors(page, base_url):
     return out
 
 
+def settle_index(page):
+    """Give a JS-rendered index page time to inject its article links before
+    harvesting. Many institutional listings are client-side rendered, so a
+    domcontentloaded DOM has nav chrome but no article links yet. Bounded so
+    per-source budgets aren't blown: <=5s network-idle + one scroll + ~0.8s.
+    Mirrors extract_article's wait style; never raises."""
+    try:
+        page.wait_for_load_state("networkidle", timeout=5_000)
+    except Exception:
+        pass  # some sites never go idle (polling/analytics) — proceed anyway
+    try:
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+    except Exception:
+        pass  # trigger lazy-loaded lists
+    page.wait_for_timeout(800)
+
+
 # Well-known consent-button ids/selectors, tried before the generic name match.
 COOKIE_SELECTORS = (
     "#onetrust-accept-btn-handler",          # OneTrust (very common)
@@ -597,11 +614,18 @@ def collect_source(page, limiter, source, cutoff_date, errors,
         limiter.wait()
         try:
             navigate(page, index_url)
-        except (PlaywrightTimeout, PlaywrightError) as exc:
-            log(f"  WARN {sid}: index failed {index_url} — {type(exc).__name__}")
-            errors.append({"source_id": sid, "url": index_url,
-                           "error": f"index: {type(exc).__name__}"})
-            continue
+        except (PlaywrightTimeout, PlaywrightError):
+            # One bounded retry before giving up on this index page.
+            try:
+                limiter.wait()
+                navigate(page, index_url)
+            except (PlaywrightTimeout, PlaywrightError) as exc:
+                log(f"  WARN {sid}: index failed {index_url} — {type(exc).__name__}")
+                errors.append({"source_id": sid, "url": index_url,
+                               "error": f"index: {type(exc).__name__}"})
+                continue
+        # Let client-side JS inject the article links before harvesting them.
+        settle_index(page)
         for link in collect_anchors(page, page.url):
             key = norm_url(link)
             if key in seen:
