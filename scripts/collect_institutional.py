@@ -585,14 +585,28 @@ def extract_article(page):
     return data
 
 
+# Per-source funnel counter keys (instrumentation only; see notes in main()).
+FUNNEL_KEYS = (
+    "anchors_found", "candidates", "visited", "nav_errors",
+    "dropped_undated", "dropped_old", "dropped_short", "dropped_junk", "kept",
+)
+
+
 def collect_source(page, limiter, source, cutoff_date, errors,
-                   budget_s=SOURCE_TIMEOUT_S, index_phase_s=INDEX_PHASE_S):
-    """Return a list of fresh-article dicts for one source. Never raises."""
+                   budget_s=SOURCE_TIMEOUT_S, index_phase_s=INDEX_PHASE_S,
+                   funnels=None):
+    """Return a list of fresh-article dicts for one source. Never raises.
+
+    funnels (optional dict): if given, records this source's funnel counters
+    under funnels[sid]. Counting only — does not affect collection behavior."""
     sid = source["id"]
     name = source.get("name", sid)
+    funnel = {k: 0 for k in FUNNEL_KEYS}
     urls = source.get("urls") or []
     if not urls:
         log(f"  {sid}: no urls ({source.get('status', 'skip')}) — skipping")
+        if funnels is not None:
+            funnels[sid] = funnel
         return []
 
     apex = apex_domain(urlparse(urls[0]).netloc)
@@ -626,13 +640,16 @@ def collect_source(page, limiter, source, cutoff_date, errors,
                 continue
         # Let client-side JS inject the article links before harvesting them.
         settle_index(page)
-        for link in collect_anchors(page, page.url):
+        anchors = collect_anchors(page, page.url)
+        funnel["anchors_found"] += len(anchors)
+        for link in anchors:
             key = norm_url(link)
             if key in seen:
                 continue
             if looks_like_article(link, apex):
                 seen.add(key)
                 candidates.append(link)
+                funnel["candidates"] += 1
 
     # --- Pass 2: visit candidate articles, keep the recent ones ---
     skipped_old = junk = 0
@@ -648,10 +665,12 @@ def collect_source(page, limiter, source, cutoff_date, errors,
             navigate(page, article_url)
             data = extract_article(page)
         except (PlaywrightTimeout, PlaywrightError) as exc:
+            funnel["nav_errors"] += 1
             log(f"  WARN {sid}: article failed {article_url} — {type(exc).__name__}")
             errors.append({"source_id": sid, "url": article_url,
                            "error": f"article: {type(exc).__name__}"})
             continue
+        funnel["visited"] += 1
 
         # Layered: JSON-LD/meta/<time>/URL/visible-text (extract_date), then the
         # prior DOM date_raw + clean-text fallbacks (kept as additional layers).
@@ -660,6 +679,7 @@ def collect_source(page, limiter, source, cutoff_date, errors,
                     or find_date_in_text(data.get("text")))
         if pub_date is not None and pub_date < cutoff_date:
             skipped_old += 1
+            funnel["dropped_old"] += 1
             continue
         # No date found: keep it (capped later). An undated article surfaced on
         # a listing page is more likely new than old, so include rather drop it.
@@ -675,6 +695,12 @@ def collect_source(page, limiter, source, cutoff_date, errors,
         }
         if is_junk(article):
             junk += 1
+            # is_junk merges short-body and boilerplate; attribute the (unchanged)
+            # drop to its reason for the funnel — counter only, no flow change.
+            if len(article.get("text") or "") < MIN_TEXT_LEN:
+                funnel["dropped_short"] += 1
+            else:
+                funnel["dropped_junk"] += 1
             continue
         articles.append(article)
 
@@ -686,12 +712,16 @@ def collect_source(page, limiter, source, cutoff_date, errors,
             if not a["date"]:
                 seen_undated += 1
                 if seen_undated > 5:
+                    funnel["dropped_undated"] += 1
                     continue
             capped.append(a)
         articles = capped
         log(f"  {sid}: capped {total_undated} undated articles to 5")
 
     undated = sum(1 for a in articles if not a["date"])
+    funnel["kept"] = len(articles)
+    if funnels is not None:
+        funnels[sid] = funnel
     log(f"  {sid}: {len(articles)} new "
         f"(scanned {len(candidates)} candidates, "
         f"{skipped_old} old, {undated} undated, {junk} junk)")
@@ -745,6 +775,7 @@ def main():
 
     all_articles = []
     errors = []
+    funnels = {}  # per-source funnel counters (instrumentation only)
     limiter = RateLimiter(PAGE_DELAY_S)
 
     with sync_playwright() as pw:
@@ -764,7 +795,8 @@ def main():
             try:
                 found = collect_source(page, limiter, source, cutoff_date, errors,
                                        budget_s=src_budget,
-                                       index_phase_s=src_index)
+                                       index_phase_s=src_index,
+                                       funnels=funnels)
                 all_articles.extend(found)
             except Exception as exc:  # last-resort guard: never crash the run
                 log(f"  WARN {sid}: unexpected error — {type(exc).__name__}: {exc}")
@@ -798,6 +830,44 @@ def main():
         json.dumps(raw_payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
+    # --- per-source funnel instrumentation (counters only) ---
+    # Ensure every processed source appears even if a hard crash skipped its
+    # in-source recording (last-resort guard in the loop above).
+    for s in sources:
+        funnels.setdefault(s.get("id", ""), {k: 0 for k in FUNNEL_KEYS})
+    cols = list(FUNNEL_KEYS)
+    labels = ["source", "anchors", "candidates", "visited", "nav_err",
+              "undated", "old", "short", "junk", "kept"]
+    flines = [f"{labels[0]:24}" + "".join(f"{h:>11}" for h in labels[1:]),
+              "-" * (24 + 11 * len(cols))]
+    for sid in sorted(funnels, key=lambda k: (funnels[k]["kept"], k)):
+        f = funnels[sid]
+        flines.append(f"{sid[:23]:24}" + "".join(f"{f[c]:>11}" for c in cols))
+    funnel_table = "\n".join(flines)
+    print(funnel_table)
+    (date_dir / "funnel.txt").write_text(funnel_table + "\n", encoding="utf-8")
+    funnel_payload = {
+        "collected_at": collected_at,
+        "columns": cols,
+        "notes": [
+            "Counters only — collection behavior is unchanged/byte-identical.",
+            "candidates = anchors that passed looks_like_article (after dedup).",
+            "visited = article pages where navigate+extract both succeeded.",
+            "dropped_old maps to the existing skipped_old (pub_date < cutoff).",
+            "dropped_short/dropped_junk: current code merges short-body INTO "
+            "is_junk; the single is_junk drop is split here by reason "
+            "(text < MIN_TEXT_LEN -> short, else junk). Sum == is_junk drops.",
+            "dropped_undated: NO date-stage drop exists; no-date articles are "
+            "KEPT by design. This counts only undated items removed by the >5 "
+            "per-source undated cap.",
+            "kept = articles written to output (after the undated cap).",
+        ],
+        "sources": funnels,
+    }
+    (date_dir / "funnel.json").write_text(
+        json.dumps(funnel_payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
     # --- latest: compact + empty-field-stripped (routine-ready) ---
     LATEST_DIR.mkdir(parents=True, exist_ok=True)
     latest_payload = {
@@ -824,6 +894,7 @@ def main():
             log(f"  {e.get('source_id', '?')}: {e.get('error', '')}")
     log(f"Raw:    {raw_path.relative_to(REPO_ROOT)}")
     log(f"Latest: {(LATEST_DIR / LATEST_NAME).relative_to(REPO_ROOT)}")
+    log(f"Funnel: {(date_dir / 'funnel.json').relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":
