@@ -74,12 +74,14 @@ EXT_RE = re.compile(r"\.(html?|aspx|php)$", re.I)
 YEAR_RE = re.compile(r"^(19|20)\d{2}$")
 PURE_NUM_RE = re.compile(r"^\d+$")
 
-# Date strings, tried in order, after an ISO attempt.
+# Date strings, tried in order, after an ISO attempt. 4-digit-year forms come
+# first so they win over the 2-digit-year fallbacks (e.g. "29/04/25").
 DATE_FORMATS = (
     "%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d/%m/%Y",
     "%Y.%m.%d", "%d.%m.%Y", "%m.%d.%Y",
     "%B %d, %Y", "%B %d %Y", "%d %B %Y", "%d %B, %Y",
     "%b %d, %Y", "%b %d %Y", "%d %b %Y", "%d %b, %Y",
+    "%m/%d/%y", "%d/%m/%y", "%d.%m.%y",
 )
 # Free-text date patterns (used only when no metadata date is found).
 TEXT_DATE_RES = (
@@ -284,6 +286,16 @@ def parse_date(value):
     if not value:
         return None
     v = value.strip()
+    # Unix epoch timestamps (seconds=10 digits, milliseconds=13 digits), e.g.
+    # JPMorgan's <meta name="alg-search-date" content="1779804720">.
+    if v.isdigit() and len(v) in (10, 13):
+        try:
+            ts = int(v) / (1000 if len(v) == 13 else 1)
+            d = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).date()
+            if 2000 <= d.year <= 2035:
+                return d
+        except (ValueError, OverflowError, OSError):
+            pass
     # ISO 8601 (with or without time/zone).
     iso = v.replace("Z", "+00:00")
     try:
@@ -335,6 +347,116 @@ def find_date_in_text(text):
             d = parse_date(m.group(1))
             if d:
                 return d
+    return None
+
+
+# --- Layered date extraction from rendered HTML -----------------------------
+# JSON-LD date keys in preference order (published beats created/modified).
+JSONLD_DATE_KEYS = ("datePublished", "dateCreated", "uploadDate", "dateModified")
+LDJSON_RE = re.compile(
+    r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.S | re.I)
+META_TAG_RE = re.compile(r"<meta\b[^>]*>", re.I)
+META_KEY_RE = re.compile(r'(?:name|property|itemprop)\s*=\s*["\']([^"\']+)["\']', re.I)
+META_CONTENT_RE = re.compile(r'content\s*=\s*["\']([^"\']*)["\']', re.I)
+TIME_TAG_RE = re.compile(r"<time\b([^>]*)>", re.I)
+TIME_DT_RE = re.compile(r'datetime\s*=\s*["\']([^"\']+)["\']', re.I)
+# meta key classification: publication-ish vs modified-ish.
+_META_PUBLISH_RE = re.compile(
+    r"publish|pubdate|posted|release|created|issued|content_date|article:published",
+    re.I)
+_META_MODIFIED_RE = re.compile(r"modif|updated", re.I)
+
+
+def _jsonld_date(html):
+    """Recursively scan all JSON-LD blocks; return the highest-priority date."""
+    found = {k: [] for k in JSONLD_DATE_KEYS}
+    for block in LDJSON_RE.findall(html):
+        block = block.strip()
+        if not block:
+            continue
+        try:
+            data = json.loads(block)
+        except Exception:
+            continue
+        stack = [data]
+        while stack:
+            o = stack.pop()
+            if isinstance(o, dict):
+                for k in JSONLD_DATE_KEYS:
+                    if isinstance(o.get(k), str):
+                        found[k].append(o[k])
+                stack.extend(o.values())
+            elif isinstance(o, list):
+                stack.extend(o)
+    for key in JSONLD_DATE_KEYS:
+        for val in found[key]:
+            d = parse_date(val)
+            if d:
+                return d
+    return None
+
+
+def _meta_date(html):
+    """Scan date-ish <meta> tags, preferring publication dates over modified."""
+    metas = []
+    for tag in META_TAG_RE.findall(html):
+        km = META_KEY_RE.search(tag)
+        cm = META_CONTENT_RE.search(tag)
+        if not km or not cm:
+            continue
+        key = km.group(1).strip().lower()
+        content = cm.group(1).strip()
+        if not content:
+            continue
+        if any(w in key for w in ("date", "time", "publish", "modif", "created")):
+            metas.append((key, content))
+    # priority buckets: explicit-publish -> generic -> modified/updated
+    buckets = (
+        lambda k: _META_PUBLISH_RE.search(k) and not _META_MODIFIED_RE.search(k),
+        lambda k: not _META_PUBLISH_RE.search(k) and not _META_MODIFIED_RE.search(k),
+        lambda k: bool(_META_MODIFIED_RE.search(k)),
+    )
+    for pred in buckets:
+        for key, content in metas:
+            if pred(key):
+                d = parse_date(content)
+                if d:
+                    return d
+    return None
+
+
+def _time_date(html):
+    """Return the first parseable <time datetime="..."> value."""
+    for attrs in TIME_TAG_RE.findall(html):
+        dm = TIME_DT_RE.search(attrs)
+        if dm:
+            d = parse_date(dm.group(1))
+            if d:
+                return d
+    return None
+
+
+def _html_to_text(html):
+    """Crude tag strip for the visible-text date fallback."""
+    h = re.sub(r"(?is)<(script|style|noscript|template)\b.*?</\1>", " ", html)
+    h = re.sub(r"(?s)<[^>]+>", " ", h)
+    return re.sub(r"\s+", " ", h).strip()
+
+
+def extract_date(html, url):
+    """Best-effort publication date from a rendered page, trying layers in
+    order: JSON-LD -> meta tags -> <time> -> URL path -> visible text.
+    Returns a datetime.date or None. Pure function (testable on saved HTML)."""
+    if html:
+        for layer in (_jsonld_date, _meta_date, _time_date):
+            d = layer(html)
+            if d:
+                return d
+    d = date_from_url(url)
+    if d:
+        return d
+    if html:
+        return find_date_in_text(_html_to_text(html))
     return None
 
 
@@ -436,6 +558,11 @@ def extract_article(page):
         pass
     page.wait_for_timeout(400)
     data = page.evaluate(EXTRACT_JS)
+    # Full rendered HTML for layered date extraction (JSON-LD/meta/time scan).
+    try:
+        data["html"] = page.content()
+    except Exception:
+        data["html"] = ""
     # Resolve any relative image URLs against the final page URL.
     data["images"] = [urljoin(page.url, src) for src in data.get("images", [])]
     return data
@@ -502,9 +629,10 @@ def collect_source(page, limiter, source, cutoff_date, errors,
                            "error": f"article: {type(exc).__name__}"})
             continue
 
-        # date_raw (metadata) -> date in URL path -> date in visible text.
-        pub_date = (parse_date(data.get("date_raw"))
-                    or date_from_url(article_url)
+        # Layered: JSON-LD/meta/<time>/URL/visible-text (extract_date), then the
+        # prior DOM date_raw + clean-text fallbacks (kept as additional layers).
+        pub_date = (extract_date(data.get("html", ""), article_url)
+                    or parse_date(data.get("date_raw"))
                     or find_date_in_text(data.get("text")))
         if pub_date is not None and pub_date < cutoff_date:
             skipped_old += 1
