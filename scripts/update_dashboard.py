@@ -23,6 +23,7 @@ REPORT_TYPES = {
     "twitter_alpha":    {"label": "Twitter Alpha",    "color": "#6366f1", "icon": "🧠"},
     "twitter_data":     {"label": "Twitter Data",     "color": "#2563eb", "icon": "📊"},
     "twitter_shitpost": {"label": "Twitter Shitpost", "color": "#d97706", "icon": "🎲"},
+    "institutional":    {"label": "Institutional Research", "color": "#7c3aed", "icon": "🏛️"},
     "research":         {"label": "Research",         "color": "#16a34a", "icon": "🔬"},
     # Future sources (no reports yet — appear automatically once files land):
     "youtube":          {"label": "YouTube",          "color": "#dc2626", "icon": "▶️"},

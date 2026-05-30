@@ -74,12 +74,14 @@ EXT_RE = re.compile(r"\.(html?|aspx|php)$", re.I)
 YEAR_RE = re.compile(r"^(19|20)\d{2}$")
 PURE_NUM_RE = re.compile(r"^\d+$")
 
-# Date strings, tried in order, after an ISO attempt.
+# Date strings, tried in order, after an ISO attempt. 4-digit-year forms come
+# first so they win over the 2-digit-year fallbacks (e.g. "29/04/25").
 DATE_FORMATS = (
     "%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d/%m/%Y",
     "%Y.%m.%d", "%d.%m.%Y", "%m.%d.%Y",
     "%B %d, %Y", "%B %d %Y", "%d %B %Y", "%d %B, %Y",
     "%b %d, %Y", "%b %d %Y", "%d %b %Y", "%d %b, %Y",
+    "%m/%d/%y", "%d/%m/%y", "%d.%m.%y",
 )
 # Free-text date patterns (used only when no metadata date is found).
 TEXT_DATE_RES = (
@@ -284,6 +286,16 @@ def parse_date(value):
     if not value:
         return None
     v = value.strip()
+    # Unix epoch timestamps (seconds=10 digits, milliseconds=13 digits), e.g.
+    # JPMorgan's <meta name="alg-search-date" content="1779804720">.
+    if v.isdigit() and len(v) in (10, 13):
+        try:
+            ts = int(v) / (1000 if len(v) == 13 else 1)
+            d = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).date()
+            if 2000 <= d.year <= 2035:
+                return d
+        except (ValueError, OverflowError, OSError):
+            pass
     # ISO 8601 (with or without time/zone).
     iso = v.replace("Z", "+00:00")
     try:
@@ -323,8 +335,10 @@ def find_date_in_text(text):
 
     Labelled dates ("Published: ...", "Date: ...") are preferred over loose
     matches because they are far more likely to be the publication date rather
-    than a date mentioned in the body."""
-    head = (text or "")[:1500]
+    than a date mentioned in the body. Window bumped to 5000 chars so dates
+    that sit past a long nav/header (e.g. PGIM ~1700 chars in) are still caught
+    — label-first ordering keeps loose body dates a last resort."""
+    head = (text or "")[:5000]
     for m in LABEL_DATE_RE.finditer(head):
         d = parse_date(m.group(1).strip())
         if d:
@@ -335,6 +349,155 @@ def find_date_in_text(text):
             d = parse_date(m.group(1))
             if d:
                 return d
+    return None
+
+
+# --- Layered date extraction from rendered HTML -----------------------------
+# JSON-LD date keys in preference order (published beats created/modified).
+JSONLD_DATE_KEYS = ("datePublished", "dateCreated", "uploadDate", "dateModified")
+LDJSON_RE = re.compile(
+    r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.S | re.I)
+META_TAG_RE = re.compile(r"<meta\b[^>]*>", re.I)
+META_KEY_RE = re.compile(r'(?:name|property|itemprop)\s*=\s*["\']([^"\']+)["\']', re.I)
+META_CONTENT_RE = re.compile(r'content\s*=\s*["\']([^"\']*)["\']', re.I)
+TIME_TAG_RE = re.compile(r"<time\b([^>]*)>", re.I)
+TIME_DT_RE = re.compile(r'datetime\s*=\s*["\']([^"\']+)["\']', re.I)
+# meta key classification: publication-ish vs modified-ish.
+_META_PUBLISH_RE = re.compile(
+    r"publish|pubdate|posted|release|created|issued|content_date|article:published",
+    re.I)
+_META_MODIFIED_RE = re.compile(r"modif|updated", re.I)
+
+
+def _jsonld_date(html):
+    """Recursively scan all JSON-LD blocks; return the highest-priority date."""
+    found = {k: [] for k in JSONLD_DATE_KEYS}
+    for block in LDJSON_RE.findall(html):
+        block = block.strip()
+        if not block:
+            continue
+        try:
+            data = json.loads(block)
+        except Exception:
+            continue
+        stack = [data]
+        while stack:
+            o = stack.pop()
+            if isinstance(o, dict):
+                for k in JSONLD_DATE_KEYS:
+                    if isinstance(o.get(k), str):
+                        found[k].append(o[k])
+                stack.extend(o.values())
+            elif isinstance(o, list):
+                stack.extend(o)
+    for key in JSONLD_DATE_KEYS:
+        for val in found[key]:
+            d = parse_date(val)
+            if d:
+                return d
+    return None
+
+
+def _meta_date(html):
+    """Scan date-ish <meta> tags, preferring publication dates over modified."""
+    metas = []
+    for tag in META_TAG_RE.findall(html):
+        km = META_KEY_RE.search(tag)
+        cm = META_CONTENT_RE.search(tag)
+        if not km or not cm:
+            continue
+        key = km.group(1).strip().lower()
+        content = cm.group(1).strip()
+        if not content:
+            continue
+        if any(w in key for w in ("date", "time", "publish", "modif", "created")):
+            metas.append((key, content))
+    # priority buckets: explicit-publish -> generic -> modified/updated
+    buckets = (
+        lambda k: _META_PUBLISH_RE.search(k) and not _META_MODIFIED_RE.search(k),
+        lambda k: not _META_PUBLISH_RE.search(k) and not _META_MODIFIED_RE.search(k),
+        lambda k: bool(_META_MODIFIED_RE.search(k)),
+    )
+    for pred in buckets:
+        for key, content in metas:
+            if pred(key):
+                d = parse_date(content)
+                if d:
+                    return d
+    return None
+
+
+def _time_date(html):
+    """Return the first parseable <time datetime="..."> value."""
+    for attrs in TIME_TAG_RE.findall(html):
+        dm = TIME_DT_RE.search(attrs)
+        if dm:
+            d = parse_date(dm.group(1))
+            if d:
+                return d
+    return None
+
+
+# Inline JSON state blobs (Next.js __NEXT_DATA__, hydration props, etc.) often
+# carry the publication date as a date-keyed value. We match both raw and
+# backslash-escaped JSON forms so escaped script payloads work too. The value
+# is intentionally bounded ([^"\\]{0,30}) so we never run away into the next
+# field. Only date-shaped keys are accepted — never raw "any ISO" — to avoid
+# grabbing compliance/session/copyright dates elsewhere on the page.
+_JSON_STATE_DATE_KEYS = (
+    "datepublished", "publishedat", "publishedon", "publisheddate",
+    "publish_date", "publication_date", "publicationdate",
+    "postdate", "post_date", "articledate", "article_date",
+    "displaydate", "releasedate", "release_date", "date",
+)
+JSON_STATE_DATE_RE = re.compile(
+    r'(?:\\"|")(' + "|".join(_JSON_STATE_DATE_KEYS) + r')(?:\\"|")\s*:\s*'
+    r'(?:\\"|")(\d{4}-\d{2}-\d{2}[^"\\]{0,30})',
+    re.I,
+)
+
+
+def _json_state_date(html):
+    """Catch dates embedded in inline JSON state (Next.js / Nuxt / hydration
+    blobs). Handles both raw and backslash-escaped JSON. Prefers explicit
+    publish-ish keys over the generic 'date'."""
+    found = {}
+    for k, v in JSON_STATE_DATE_RE.findall(html):
+        found.setdefault(k.lower(), []).append(v)
+    for key in _JSON_STATE_DATE_KEYS:   # priority = declaration order above
+        for v in found.get(key, ()):
+            d = parse_date(v)
+            if d:
+                return d
+    return None
+
+
+def _html_to_text(html):
+    """Crude tag strip for the visible-text date fallback."""
+    h = re.sub(r"(?is)<(script|style|noscript|template)\b.*?</\1>", " ", html)
+    h = re.sub(r"(?s)<[^>]+>", " ", h)
+    return re.sub(r"\s+", " ", h).strip()
+
+
+def extract_date(html, url):
+    """Best-effort publication date from a rendered page, trying layers in
+    order: JSON-LD -> meta tags -> <time> -> URL path -> visible text.
+    Returns a datetime.date or None. Pure function (testable on saved HTML)."""
+    if html:
+        for layer in (_jsonld_date, _meta_date, _time_date, _json_state_date):
+            d = layer(html)
+            if d:
+                return d
+    d = date_from_url(url)
+    if d:
+        return d
+    if html:
+        # Cap the HTML-stripped scan tightly: full-HTML strip mixes nav, body,
+        # and footer (compliance/disclosure expiration dates live in footers
+        # and would otherwise become false positives). The cleaner pass-2
+        # fallback uses extract_article's main-body-only text where the wider
+        # 5000-char window is safe.
+        return find_date_in_text(_html_to_text(html)[:1500])
     return None
 
 
@@ -370,6 +533,23 @@ def collect_anchors(page, base_url):
             continue
         out.append(urljoin(base_url, href))
     return out
+
+
+def settle_index(page):
+    """Give a JS-rendered index page time to inject its article links before
+    harvesting. Many institutional listings are client-side rendered, so a
+    domcontentloaded DOM has nav chrome but no article links yet. Bounded so
+    per-source budgets aren't blown: <=5s network-idle + one scroll + ~0.8s.
+    Mirrors extract_article's wait style; never raises."""
+    try:
+        page.wait_for_load_state("networkidle", timeout=5_000)
+    except Exception:
+        pass  # some sites never go idle (polling/analytics) — proceed anyway
+    try:
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+    except Exception:
+        pass  # trigger lazy-loaded lists
+    page.wait_for_timeout(800)
 
 
 # Well-known consent-button ids/selectors, tried before the generic name match.
@@ -436,19 +616,38 @@ def extract_article(page):
         pass
     page.wait_for_timeout(400)
     data = page.evaluate(EXTRACT_JS)
+    # Full rendered HTML for layered date extraction (JSON-LD/meta/time scan).
+    try:
+        data["html"] = page.content()
+    except Exception:
+        data["html"] = ""
     # Resolve any relative image URLs against the final page URL.
     data["images"] = [urljoin(page.url, src) for src in data.get("images", [])]
     return data
 
 
+# Per-source funnel counter keys (instrumentation only; see notes in main()).
+FUNNEL_KEYS = (
+    "anchors_found", "candidates", "visited", "nav_errors",
+    "dropped_undated", "dropped_old", "dropped_short", "dropped_junk", "kept",
+)
+
+
 def collect_source(page, limiter, source, cutoff_date, errors,
-                   budget_s=SOURCE_TIMEOUT_S, index_phase_s=INDEX_PHASE_S):
-    """Return a list of fresh-article dicts for one source. Never raises."""
+                   budget_s=SOURCE_TIMEOUT_S, index_phase_s=INDEX_PHASE_S,
+                   funnels=None):
+    """Return a list of fresh-article dicts for one source. Never raises.
+
+    funnels (optional dict): if given, records this source's funnel counters
+    under funnels[sid]. Counting only — does not affect collection behavior."""
     sid = source["id"]
     name = source.get("name", sid)
+    funnel = {k: 0 for k in FUNNEL_KEYS}
     urls = source.get("urls") or []
     if not urls:
         log(f"  {sid}: no urls ({source.get('status', 'skip')}) — skipping")
+        if funnels is not None:
+            funnels[sid] = funnel
         return []
 
     apex = apex_domain(urlparse(urls[0]).netloc)
@@ -470,18 +669,28 @@ def collect_source(page, limiter, source, cutoff_date, errors,
         limiter.wait()
         try:
             navigate(page, index_url)
-        except (PlaywrightTimeout, PlaywrightError) as exc:
-            log(f"  WARN {sid}: index failed {index_url} — {type(exc).__name__}")
-            errors.append({"source_id": sid, "url": index_url,
-                           "error": f"index: {type(exc).__name__}"})
-            continue
-        for link in collect_anchors(page, page.url):
+        except (PlaywrightTimeout, PlaywrightError):
+            # One bounded retry before giving up on this index page.
+            try:
+                limiter.wait()
+                navigate(page, index_url)
+            except (PlaywrightTimeout, PlaywrightError) as exc:
+                log(f"  WARN {sid}: index failed {index_url} — {type(exc).__name__}")
+                errors.append({"source_id": sid, "url": index_url,
+                               "error": f"index: {type(exc).__name__}"})
+                continue
+        # Let client-side JS inject the article links before harvesting them.
+        settle_index(page)
+        anchors = collect_anchors(page, page.url)
+        funnel["anchors_found"] += len(anchors)
+        for link in anchors:
             key = norm_url(link)
             if key in seen:
                 continue
             if looks_like_article(link, apex):
                 seen.add(key)
                 candidates.append(link)
+                funnel["candidates"] += 1
 
     # --- Pass 2: visit candidate articles, keep the recent ones ---
     skipped_old = junk = 0
@@ -497,17 +706,21 @@ def collect_source(page, limiter, source, cutoff_date, errors,
             navigate(page, article_url)
             data = extract_article(page)
         except (PlaywrightTimeout, PlaywrightError) as exc:
+            funnel["nav_errors"] += 1
             log(f"  WARN {sid}: article failed {article_url} — {type(exc).__name__}")
             errors.append({"source_id": sid, "url": article_url,
                            "error": f"article: {type(exc).__name__}"})
             continue
+        funnel["visited"] += 1
 
-        # date_raw (metadata) -> date in URL path -> date in visible text.
-        pub_date = (parse_date(data.get("date_raw"))
-                    or date_from_url(article_url)
+        # Layered: JSON-LD/meta/<time>/URL/visible-text (extract_date), then the
+        # prior DOM date_raw + clean-text fallbacks (kept as additional layers).
+        pub_date = (extract_date(data.get("html", ""), article_url)
+                    or parse_date(data.get("date_raw"))
                     or find_date_in_text(data.get("text")))
         if pub_date is not None and pub_date < cutoff_date:
             skipped_old += 1
+            funnel["dropped_old"] += 1
             continue
         # No date found: keep it (capped later). An undated article surfaced on
         # a listing page is more likely new than old, so include rather drop it.
@@ -523,6 +736,12 @@ def collect_source(page, limiter, source, cutoff_date, errors,
         }
         if is_junk(article):
             junk += 1
+            # is_junk merges short-body and boilerplate; attribute the (unchanged)
+            # drop to its reason for the funnel — counter only, no flow change.
+            if len(article.get("text") or "") < MIN_TEXT_LEN:
+                funnel["dropped_short"] += 1
+            else:
+                funnel["dropped_junk"] += 1
             continue
         articles.append(article)
 
@@ -534,12 +753,16 @@ def collect_source(page, limiter, source, cutoff_date, errors,
             if not a["date"]:
                 seen_undated += 1
                 if seen_undated > 5:
+                    funnel["dropped_undated"] += 1
                     continue
             capped.append(a)
         articles = capped
         log(f"  {sid}: capped {total_undated} undated articles to 5")
 
     undated = sum(1 for a in articles if not a["date"])
+    funnel["kept"] = len(articles)
+    if funnels is not None:
+        funnels[sid] = funnel
     log(f"  {sid}: {len(articles)} new "
         f"(scanned {len(candidates)} candidates, "
         f"{skipped_old} old, {undated} undated, {junk} junk)")
@@ -593,6 +816,7 @@ def main():
 
     all_articles = []
     errors = []
+    funnels = {}  # per-source funnel counters (instrumentation only)
     limiter = RateLimiter(PAGE_DELAY_S)
 
     with sync_playwright() as pw:
@@ -612,7 +836,8 @@ def main():
             try:
                 found = collect_source(page, limiter, source, cutoff_date, errors,
                                        budget_s=src_budget,
-                                       index_phase_s=src_index)
+                                       index_phase_s=src_index,
+                                       funnels=funnels)
                 all_articles.extend(found)
             except Exception as exc:  # last-resort guard: never crash the run
                 log(f"  WARN {sid}: unexpected error — {type(exc).__name__}: {exc}")
@@ -646,6 +871,44 @@ def main():
         json.dumps(raw_payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
+    # --- per-source funnel instrumentation (counters only) ---
+    # Ensure every processed source appears even if a hard crash skipped its
+    # in-source recording (last-resort guard in the loop above).
+    for s in sources:
+        funnels.setdefault(s.get("id", ""), {k: 0 for k in FUNNEL_KEYS})
+    cols = list(FUNNEL_KEYS)
+    labels = ["source", "anchors", "candidates", "visited", "nav_err",
+              "undated", "old", "short", "junk", "kept"]
+    flines = [f"{labels[0]:24}" + "".join(f"{h:>11}" for h in labels[1:]),
+              "-" * (24 + 11 * len(cols))]
+    for sid in sorted(funnels, key=lambda k: (funnels[k]["kept"], k)):
+        f = funnels[sid]
+        flines.append(f"{sid[:23]:24}" + "".join(f"{f[c]:>11}" for c in cols))
+    funnel_table = "\n".join(flines)
+    print(funnel_table)
+    (date_dir / "funnel.txt").write_text(funnel_table + "\n", encoding="utf-8")
+    funnel_payload = {
+        "collected_at": collected_at,
+        "columns": cols,
+        "notes": [
+            "Counters only — collection behavior is unchanged/byte-identical.",
+            "candidates = anchors that passed looks_like_article (after dedup).",
+            "visited = article pages where navigate+extract both succeeded.",
+            "dropped_old maps to the existing skipped_old (pub_date < cutoff).",
+            "dropped_short/dropped_junk: current code merges short-body INTO "
+            "is_junk; the single is_junk drop is split here by reason "
+            "(text < MIN_TEXT_LEN -> short, else junk). Sum == is_junk drops.",
+            "dropped_undated: NO date-stage drop exists; no-date articles are "
+            "KEPT by design. This counts only undated items removed by the >5 "
+            "per-source undated cap.",
+            "kept = articles written to output (after the undated cap).",
+        ],
+        "sources": funnels,
+    }
+    (date_dir / "funnel.json").write_text(
+        json.dumps(funnel_payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
     # --- latest: compact + empty-field-stripped (routine-ready) ---
     LATEST_DIR.mkdir(parents=True, exist_ok=True)
     latest_payload = {
@@ -672,6 +935,7 @@ def main():
             log(f"  {e.get('source_id', '?')}: {e.get('error', '')}")
     log(f"Raw:    {raw_path.relative_to(REPO_ROOT)}")
     log(f"Latest: {(LATEST_DIR / LATEST_NAME).relative_to(REPO_ROOT)}")
+    log(f"Funnel: {(date_dir / 'funnel.json').relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":
