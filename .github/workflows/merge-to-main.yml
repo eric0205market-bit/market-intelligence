@@ -20,8 +20,21 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git checkout main 2>/dev/null || git checkout -b main
+          # Refresh origin/main so the post-merge restore below reads the
+          # authoritative latest collection data (collector commits directly
+          # to main and another job may have advanced it just now).
+          git fetch origin main
           # Prefer incoming data on conflict; never abort the run.
           git merge ${{ github.sha }} --no-edit -X theirs || true
+          # Routine branches (claude/**) clone the repo and carry a SNAPSHOT
+          # of data/twitter/latest and raw/twitter taken at clone time. With
+          # -X theirs the merge above would let that stale snapshot overwrite
+          # main's newer collection data — that's a data-loss bug. Restore
+          # these paths from origin/main so a routine branch can never roll
+          # back collection data. Collector commits land directly on main, so
+          # origin/main is always the truth for these paths; routines only
+          # ADD files under reports/, which the merge preserves.
+          git checkout origin/main -- data/twitter/latest raw/twitter 2>/dev/null || true
           # index.html / reports are derived files — regenerate them fresh on
           # main so any conflict in them is resolved deterministically.
           python3 scripts/inject_back_button.py && git add reports
