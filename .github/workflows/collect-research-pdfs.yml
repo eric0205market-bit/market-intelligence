@@ -1,0 +1,92 @@
+name: Collect Research PDFs
+
+on:
+  schedule:
+    # 07:00 UTC every Sunday — deliberately offset one hour after
+    # collect-institutional.yml (06:00) so the two never contend for main.
+    - cron: '0 7 * * 0'
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Freshness window in days'
+        required: false
+        default: '45'
+      drop_undated:
+        description: 'Exclude PDFs with no extractable date'
+        type: boolean
+        required: false
+        default: false
+      check_links:
+        description: 'Dead-link / pdf-content-type check'
+        type: boolean
+        required: false
+        default: true
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # Pure Serper API + lightweight link checks — fast. No Playwright/browser.
+    timeout-minutes: 15
+    env:
+      SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install requests python-dateutil
+
+      - name: Run Research PDF finder
+        run: |
+          DAYS="${{ github.event.inputs.days }}"
+          DAYS="${DAYS:-45}"
+          FLAGS="--days $DAYS"
+          if [ "${{ github.event.inputs.drop_undated }}" = "true" ]; then
+            FLAGS="$FLAGS --drop-undated"
+          fi
+          if [ "${{ github.event.inputs.check_links }}" = "false" ]; then
+            FLAGS="$FLAGS --no-check-links"
+          fi
+          echo "Running: collect_research_pdfs.py $FLAGS"
+          python3 scripts/collect_research_pdfs.py $FLAGS
+
+      - name: Regenerate dashboard
+        run: python3 scripts/update_dashboard.py
+
+      - name: Commit data + report + dashboard to main
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          # --- COMMIT WIRING (self-contained, no cross-workflow trigger) ------
+          # merge-to-main.yml fires ONLY on push to claude/** branches, and
+          # Actions' default GITHUB_TOKEN cannot trigger another workflow
+          # anyway. So this job commits the data, the report AND the
+          # regenerated dashboard straight to main in this same run — exactly
+          # the direct-to-main pattern collect-institutional.yml uses for its
+          # data. Because we push to main (not claude/**), merge-to-main.yml is
+          # NOT triggered, so there is no double dashboard regeneration. (When a
+          # routine later pushes to claude/**, merge-to-main rebuilds the
+          # dashboard deterministically from reports/ — which already includes
+          # ours — so the two never conflict.)
+          git checkout main 2>/dev/null || git checkout -b main
+          git add data/research_pdfs reports/research_pdfs_*.html index.html
+          if git diff --cached --quiet; then
+            echo "No new Research PDF data to commit"
+            exit 0
+          fi
+          git commit -m "Research PDFs: $(date -u '+%Y-%m-%d %H:%M')"
+          for i in 1 2 3; do
+            git push origin main && break
+            git pull --rebase origin main
+          done
