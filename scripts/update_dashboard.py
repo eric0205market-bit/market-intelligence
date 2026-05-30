@@ -25,6 +25,7 @@ REPORT_TYPES = {
     "twitter_shitpost": {"label": "Twitter Shitpost", "color": "#d97706", "icon": "🎲"},
     "twitter_bank_research": {"label": "Bank Research", "color": "#7c3aed", "icon": "🏦"},
     "institutional":    {"label": "Institutional Research", "color": "#7c3aed", "icon": "🏛️"},
+    "research_pdfs":    {"label": "Research PDFs",    "color": "#0d9488", "icon": "📑"},
     "research":         {"label": "Research",         "color": "#16a34a", "icon": "🔬"},
     # Future sources (no reports yet — appear automatically once files land):
     "youtube":          {"label": "YouTube",          "color": "#dc2626", "icon": "▶️"},
