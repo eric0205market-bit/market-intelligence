@@ -19,23 +19,36 @@ REPORTS_DIR = REPO_ROOT / "reports"
 INDEX_PATH = REPO_ROOT / "index.html"
 
 # Adding a new source = one entry here (key must match the filename prefix).
+# "label" is a DISPLAY name only (the key is the data link — never rename it).
+# "group" selects the rhythm container (see GROUPS); colours encode rhythm by
+# hue (pulse = blue family, research = amber family) and stream by tone.
 REPORT_TYPES = {
-    "twitter_alpha":    {"label": "Twitter Alpha",    "color": "#6366f1", "icon": "🧠"},
-    "twitter_data":     {"label": "Twitter Data",     "color": "#2563eb", "icon": "📊"},
-    "twitter_shitpost": {"label": "Twitter Shitpost", "color": "#d97706", "icon": "🎲"},
-    "twitter_bank_research": {"label": "Bank Research", "color": "#7c3aed", "icon": "🏦"},
-    "institutional":    {"label": "Institutional Research", "color": "#7c3aed", "icon": "🏛️"},
-    "research_pdfs":    {"label": "Research PDFs",    "color": "#0d9488", "icon": "📑"},
-    "research":         {"label": "Research",         "color": "#16a34a", "icon": "🔬"},
+    "twitter_alpha":    {"label": "Twitter Alpha",    "color": "#6366F1", "icon": "🧠", "group": "pulse"},
+    "twitter_data":     {"label": "Twitter Data",     "color": "#3B82F6", "icon": "📊", "group": "pulse"},
+    "twitter_shitpost": {"label": "Twitter Shitpost", "color": "#0EA5E9", "icon": "🃏", "group": "pulse"},
+    "twitter_bank_research": {"label": "Twitter Banks", "color": "#F59E0B", "icon": "🏦", "group": "research"},
+    "research_pdfs":    {"label": "Bank PDF",       "color": "#D97706", "icon": "📑", "group": "research"},
+    "institutional":    {"label": "Institutional Research", "color": "#EA580C", "icon": "🏛️", "group": "research"},
+    "research":         {"label": "Newsletters & News", "color": "#06B6D4", "icon": "🔬", "group": "pulse"},
     # Future sources (no reports yet — appear automatically once files land):
-    "youtube":          {"label": "YouTube",          "color": "#dc2626", "icon": "▶️"},
-    "podcasts":         {"label": "Podcasts",         "color": "#8b5cf6", "icon": "🎙️"},
-    "concepts":         {"label": "Concepts",         "color": "#0891b2", "icon": "💡"},
-    "tech":             {"label": "Tech",             "color": "#475569", "icon": "⚙️"},
-    "society":          {"label": "Society",          "color": "#be185d", "icon": "🌐"},
+    "youtube":          {"label": "YouTube",          "color": "#dc2626", "icon": "▶️", "group": "pulse"},
+    "podcasts":         {"label": "Podcasts",         "color": "#8b5cf6", "icon": "🎙️", "group": "research"},
+    "concepts":         {"label": "Concepts",         "color": "#0891b2", "icon": "💡", "group": "research"},
+    "tech":             {"label": "Tech",             "color": "#475569", "icon": "⚙️", "group": "research"},
+    "society":          {"label": "Society",          "color": "#be185d", "icon": "🌐", "group": "pulse"},
 }
 FALLBACK_COLOR = "#64748b"
 FALLBACK_ICON = "📄"
+
+# Rhythm groups, rendered in this order (pulse → research). Each renders as a
+# bordered container with the group's own Latest/Previous rows. Membership is
+# config-driven via each stream's "group" above — adding a slow stream is one
+# REPORT_TYPES line, no markup changes here.
+GROUPS = [
+    {"key": "pulse",    "label": "⚡ PULSE",    "caption": "· intraday · 2–3×/day"},
+    {"key": "research", "label": "📑 RESEARCH", "caption": "· daily to weekly"},
+]
+DEFAULT_GROUP = "pulse"
 
 FILENAME_RE = re.compile(
     r"^(?P<type>.+?)_(?P<date>\d{4}-\d{2}-\d{2})(?:_(?P<time>\d{4}))?\.html$")
@@ -74,6 +87,7 @@ def type_meta(type_key):
         "label": type_key.replace("_", " ").title(),
         "color": FALLBACK_COLOR,
         "icon": FALLBACK_ICON,
+        "group": DEFAULT_GROUP,
     }
 
 
@@ -82,6 +96,12 @@ def ordered_types(type_keys):
     known = [k for k in REPORT_TYPES if k in type_keys]
     unknown = sorted(k for k in type_keys if k not in REPORT_TYPES)
     return known + unknown
+
+
+def group_types(group_key, type_keys):
+    """Types belonging to a rhythm group, in REPORT_TYPES order."""
+    return [t for t in ordered_types(type_keys)
+            if type_meta(t).get("group", DEFAULT_GROUP) == group_key]
 
 
 def fmt_time(time):
@@ -103,9 +123,10 @@ def render_card(report):
 
 
 def render_top_section(reports):
-    """Two rows: 'Latest' = most recent report of each type, 'Previous' =
-    second most recent of each type (regardless of calendar day). Each card
-    carries its own date/time; the row header is just the label."""
+    """One bordered container per rhythm group. Inside each, the unchanged
+    Latest/Previous mechanic: 'Latest' = most recent report of each type in the
+    group, 'Previous' = second most recent (regardless of calendar day). Each
+    card carries its own date/time; the row header is just the label."""
     if not reports:
         return '<p class="empty">No reports yet.</p>'
     by_type = {}
@@ -113,47 +134,68 @@ def render_top_section(reports):
         by_type.setdefault(r["type"], []).append(r)
     for items in by_type.values():
         items.sort(key=lambda r: r["sort_key"], reverse=True)  # newest first
-    types = ordered_types(by_type)
-    rows = []
-    for rank, label in ((0, "Latest"), (1, "Previous")):
-        cards = "".join(
-            render_card(by_type[t][rank]) for t in types if len(by_type[t]) > rank)
-        if cards:
-            rows.append(
-                f'<div class="day-row"><div class="day-label">'
-                f'<span>{label}</span></div>'
-                f'<div class="cards">{cards}</div></div>'
+    blocks = []
+    for group in GROUPS:
+        types = group_types(group["key"], by_type)
+        if not types:  # group entirely absent from data → skip its container
+            continue
+        rows = []
+        for rank, label in ((0, "Latest"), (1, "Previous")):
+            cards = "".join(
+                render_card(by_type[t][rank]) for t in types if len(by_type[t]) > rank)
+            if cards:
+                rows.append(
+                    f'<div class="day-row"><div class="day-label">'
+                    f'<span>{label}</span></div>'
+                    f'<div class="cards">{cards}</div></div>'
+                )
+        if rows:
+            blocks.append(
+                f'<div class="group">'
+                f'<div class="group-head">'
+                f'<span class="group-label">{group["label"]}</span>'
+                f'<span class="group-caption">{group["caption"]}</span></div>'
+                f'{"".join(rows)}</div>'
             )
-    return "".join(rows)
+    return "".join(blocks)
 
 
 def render_archive(reports):
-    sections = []
     by_type = {}
     for r in reports:
         by_type.setdefault(r["type"], []).append(r)
-    for type_key in ordered_types(by_type):
-        meta = type_meta(type_key)
-        items = sorted(by_type[type_key], key=lambda r: r["sort_key"], reverse=True)
-        links = []
-        for r in items:
-            t = fmt_time(r["time"])
-            links.append(
-                f'<a class="arch-link" href="reports/{html.escape(r["filename"], quote=True)}">'
-                f'<span class="d mono">{r["date_str"]}</span>'
-                f'<span class="t mono">{t}</span></a>'
+    groups_html = []
+    for group in GROUPS:
+        types = group_types(group["key"], by_type)
+        if not types:  # no archived reports for this group → skip its subgroup
+            continue
+        sections = []
+        for type_key in types:
+            meta = type_meta(type_key)
+            items = sorted(by_type[type_key], key=lambda r: r["sort_key"], reverse=True)
+            links = []
+            for r in items:
+                t = fmt_time(r["time"])
+                links.append(
+                    f'<a class="arch-link" href="reports/{html.escape(r["filename"], quote=True)}">'
+                    f'<span class="d mono">{r["date_str"]}</span>'
+                    f'<span class="t mono">{t}</span></a>'
+                )
+            sections.append(
+                f'<div class="arch-section">'
+                f'<button class="arch-header" type="button" onclick="toggle(this)">'
+                f'<span class="arrow">&#9656;</span>'
+                f'<span class="dot" style="--accent:{meta["color"]}"></span>'
+                f'<span>{html.escape(meta["label"])}</span>'
+                f'<span class="count">({len(items)})</span></button>'
+                f'<div class="arch-body"><div class="arch-inner">{"".join(links)}</div></div>'
+                f'</div>'
             )
-        sections.append(
-            f'<div class="arch-section">'
-            f'<button class="arch-header" type="button" onclick="toggle(this)">'
-            f'<span class="arrow">&#9656;</span>'
-            f'<span class="dot" style="--accent:{meta["color"]}"></span>'
-            f'<span>{html.escape(meta["label"])}</span>'
-            f'<span class="count">({len(items)})</span></button>'
-            f'<div class="arch-body"><div class="arch-inner">{"".join(links)}</div></div>'
-            f'</div>'
+        groups_html.append(
+            f'<div class="arch-group-label">{html.escape(group["key"].capitalize())}</div>'
+            f'{"".join(sections)}'
         )
-    return "".join(sections) or '<p class="empty">No reports yet.</p>'
+    return "".join(groups_html) or '<p class="empty">No reports yet.</p>'
 
 
 def build_html(reports):
@@ -203,6 +245,14 @@ main {{ max-width: 1100px; margin: 0 auto; padding: 24px 20px 48px; }}
 }}
 .day-label .date {{ color: var(--muted); font-size: 12px; font-weight: 400; }}
 
+.group {{
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px 18px 2px; margin-bottom: 16px;
+}}
+.group-head {{ display: flex; align-items: baseline; gap: 8px; margin-bottom: 16px; }}
+.group-label {{ font-size: 14px; font-weight: 700; letter-spacing: 0.04em; }}
+.group-caption {{ font-size: 12px; color: var(--muted); }}
+
 .cards {{ display: grid; grid-template-columns: 1fr; gap: 12px; }}
 @media (min-width: 600px) {{ .cards {{ grid-template-columns: repeat(2, 1fr); }} }}
 @media (min-width: 900px) {{ .cards {{ grid-template-columns: repeat(4, 1fr); }} }}
@@ -219,6 +269,11 @@ main {{ max-width: 1100px; margin: 0 auto; padding: 24px 20px 48px; }}
 .card .cmeta {{ font-size: 12px; color: var(--muted); }}
 
 .archive {{ margin-top: 6px; }}
+.arch-group-label {{
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted); margin: 16px 0 8px;
+}}
+.arch-group-label:first-child {{ margin-top: 0; }}
 .arch-section {{
   background: var(--card-bg); border: 1px solid var(--border);
   border-radius: 8px; margin-bottom: 8px; overflow: hidden;
