@@ -1,594 +1,556 @@
-#!/usr/bin/env python3
-"""Generate research report HTML and JSON for 2026-05-31 23:28 CEST"""
+import json, re
 
-import json, os
-
-ITEMS = [
-  {
-    "id": 1,
-    "cat": "geopolitics",
-    "urgency": "now",
-    "source": "Neil Sethi / The Week Ahead",
-    "title": "Polymarket cuts US-Iran peace deal odds from 80% to 30% in 7 days",
-    "idea": "US-Iran peace deal probability on Polymarket collapsed from ~80% last Saturday to just 30% by June 30 — cut in more than half in a single week. Hard-line Republicans publicly flogged Trump after he said a deal was 'imminent' on Memorial Day weekend, handing Iran its best negotiating leverage yet. Iran knows Trump's midterm clock is ticking and that he needs the deal to look like a win, not a concession. Both sides feel they have the upper hand. The Strait of Hormuz remains closed. Polymarket now prices a 70% probability of no deal by June 30.",
-    "angle": "Crude and crack spreads are one binary event away from a violent re-rating. The market appears to price Hormuz reopening as the base case. Polymarket disagrees.",
-    "tweetA": "Polymarket cut US-Iran deal odds from 80% to 30% in one week. Iran watched Trump get publicly humiliated by his own party for saying a deal was imminent. Every day Iran holds out, midterm pressure on Trump grows. The Strait of Hormuz is still closed. The market has this priced as a solved problem. 30% says it is not.",
-    "tweetB": "Hard-line Republicans handed Iran its best negotiating card yet by attacking Trump for signaling a deal. Now Trump needs terms that look like a win. Iran knows the clock. 30% deal probability by June 30. If you think crude is pricing the correct tail risk here, I would love to see your math.",
-    "charts": {"count": 0, "hot": False, "desc": ""},
-    "link": "https://neilsethi.substack.com"
-  },
-  {
-    "id": 2,
-    "cat": "macro",
-    "urgency": "deep",
-    "source": "Neil Sethi / The Week Ahead",
-    "title": "SPX 9-week winning streak but core PCE YoY hits highest since November 2023",
-    "idea": "The S&P 500 closed its 9th consecutive winning week — the longest streak since 2023 — capping the best month since 2023 (beaten only by April). Nasdaq led at +2.5%, small caps +1.9%, DJIA +0.9%. Underneath: core PCE YoY inflation is now at its highest since November 2023, and Fed speakers turned more hawkish. Yet 10-year yields actually fell last week, providing rocket fuel to equities. Jobs week starts Monday with the full first-of-month cadence: ADP, Challenger, JOLTS, PMIs, and May NFP on Friday. Broadcom (AVGO) reports Wednesday.",
-    "angle": "Hawkish Fed + falling yields + rising equities only works if inflation rolls over in the next 1-2 prints. Friday NFP is the next gate. This combination has historically resolved violently.",
-    "tweetA": "Nine straight winning weeks for the S&P. Core PCE YoY: highest since November 2023. Fed talking hawkish. Ten-year yields fell anyway. Something here does not reconcile. Either rates are wrong about where inflation goes, or equities are wrong about the Fed reaction function. NFP Friday sets the next frame.",
-    "tweetB": "Best month since 2023 (except April), and core inflation is running hotter than any point in the last 18 months. The bulls say inflation is lagging, growth is fine. The bears say this is the exact setup before every Fed overcorrection. Both are logically consistent. NFP Friday should tell us which camp controls the next 60 days.",
-    "charts": {"count": 0, "hot": False, "desc": ""},
-    "link": "https://neilsethi.substack.com"
-  },
-  {
-    "id": 3,
-    "cat": "AI/infra",
-    "urgency": "deep",
-    "source": "Irrational Analysis",
-    "title": "HBM is a mistake — will be phased out 90% within 7-10 years (partial capitulation on DRAM near-term bull)",
-    "idea": "The author (long-term semi analyst, heavily invested since 2011) argues HBM is fundamentally broken as a PHY problem solved the wrong way. DRAM has four attributes: latency, bandwidth, capacity, power. HBM gives high bandwidth at an untenable and rising cost — economic, thermal, power. Root cause: parasitic bump capacitance from TSVs creates signal-killing speed bumps that no base die engineering can overcome. JEDEC spec said 8 Gbps/pin for HBM4; Nvidia Rubin demanded 11 Gbps/pin. All three HBM vendors (SK Hynix, Samsung, Micron) failed qualification. SK Hynix ran 6 re-spins. Micron used its own DRAM process node for the base die. Near-term thesis intact: DRAM stocks likely have another 2-3x. But at some point in 3-10 years: 70%+ drawdown from peak.",
-    "angle": "If HBM collapses 90% in volume, the Micron HBM thesis has a 7-10 year expiration date. The near-term bull case is intact — but anyone modeling terminal value on HBM dominance should revisit the architecture.",
-    "tweetA": "The best semiconductor analyst I follow turned partially bullish on DRAM but dropped this: HBM will see a 90% volume collapse within 7-10 years. Not because memory bandwidth demand falls. Because the PHY is fundamentally broken. Parasitic bump capacitance limits speed regardless of base die quality. DRAM crowd was given a PHY problem and solved it wrong. $MU",
-    "tweetB": "HBM4 failure mode in three lines: Nvidia asked for 11 Gbps/pin. JEDEC spec said 8. All three vendors failed qualification. SK Hynix did 6 re-spins. Micron tried to run base die on its own DRAM process node. This is not a yield defect. It is an architecture hitting its physical ceiling exactly as AI demand goes vertical.",
-    "charts": {"count": 0, "hot": False, "desc": "Charts inside — worth opening"},
-    "link": "https://irrationalanalysis.substack.com"
-  },
-  {
-    "id": 4,
-    "cat": "AI/infra",
-    "urgency": "watch",
-    "source": "Irrational Analysis",
-    "title": "Positron uses zero HBM, only commodity LPDDR5X — highest memory bandwidth AI ASIC; Nvidia shows the real endgame at ISSCC 2026",
-    "idea": "Positron (under NDA with the analyst) uses only commodity LPDDR5X with clever architectural tricks to fully utilize all available bandwidth — no TSVs, no micro-bumps, no parasitic capacitance — and claims the highest total memory bandwidth of any AI ASIC currently in development. Meanwhile at ISSCC 2026, Nvidia presented what the author identifies as the correct long-term architecture: clock-forwarded SerDes directly driving co-packaged optics. This eliminates CDR/FFE/DFE/MLSE overhead entirely (just a simple TIA on the receive side), achieves sub-3 pJ/bit at up to 30-meter reach, with zero added latency versus conventional SerDes.",
-    "angle": "Co-packaged optics for AI interconnect is the real supply chain play. Positron is the leading indicator that HBM gets bypassed entirely at the ASIC level. Both trends point the same direction.",
-    "tweetA": "The startup betting HBM is already obsolete: Positron uses zero HBM, only commodity LPDDR5X, and claims higher memory bandwidth than any current AI ASIC. Meanwhile Nvidia's ISSCC 2026 slides showed the endgame: clock-forwarded SerDes to co-packaged optics, sub-3 pJ/bit, 30-meter reach. The entire HBM supply chain is a bridge technology.",
-    "tweetB": "AI is memory bandwidth bound. Everyone agrees. What nobody says: the problem is being solved at the wrong layer. Getting data off the chip entirely through fiber is where Nvidia is building. Co-packaged optics eliminates the equalization overhead that makes conventional SerDes power-hungry. This changes the interconnect supply chain thesis.",
-    "charts": {"count": 0, "hot": False, "desc": "Diagrams inside — worth opening"},
-    "link": "https://irrationalanalysis.substack.com"
-  },
-  {
-    "id": 5,
-    "cat": "macro",
-    "urgency": "deep",
-    "source": "Cubic Analytics / Caleb Franzen",
-    "title": "Nasdaq +33% in 2 months with Hormuz closed, no Iran deal, and consumer confidence at all-time lows",
-    "idea": "Real GDP Q1 2026 grew +2.6% YoY — accelerating from +2.0% in Q4 2025. The trajectory resembles choppy but stable post-GFC oscillation, not a recession setup. Meanwhile Nasdaq-100 gained +33% from March 2026 lows despite: Strait of Hormuz still closed, no Iran peace deal, potential Cuba escalation, reaccelerating inflation, and consumer confidence at all-time lows. Redbook same-store retail sales: +9.0% YoY (nominal). The bull thesis: the economy only needs to be good enough to support the ongoing bull market. Markets bottom on less-bad news, not good news.",
-    "angle": "The macro bears are citing the right risks and drawing the wrong conclusion. Real GDP is accelerating and retail sales are +9%. The wall of worry is real. So is the +33% rally.",
-    "tweetA": "Consumer confidence at all-time lows. Strait of Hormuz closed. Inflation reaccelerating. Nasdaq up 33% in two months. Either the market is completely detached from reality, or the macro bears are citing real risks and drawing the wrong conclusion. Real GDP: +2.6% YoY, accelerating. Redbook retail sales: +9% YoY. The numbers are what they are.",
-    "tweetB": "Markets do not bottom on good news. They bottom on less-bad news. The Nasdaq-100 bottomed in March while every macro indicator was deteriorating. Four months later: +33%. The wall of worry was entirely real. So was the rally through it. GDP is accelerating. That matters more than the sentiment data.",
-    "charts": {"count": 0, "hot": False, "desc": "Charts inside — worth opening"},
-    "link": "https://cubicanalytics.substack.com"
-  },
-  {
-    "id": 6,
-    "cat": "AI/infra",
-    "urgency": "now",
-    "source": "Chamath Palihapitiya",
-    "title": "Anthropic raises $65B at $965B — surpasses OpenAI for first time ever",
-    "idea": "On May 28, Anthropic closed a $65B Series H at a $965B valuation — up from $380B in February 2026 (2.5x in ~90 days), clearing OpenAI's $852B close in late March. First time in history Anthropic has been valued above its primary frontier competitor. Claude Opus 4.8 ships at the same $5/$25 per million token price as 4.7. SWE-bench Pro climbed to 69.2% from 64.3%. First Claude model to score perfectly on the 'lazy thinking' benchmark — meaning it traces unintuitive code fully rather than making assumptions. Anthropic stated: 'no lab has yet built safeguards strong enough to prevent misuse.'",
-    "angle": "At $965B, Anthropic needs a path to $100B+ annual revenue. McDonald's does $25B. The valuation prices a winner-take-most outcome in enterprise AI. The same-price-as-4.7 launch is the most interesting strategic signal — pure compute-vs-capability arbitrage.",
-    "tweetA": "Anthropic: $380B in February. $965B today. $65B raise in between. For the first time, Anthropic is valued above OpenAI. And they kept Opus 4.8 at the same price as 4.7. Either they have extraordinary cost efficiency, or this is the most strategically priced product in enterprise software history. $MSFT $GOOGL are now competing for second place in the frontier lab race.",
-    "tweetB": "OpenAI is no longer the most valuable AI lab. Anthropic just cleared them at $965B. The benchmark that matters most: Opus 4.8 scored perfectly on the lazy thinking test — it traces down unintuitive code instead of making assumptions. That is the enterprise-grade capability that actually drives contract renewals. Anthropic now has the valuation to match the capability claim.",
-    "charts": {"count": 0, "hot": False, "desc": ""},
-    "link": "https://chamath.substack.com"
-  },
-  {
-    "id": 7,
-    "cat": "tech",
-    "urgency": "now",
-    "source": "Chamath Palihapitiya / Neil Sethi",
-    "title": "Quantinuum $QNT IPO June 3: $12.7B valuation, first quantum computing traditional IPO (not a SPAC)",
-    "idea": "Quantinuum filed amended S-1 at $45-50/share for 21M Class A shares, targeting $1.05B in proceeds at a $12.7B fully diluted valuation, trading around June 3 as $QNT. This is the first traditional IPO from a full-stack quantum computing company — every prior public market entry was via SPAC. Technology: trapped-ion qubits (98 physical / 48 logical), different approach from superconducting machines at Google and IBM. 2025 revenue: $30.9M, net loss: $192.6M, $677M cash. Honeywell retains 49.1% voting power post-IPO. Launch customers: Amgen, BMW, JPMorgan Chase, SoftBank.",
-    "angle": "At 411x revenue, this is a vibes-based valuation. But it is also the first stress test for quantum computing valuations in a real public market — and will set the reference price for every quantum private round for the next 3 years.",
-    "tweetA": "Quantinuum $QNT prices June 3. $12.7B valuation, $30.9M revenue. That is 411x sales. But here is what matters: first quantum computing IPO via traditional book-build, not a SPAC. First time the public market has to price this technology for real. Customers are BMW, JPMorgan, Amgen. Honeywell holds 49% voting. This is the benchmark trade.",
-    "tweetB": "Watch $QNT not because you are buying it, but because how it trades sets the reference point for every quantum private round for the next 3 years. $192M net loss on $31M revenue. 48 logical qubits. $12.7B ask. If this works, quantum valuations just reset upward. If it does not, a lot of private marks get uncomfortable very fast.",
-    "charts": {"count": 0, "hot": False, "desc": ""},
-    "link": "https://chamath.substack.com"
-  },
-  {
-    "id": 8,
-    "cat": "geopolitics",
-    "urgency": "deep",
-    "source": "Chamath Palihapitiya (via Palmer Luckey)",
-    "title": "Palmer Luckey: China takes Taiwan → next targets are Philippines, Vietnam, or Japan (Okinawa) — Chinese media already running Ryukyu independence narrative",
-    "idea": "Anduril founder Palmer Luckey stated publicly that if China takes Taiwan, the next territorial targets will be Philippines, Vietnam, or Japan — specifically flagging Okinawa. He noted Chinese media is already running a 'Ryukyu independence' narrative, framing ancient tributary relationships as the basis for territorial claims. The information operation precedes any military operation. This mirrors the Donbas/Donetsk People's Republic narrative that ran for years before February 2022. 298K views on the original tweet.",
-    "angle": "If you are building Taiwan scenario models, Okinawa is the military logic for escalation to Japan — Kadena and Camp Foster are US bases. Once the narrative infrastructure is in place, the threshold for action drops. The prep work has already started.",
-    "tweetA": "Palmer Luckey: if China takes Taiwan, Okinawa is next. Not hypothetical — Chinese media is already running a Ryukyu independence narrative. They are seeding the historical basis now. That is how the Donbas playbook started. The information operation always precedes the military one. US bases at Kadena and Camp Foster are why this scenario escalates to a direct US confrontation.",
-    "tweetB": "Every investor modeling Taiwan is focused on the TSMC supply shock. I am watching the Okinawa escalation scenario instead. Luckey flagged that Chinese media is already running the Ryukyu independence story. Once narrative infrastructure is in place, the threshold for action drops. This is years away from any action — but the prep work has started.",
-    "charts": {"count": 0, "hot": False, "desc": ""},
-    "link": "https://chamath.substack.com"
-  },
-  {
-    "id": 9,
-    "cat": "culture",
-    "urgency": "deep",
-    "source": "Exponential View / Azeem Azhar",
-    "title": "The End of the Fictions — credential collapse and the identity crisis at the core of AI anxiety",
-    "idea": "Azhar (writing from Davos 2026) argues we are living through the systematic dissolution of professional fictions: credentials as proof of capability, gatekeepers who mattered because information was scarce, identities built on title/job/institution. With AI making capabilities directly testable, these protective fictions are dissolving in real time — including for world leaders, in full public view. His reframe: 'The fear says: I am losing my value. The better framing: I am losing the fiction that protected me from having to prove my value directly.' Davos 2026 felt different from its parody years.",
-    "angle": "This is the deepest framing I have seen for why AI resistance is so visceral. Regulatory backlash, labor resistance, and political anxiety all have this identity dissolution at their root — not economics.",
-    "tweetA": "Azeem Azhar at Davos 2026: the fear of AI is not about losing value. It is about losing the fiction that protected you from having to prove your value directly. Credentials were a proxy for capability when capability was hard to test. AI makes capability directly testable. That is not an economics crisis. It is an identity crisis. And it is happening to everyone including world leaders.",
-    "tweetB": "Senator Warren's 'AI will create a permanent underclass' — that is the political expression of something Azhar named more precisely: the decay of professional fictions. Real people losing the credentials, gatekeeping roles, and institutional status that organized their identity. Whether the policy response is right or wrong, the underlying grief is completely real.",
-    "charts": {"count": 0, "hot": False, "desc": ""},
-    "link": "https://www.exponentialview.co"
-  },
-  {
-    "id": 10,
-    "cat": "positioning",
-    "urgency": "deep",
-    "source": "Eliant Capital",
-    "title": "ATHs with only 54% of stocks above 20D — breadth does not confirm the headline index",
-    "idea": "Despite SPX at fresh ATHs and the 9-week winning streak, market breadth is significantly narrow. Only 54% of stocks are above their 20-day MA, and 58% above the 50D — neutral readings, not overbought. The Fear-Greed Index is actually drifting back toward Neutral despite ATHs. Best YTD factor baskets: Industrial/Auto Analog Recovery, Rebuilding US Industrial Sovereignty, Google Ecosystem, Agentic Economy. Worst YTD: The Global Marketplace, Gaming and Media, Make Housing Great Again.",
-    "angle": "Narrow breadth at ATHs is historically either a topping signal or a setup for rotation into laggards. The YTD loser list (global/gaming) is the mean-reversion watch list. The winners are all domestically-protected themes.",
-    "tweetA": "S&P at all-time highs, 9-week streak. Only 54% of stocks above the 20-day MA. Fear-Greed is moving back toward neutral. The rally is narrow in a way that disappears when you only watch the index. This is either topping behavior or the setup for a breadth catch-up trade. The playbook for each is very different.",
-    "tweetB": "Best performing equity factor baskets YTD: Industrial Sovereignty, Auto Analog, Agentic Economy. Worst: Global Marketplace, Gaming and Media. The winners are all domestic and geopolitically-protected themes. The losers are global exposure plays. This is what tariffs actually did to factor performance — not what the narrative said they would do.",
-    "charts": {"count": 0, "hot": False, "desc": "Charts inside — worth opening"},
-    "link": "https://www.eliantcapital.com/p/the-week-ahead-53126"
-  },
-  {
-    "id": 11,
-    "cat": "AI/infra",
-    "urgency": "watch",
-    "source": "Chamath Palihapitiya",
-    "title": "Pluralis trains 7.5B model across 198 cities on consumer GPUs — decentralized AI scaling 20x/year vs. 5x for frontier",
-    "idea": "Pluralis Research completed Node0-7.5B: a 36-billion-token pretraining run over 3 weeks using 1,642 GPUs across 198 cities, mostly consumer-grade RTX 4090s. Their Protocol Learning architecture (NeurIPS 2025) splits the model so no single participant can reconstruct full weights, while the math produces a working model whose inference revenue flows back to contributors. EpochAI calculates frontier AI training grows 5x/year; decentralized training is scaling at 20x/year. At these rates, decentralized training matches frontier capability in approximately 5.5 years. Funded by USV, CoinFund, Balaji Srinivasan, Clem Delangue.",
-    "angle": "If the 20x vs. 5x scaling differential holds, decentralized training is an existential challenge to the hyperscaler AI moat thesis. The $500B data center buildout story has a credible counterfactual hiding in the open.",
-    "tweetA": "Pluralis trained a 7.5B model on 1,642 consumer GPUs across 198 cities. Sounds like a science project. But EpochAI has the numbers: frontier AI training scales 5x/year. Decentralized training: 20x/year. If the differential holds, decentralized catches frontier in 5.5 years. The $500B data center buildout thesis has a counterfactual hiding in the open.",
-    "tweetB": "Pluralis built a model where no single participant can reconstruct the full weights — the math still works, inference revenue flows back to contributors. Published at NeurIPS 2025. USV and Balaji funded it. This is the first technically credible architecture for collectively-owned AI at scale. Decentralized training growing at 20x/year is the number to track.",
-    "charts": {"count": 0, "hot": False, "desc": ""},
-    "link": "https://chamath.substack.com"
-  },
-  {
-    "id": 12,
-    "cat": "science",
-    "urgency": "deep",
-    "source": "Chamath Palihapitiya (via Noam Brown / Timothy Gowers)",
-    "title": "Humans solving hard math using AI-derived methods — the AlphaGo effect is starting in mathematics",
-    "idea": "Noam Brown (OpenAI researcher) noted: a major problem in additive combinatorics was just solved by humans, using methods related to AI's solution to the unit distance conjecture. Timothy Gowers confirmed the result. Brown predicts the same pattern as post-AlphaGo: after the AI breakthrough, human Go players noticeably improved by studying AI approaches. AI invents new methodological approaches that humans then internalize — the ceiling on human mathematical capability is moving up, not being replaced.",
-    "angle": "If this generalizes to physics, chemistry, and biology (as AlphaFold suggests it will), the R&D productivity implications dwarf what anyone is currently modeling. This is augmentation, not replacement.",
-    "tweetA": "After AlphaGo, human Go players improved by studying AI games. Now a major problem in additive combinatorics was solved by humans using methods derived from AI's solution to the unit distance conjecture. Noam Brown and Timothy Gowers both flagged it. The actual AI augmentation story: AI invents methods, humans master them. The frontier of human mathematics is moving up.",
-    "tweetB": "We track AI replacing jobs. Nobody tracks AI creating new cognitive methods humans then adopt. The AlphaGo effect in mathematics is happening in real time — a hard open problem in additive combinatorics fell to humans using AI-derived techniques. If this pattern holds in physics and biology, the scientific productivity implications are larger than any current model captures.",
-    "charts": {"count": 0, "hot": False, "desc": ""},
-    "link": "https://chamath.substack.com"
-  },
-  {
-    "id": 13,
-    "cat": "macro",
-    "urgency": "deep",
-    "source": "Dax Trading Ideas / Mirko Milito",
-    "title": "The cost of waiting at ATHs: S&P spends most of its time near all-time highs — this is the baseline, not the anomaly",
-    "idea": "Greenspan called 'irrational exuberance' in 1996; Nasdaq doubled again from there before peaking in 2000. In 2013, the S&P was 'too expensive after doubling from GFC lows'; it tripled again. In 2021: 'post-pandemic speculative excess.' This pattern has repeated cyclically for a century. The S&P500 trades near ATHs the majority of trading sessions — this is mathematically required by an index that compounds over time. The S&P CAPE ratio is approaching a new ATH. The opportunity cost of not being invested does not show as a loss on your P&L, which makes it the most insidious form of wealth destruction.",
-    "angle": "The most costly trade most institutional investors make is chronic underinvestment driven by valuation anxiety at ATHs. This framework is the direct antidote.",
-    "tweetA": "Greenspan said irrational exuberance in 1996. Nasdaq doubled again. In 2013 the S&P was too expensive after doubling. It tripled again. Same story every cycle. The S&P500 is near an all-time high most trading days — that is what compounding looks like on a chart. Treating ATH as a sell signal is a strategy for underperforming the index across every cycle.",
-    "tweetB": "Opportunity cost does not show up as a loss. That is what makes it dangerous. The investors who waited for a 10-20% correction at every ATH of the past decade are not wrong about risk — they are wrong about which risk matters. The CAPE is near new highs again. The question is not whether this is expensive. It is whether expensive lasts longer than you can stay sidelined.",
-    "charts": {"count": 0, "hot": False, "desc": "Charts inside — worth opening"},
-    "link": "https://daxtradingideas.substack.com"
-  },
-  {
-    "id": 14,
-    "cat": "regulation",
-    "urgency": "watch",
-    "source": "Seven C Newsletter",
-    "title": "Banks rejecting the GENIUS/Clarity Act stablecoin legislation",
-    "idea": "Banks are currently refusing to accept the GENIUS Act (Clarity Act) stablecoin legislation as written. The banking sector understands that regulated stablecoin issuance outside the banking system is an existential threat to deposit bases at $3T+ scale — and they are fighting accordingly. Separately, Iran's crypto holdings are being seized (US/sanctions enforcement). Both developments shape the near-term regulatory landscape for crypto's most important legislative event.",
-    "angle": "If the Clarity Act passes despite bank opposition, regulated issuers (Circle, Paxos) win the onshore dollar stablecoin layer. If banks successfully water it down, the offshore unregulated market wins by default. Either way, someone captures multi-trillion dollar-denominated stablecoin flow.",
-    "tweetA": "Banks will not accept the Clarity Act as written. The stablecoin legislation that was supposed to be crypto's clean regulatory win is running into the same deposit-protection lobbying wall that has blocked everything before it. Banks understand: regulated stablecoins at $3T scale threaten their deposit base. This is the swing variable for the most important crypto regulatory catalyst of 2026.",
-    "tweetB": "The Clarity Act has an interesting asymmetry: if it passes, Circle and Paxos win. If banks water it down, offshore unregulated stablecoin market wins by default. Either way someone captures the dollar-denominated stablecoin layer at multi-trillion scale. The question is just which set of players and which regulatory jurisdiction.",
-    "charts": {"count": 0, "hot": False, "desc": ""},
-    "link": "https://sevenc.substack.com"
-  },
-  {
-    "id": 15,
-    "cat": "culture",
-    "urgency": "deep",
-    "source": "Chamath Palihapitiya (via Geiger Capital)",
-    "title": "Peter Thiel moves family to Argentina: 'socialism rising in America,' Milei going the opposite direction",
-    "idea": "Via a tweet with 1.06M views (Geiger Capital): Peter Thiel has moved his family to Argentina, citing 'socialism rising in America' as the primary driver — contrasted with Milei's Argentina moving in the opposite ideological direction. Thiel is one of the most politically connected and geopolitically-aware tech investors, with a track record of concentrated directional bets on political trajectories. This is both a personal relocation and a thesis statement on relative trajectories of US vs. Argentina on rule of law, economic policy, and state intervention.",
-    "angle": "Milei's Argentina is increasingly positioning as a capital magnet for those seeking dollar exposure, low regulation, and a government hostile to capital controls. Thiel is the most high-profile data point yet in that migration trend.",
-    "tweetA": "Peter Thiel moved his family to Argentina. His thesis: socialism rising in America, Milei taking Argentina the opposite direction. Thiel is not a casual political commentator — he has made concentrated geopolitical bets his entire career and been right more than most. When the most influential political thinker in Silicon Valley physically exits, that is a positioning signal worth taking seriously.",
-    "tweetB": "The Thiel-to-Argentina story is being covered as culture war content. I read it as a capital flows signal. Milei's Argentina is becoming a destination for capital that wants dollar exposure, low regulation, and a government hostile to capital controls. Thiel is the highest-profile data point. He will not be the last.",
-    "charts": {"count": 0, "hot": False, "desc": ""},
-    "link": "https://chamath.substack.com"
-  }
-]
-
-META = {
-  "date": "2026-05-31",
-  "time": "23:28 CEST",
-  "windowStart": "2026-05-31 17:28 CEST",
-  "windowEnd": "2026-05-31 23:28 CEST",
-  "emailsInWindow": 10,
-  "emailsRead": 10,
-  "itemsExtracted": 15,
-  "includedSources": [
-    {"name": "Neil Sethi / The Week Ahead", "items": 2},
-    {"name": "Irrational Analysis", "items": 2},
-    {"name": "Cubic Analytics / Caleb Franzen", "items": 1},
-    {"name": "Chamath Palihapitiya", "items": 6},
-    {"name": "Eliant Capital", "items": 1},
-    {"name": "Exponential View / Azeem Azhar", "items": 1},
-    {"name": "Dax Trading Ideas / Mirko Milito", "items": 1},
-    {"name": "Seven C Newsletter", "items": 1}
+report = {
+  "date": "2026-06-01 05:20 UTC",
+  "summary": "**Iran/Hormuz:** biancoresearch issues a major structural warning — markets are dangerously treating the Strait of Hormuz closure as a short-term liquidity problem. US distillate inventories sit at their lowest since 2003 with zero spare refining capacity; Chevron CEO Mike Wirth warned the system is structurally tight. Tanks could run dry within 30-60 days. biancoresearch argues the market has built scar tissue from 5 years of false expert alarms and is reflexively buying the dip when physical reality is genuinely different this time.\n\n**Markets:** Equities hit 9 straight weeks of record highs (spotgamma), but a mid-June triple threat looms: SpaceX IPO, FOMC, and major OPEX. stevehou argues the Iran conflict mirrors Liberation Day 2025 exactly — the exogenous shock submerged the AI-turbocharged economy like an \"inflated basketball,\" and the melt-up likely runs through October. saxena_puru is already trimming, locking in 90% gains in 6 weeks and 520% over 2 years.\n\n**AI Infrastructure:** aleabitoreddit teases the next AI bottleneck to be revealed at NVDA GTC/Computex — a mysterious Japanese company (0.6 P/B, 180-year history) holding a de facto monopoly on CPO co-packaged optics inspection and thermal alignment for NVIDIA Rubin. $AAOI photonics thesis: 4-5x return potential in 12-24M. biancoresearch charts AI token usage exploding parabolically since agentic AI went mainstream in January 2026.\n\n**Crypto:** HYPE flips DOGE, enters top 10 (ASvanevik). CT is aggressively bullish while udiWertheimer provides sober pushback: not non-custodial, not the second coming. TCG/CARDS meta goes parabolic — Bluntz_Capital calls it the \"hip-3 moment\" for crypto collectibles with $gacha protocol buying physical Pokemon booster packs every 30 minutes.\n\n**Notable:** Colombia election shock — right-wing Abelardo de la Espriella wins first round outright, zero polls predicted it (Geiger_Capital). cryptopunk7213 flags OpenAI releasing Rosalind biodefense AI to government partners to develop an Ebola vaccine in under 100 days — the first private AI lab deployed in national health defense. citrini calls the $RVMD RASolute 302 phase 3 win at ASCO26 a copy-paste breakthrough with TAM beyond pancreatic cancer.",
+  "events": [
+    {
+      "category": "energy",
+      "title": "Iran/Hormuz — Structural Supply Crisis, Not Temporary Liquidity Glitch",
+      "items": [
+        {
+          "author": "biancoresearch",
+          "tweet_url": "https://x.com/biancoresearch/status/2061280001136238636",
+          "text": "Major long thread warning: every crisis (1997, 2008, 2020) starts with Wall Street treating a structural problem as a temporary liquidity glitch. Governments and oil companies are draining inventories to bridge the Hormuz closure, assuming a guaranteed resolution. Chevron CEO Wirth confirmed: US distillate and gasoline inventories at lowest since 2003, zero spare refining capacity, and cautious insurers will prevent quick supply chain normalization even post-resolution. biancoresearch concludes the market may be confusing past false alarms with a looming physical reality — tanks truly running dry within 30-60 days.",
+          "images": ["https://pbs.twimg.com/media/HJszn3-XQAIjTsU.png"],
+          "created_at": "2026-06-01T02:53:00.000Z"
+        },
+        {
+          "author": "zriboua",
+          "tweet_url": "https://x.com/zriboua/status/2061181525442375938",
+          "text": "IRGC is constantly trying to buy time. This time it will be harder due to the combination of military AND economic/financial pressures. Separately, zriboua flagged a significant development: a Chinese-made shoulder-launched MANPAD missile likely hit the F-15E Strike Eagle shot down over southwestern Iran in April. China may have also supplied Iran with a long-range early-warning radar capable of detecting stealth aircraft — a significant escalation in China-US-Iran dynamics.",
+          "images": ["https://pbs.twimg.com/media/HJqfxCNWUAISFfI.jpg"],
+          "created_at": "2026-05-31T20:22:00.000Z"
+        },
+        {
+          "author": "pboockvar",
+          "tweet_url": "https://x.com/pboockvar/status/2061194167317942540",
+          "text": "Calls Goehring & Rozencwajg's \"Could the Tanks Run Dry?\" an essential read for anyone in commodity markets/stocks. Covers tightening inventories, slowing shale growth, oil and LNG supply risks, and commodity scarcity. Also asks biancoresearch whether AI data centers are also getting more expensive to use.",
+          "created_at": "2026-05-31T21:12:00.000Z"
+        }
+      ]
+    },
+    {
+      "category": "macro",
+      "title": "Summer Melt-Up — Iran as Liberation Day 2.0, Running to October",
+      "items": [
+        {
+          "author": "stevehou",
+          "tweet_url": "https://x.com/stevehou/status/2061284848371667281",
+          "text": "This year's summer melt-up started earlier because the Iran shock happened earlier (Feb 28) vs Liberation Day 2025 (Apr 2). The thesis: exogenous shocks submerge the AI-turbocharged US economy like an inflated basketball — and the Iran conflict ending is the release. War is already thematically over; melt-up likely ends in October. Bloomberg earnings inflection index has had a good year and will capture software names when they finally turn.",
+          "images": ["https://pbs.twimg.com/media/HJs2nW2WgAU-btS.jpg"],
+          "created_at": "2026-06-01T03:12:00.000Z"
+        },
+        {
+          "author": "Evan_ss6",
+          "tweet_url": "https://x.com/Evan_ss6/status/2061214245077782909",
+          "text": "War is over, uranium will be handed over, Hormuz will open. Warsh will cut rates using AI deflation and a deteriorating jobs market as justification — even easier once oil heads back to $50-65. Also floats the bear case: BTC $40K, ETH $800, HYPE falling from $250 to $189.",
+          "created_at": "2026-05-31T22:32:00.000Z"
+        }
+      ]
+    },
+    {
+      "category": "macro",
+      "title": "Markets — 9 Straight Weeks ATH + Mid-June Triple Threat",
+      "items": [
+        {
+          "author": "spotgamma",
+          "tweet_url": "https://x.com/spotgamma/status/2061204069880901810",
+          "text": "9 straight weeks of record highs, characterized by significant vol dispersion. The bull run soon meets a mid-June triple threat: SpaceX IPO, FOMC, and major OPEX. Full weekly analysis covers SPX dispersion risk and June catalysts.",
+          "created_at": "2026-05-31T21:52:00.000Z"
+        },
+        {
+          "author": "biancoresearch",
+          "tweet_url": "https://x.com/biancoresearch/status/2061120858467291589",
+          "text": "Reposts BofA's May 22 Flow Show chart: the market has not been this concentrated around a single theme in 150 years. Notes data centers are bringing their own power and bypassing utilities — not raising electric bills, which is a key pushback to the AI bubble narrative.",
+          "created_at": "2026-05-31T16:21:00.000Z"
+        }
+      ]
+    },
+    {
+      "category": "geopolitics",
+      "title": "Colombia Election Shock — Abelardo Wins Round 1 Outright, Zero Polls Predicted It",
+      "items": [
+        {
+          "author": "Geiger_Capital",
+          "tweet_url": "https://x.com/Geiger_Capital/status/2061215604669829306",
+          "text": "\"Far-right\" Abelardo de la Espriella wins the first round outright. Not one poll predicted this. Paloma Valencia (7%) and former president Alvaro Uribe have endorsed Abelardo, who becomes the clear heavy favorite for the June 21 runoff. Geiger_Capital argues the Milei/Bukele model will bring sweeping prosperity to South America while Europe declines. Subscribers were positioned months ahead.",
+          "images": ["https://pbs.twimg.com/media/HJroqygWkAIo86H.jpg", "https://pbs.twimg.com/media/HJrtmp9XsAAgAHd.jpg"],
+          "created_at": "2026-05-31T22:37:00.000Z"
+        }
+      ]
+    },
+    {
+      "category": "crypto",
+      "title": "HYPE Enters Top 10 — Flips DOGE, Solana Becomes #3 Spot Venue",
+      "items": [
+        {
+          "author": "ASvanevik",
+          "tweet_url": "https://x.com/ASvanevik/status/2061247544399904905",
+          "text": "Breaking: HYPE flips DOGE to enter the top 10 by market cap. Solana is now the 3rd largest spot HYPE trading venue by 24h volume ($56M), surpassing Coinbase and OKX. \"The future is onchain.\"",
+          "images": ["https://pbs.twimg.com/media/HJsFtvkaIAA_yjT.jpg"],
+          "created_at": "2026-06-01T00:44:00.000Z"
+        },
+        {
+          "author": "rektmando",
+          "tweet_url": "https://x.com/rektmando/status/2061216352682037532",
+          "text": "Observes the HYPE move from $45 to $72 felt like CT sold just as TradFi started buying. Notes @based16z and @KookCapitalLLC made well-timed calls on the entry.",
+          "created_at": "2026-05-31T22:40:00.000Z"
+        },
+        {
+          "author": "jchervinsky",
+          "tweet_url": "https://x.com/jchervinsky/status/2061139743371309138",
+          "text": "HyperliquidPC sponsoring @hypurr_co Gathers at Token2049 in Singapore. Notes the Hyperliquid community has \"something else\" energy and represents the best of the ecosystem.",
+          "created_at": "2026-05-31T17:36:00.000Z"
+        }
+      ]
+    },
+    {
+      "category": "crypto",
+      "title": "CARDS/TCG Crypto Meta — Hip-3 Moment with $GACHA Flywheel",
+      "items": [
+        {
+          "author": "Bluntz_Capital",
+          "tweet_url": "https://x.com/Bluntz_Capital/status/2061208750825107804",
+          "text": "$gacha is triggering the \"hip-3 moment\" for @Collector_Crypt $CARDS. Protocol flywheel: 100% of $GACHA trading fees buy graded Pokemon booster packs every 30 minutes; one random $GACHA holder wins all slabs (redeemable for physical cards or sold for USDC). Bluntz up 265% on $CARDS as top-15 holder — calls it still cheap, targets a market cap \"that makes no sense to most.\" All TCG gacha coins going parabolic simultaneously.",
+          "images": ["https://pbs.twimg.com/media/HJrypxkaYAEVexl.png", "https://pbs.twimg.com/media/HJsukOFbEAAIzTF.jpg"],
+          "created_at": "2026-05-31T22:10:00.000Z"
+        },
+        {
+          "author": "ColdBloodShill",
+          "tweet_url": "https://x.com/ColdBloodShill/status/2061232061684347147",
+          "text": "$CARDS broke out cleanly, targeting $100M market cap. Bandai printing capacity remains constrained — Feb/March reprint fears were nothing burgers. Flags EB03 as sleeper set (minuscule print run). Recommends rotating TCG profits into physical Pokemon with prices pulling back from highs.",
+          "images": ["https://pbs.twimg.com/media/HJr3ccvWAAAOVIN.jpg"],
+          "created_at": "2026-05-31T23:43:00.000Z"
+        },
+        {
+          "author": "sjdedic",
+          "tweet_url": "https://x.com/sjdedic/status/2061161173815316634",
+          "text": "Asks \"what is the Hyperliquid of $10M or $50M market caps?\" and posts $CARDS contract address — framing the protocol as the next-tier size play in on-chain infrastructure.",
+          "images": ["https://pbs.twimg.com/media/HJq3J1aWsAExAtO.jpg"],
+          "created_at": "2026-05-31T19:01:00.000Z"
+        }
+      ]
+    },
+    {
+      "category": "tech",
+      "title": "$RVMD — RAS(ON) Inhibitor Phase 3 Win at ASCO26, Copy-Paste Potential Beyond Pancreatic Cancer",
+      "items": [
+        {
+          "author": "citrini",
+          "tweet_url": "https://x.com/citrini/status/2061291930768588949",
+          "text": "Calls $RVMD's RASolute 302 phase 3 trial result an \"amazing breakthrough\" — daraxonrasib showed significantly longer OS and PFS vs chemotherapy in previously treated metastatic pancreatic ductal adenocarcinoma. The bigger alpha: RAS being a druggable target has \"copy-paste\" potential across multiple cancer types. citrini had this in his 26 Trades for 2026. Also observes a fire at a chip facility — notes less memory supply = higher chip prices, which would benefit chip investors.",
+          "images": ["https://pbs.twimg.com/media/HJsuFbmWoAQJRPb.jpg"],
+          "created_at": "2026-06-01T03:41:00.000Z"
+        }
+      ]
+    },
+    {
+      "category": "AI",
+      "title": "OpenAI Rosalind — Biodefense AI Deployed for Ebola Vaccine in <100 Days",
+      "items": [
+        {
+          "author": "cryptopunk7213",
+          "tweet_url": "https://x.com/cryptopunk7213/status/2061283240548147650",
+          "text": "OpenAI built Rosalind, a biodefense AI model so capable it could assist in bioweapon creation — held back. Now selectively releasing to government entities including CEPI. 12 days ago an Ebola emergency was called with no vaccine; CEPI is using Rosalind to develop one in under 100 days. Likely the first time a private AI lab has been used in national health defense. Draws parallel to Anthropic's Project Glasswing for cyber defense.",
+          "images": ["https://pbs.twimg.com/media/HJsmLtGXUAUAcd5.jpg", "https://pbs.twimg.com/media/HJsmLtBWMAYS8ih.jpg"],
+          "created_at": "2026-06-01T03:06:00.000Z"
+        }
+      ]
+    },
+    {
+      "category": "tech",
+      "title": "Meta/Instagram — Massive Account Exploit Patched Over Weekend",
+      "items": [
+        {
+          "author": "zachxbt",
+          "tweet_url": "https://x.com/zachxbt/status/2061251183675949365",
+          "text": "Massive Instagram/Meta exploit just patched: Meta AI support had excessive access permissions allowing password resets for any user without 2FA verification. Telegram black-market channels on Instagram made large amounts of money. No official comms from Meta yet. Notes reaching Meta support still requires paying \"unreasonable amounts to corrupt employees.\"",
+          "created_at": "2026-06-01T00:59:00.000Z"
+        }
+      ]
+    },
+    {
+      "category": "crypto",
+      "title": "Strategy (MSTR) — June Prioritizing Common Over STRC Preferred",
+      "items": [
+        {
+          "author": "qthomp",
+          "tweet_url": "https://x.com/qthomp/status/2061263243121967293",
+          "text": "Strategy is prioritizing MSTR shareholders over STRC holders in June — no dividend rate increase for STRC. Chart shows MSTR has been down since the STRC launch, suggesting the preferred equity has cannibalized common. Quinn also flags first signs of another TACO trade (Trump Always Chickens Out) as political capital runs thin after the Iran war.",
+          "images": ["https://pbs.twimg.com/media/HJsT_sobkAAttRX.jpg", "https://pbs.twimg.com/media/HJsVK5fagAACdO3.jpg"],
+          "created_at": "2026-06-01T01:47:00.000Z"
+        }
+      ]
+    }
   ],
-  "skippedSources": [
-    {"name": "Eliant Cap subscriber chat", "reason": "Notification only — pointed to Week Ahead article (already included)"},
-    {"name": "SixSigmaCapital subscriber chat", "reason": "Discord access announcement — no substantive content"}
-  ]
-}
-
-CAT_COLORS = {
-  "macro": "#e24b4a",
-  "credit": "#378add",
-  "positioning": "#ef9f27",
-  "AI/infra": "#1d9e75",
-  "crypto": "#7f77dd",
-  "geopolitics": "#d85a30",
-  "energy": "#f97316",
-  "tech": "#06b6d4",
-  "gold": "#d4a017",
-  "culture": "#ec4899",
-  "labor": "#8b5cf6",
-  "regulation": "#64748b",
-  "science": "#14b8a6",
-  "venture": "#84cc16"
-}
-
-# Escape special chars for JS string embedding
-def js_str(s):
-    return s.replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n').replace('\r', '')
-
-def build_items_js():
-    lines = []
-    for item in ITEMS:
-        lines.append("  {")
-        lines.append(f"    id: {item['id']},")
-        lines.append(f"    cat: '{js_str(item['cat'])}',")
-        lines.append(f"    urgency: '{js_str(item['urgency'])}',")
-        lines.append(f"    source: '{js_str(item['source'])}',")
-        lines.append(f"    title: '{js_str(item['title'])}',")
-        lines.append(f"    idea: '{js_str(item['idea'])}',")
-        lines.append(f"    angle: '{js_str(item['angle'])}',")
-        lines.append(f"    tweetA: '{js_str(item['tweetA'])}',")
-        lines.append(f"    tweetB: '{js_str(item['tweetB'])}',")
-        charts = item['charts']
-        hot_js = 'true' if charts['hot'] else 'false'
-        lines.append(f"    charts: {{ count: {charts['count']}, hot: {hot_js}, desc: '{js_str(charts['desc'])}' }},")
-        lines.append(f"    link: '{js_str(item['link'])}'")
-        lines.append("  }" + ("," if item['id'] < len(ITEMS) else ""))
-    return "\n".join(lines)
-
-def build_meta_js():
-    src_arr = json.dumps(META['includedSources'])
-    skip_arr = json.dumps(META['skippedSources'])
-    return f"""{{
-  date: '{META['date']}',
-  time: '{META['time']}',
-  windowStart: '{META['windowStart']}',
-  windowEnd: '{META['windowEnd']}',
-  emailsInWindow: {META['emailsInWindow']},
-  emailsRead: {META['emailsRead']},
-  itemsExtracted: {META['itemsExtracted']},
-  includedSources: {src_arr},
-  skippedSources: {skip_arr}
-}}"""
-
-HTML = """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Research Intelligence — 2026-05-31 23:28 CEST</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#fff;color:#1a1a1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;line-height:1.6}
-#hdr{padding:20px 20px 14px;border-bottom:1px solid #e8e6e0}
-#hdr h1{font-size:21px;font-weight:700;letter-spacing:-.3px}
-#hdr .meta{color:#666;font-size:13px;margin-top:4px}
-#filters{padding:10px 20px;border-bottom:1px solid #e8e6e0;display:flex;flex-direction:column;gap:7px}
-.filter-row{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
-.flabel{font-size:10px;color:#aaa;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-right:2px;white-space:nowrap}
-.pill{display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid #ccc;color:#777;background:#fff;transition:all .12s;user-select:none}
-.pill:hover{border-color:#888}
-.pill.active{color:#fff;border-color:transparent}
-.pcnt{opacity:.75;font-size:11px}
-#cards{padding:10px 20px;display:flex;flex-direction:column;gap:7px}
-.card{background:#f8f7f5;border-radius:10px;overflow:hidden}
-.card-hdr{padding:11px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;user-select:none}
-.card-hdr:hover{background:#f0ede8}
-.cnum{font-family:'SF Mono','Fira Code',monospace;font-size:11px;color:#aaa;min-width:22px}
-.urg{font-size:13px}
-.sbadge{padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;color:#fff;white-space:nowrap;flex-shrink:0}
-.ctag{padding:2px 7px;border-radius:12px;font-size:10px;font-weight:600;background:#e8e6e0;color:#666;flex-shrink:0}
-.ctitle{font-size:13.5px;font-weight:600;flex:1;line-height:1.4}
-.chv{font-size:11px;color:#bbb;margin-left:auto;flex-shrink:0}
-.cbody{padding:0 14px 14px;display:none}
-.cbody.open{display:block}
-.slabel{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#999;margin:11px 0 5px}
-.idea-txt{font-size:13.5px;color:#222;line-height:1.65}
-.angle-box{border-left:2px solid #ccc;padding:7px 11px;margin:9px 0;border-radius:0 6px 6px 0;font-style:italic;font-size:13px;color:#555;line-height:1.6}
-.tw-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-.tw-box{flex:1 1 250px;background:#fff;border-radius:8px;padding:9px 11px;border:1px solid #e0ddd8}
-.tw-lbl{font-size:10px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:5px}
-.tw-lbl.a{color:#378add}
-.tw-lbl.b{color:#7f77dd}
-.tw-txt{font-size:13px;color:#333;line-height:1.6}
-.copy-btn{margin-top:7px;padding:3px 9px;border-radius:5px;border:1px solid #ddd;background:#f5f5f5;font-size:11px;cursor:pointer}
-.copy-btn:hover{background:#e8e8e8}
-.chart-info{margin-top:9px;padding:7px 11px;border:1.5px dashed #ccc;border-radius:6px;font-size:12.5px;color:#666}
-.chart-info.hot{border-color:#f59e0b;background:#fffbf0;color:#92400e}
-.art-link{display:inline-block;margin-top:9px;font-size:12.5px;color:#378add;text-decoration:none}
-.art-link:hover{text-decoration:underline}
-#rpt{margin:16px 20px 24px;background:#f8f7f5;border-radius:10px}
-#rpt summary{padding:11px 14px;cursor:pointer;font-weight:600;font-size:13.5px;color:#555}
-#rpt .rb{padding:0 14px 14px}
-.rt{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:7px}
-.rt th{text-align:left;padding:5px 7px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#999;border-bottom:1px solid #e0ddd8}
-.rt td{padding:5px 7px;border-bottom:1px solid #f0ede8;color:#444}
-.srclink{cursor:pointer;color:#378add;text-decoration:underline}
-.hidden{display:none!important}
-</style>
-</head>
-<body>
-<div id="hdr">
-  <h1>🔵 RESEARCH INTELLIGENCE</h1>
-  <div class="meta" id="hdr-meta">Loading...</div>
-</div>
-<div id="filters">
-  <div class="filter-row" id="cat-pills"></div>
-  <div class="filter-row" id="urg-pills"></div>
-</div>
-<div id="cards"></div>
-<details id="rpt">
-  <summary>📋 Session Report</summary>
-  <div class="rb" id="rpt-body"></div>
-</details>
-
-<script>
-const CAT_COLORS = {
-  'macro':'#e24b4a','credit':'#378add','positioning':'#ef9f27',
-  'AI/infra':'#1d9e75','crypto':'#7f77dd','geopolitics':'#d85a30',
-  'energy':'#f97316','tech':'#06b6d4','gold':'#d4a017','culture':'#ec4899',
-  'labor':'#8b5cf6','regulation':'#64748b','science':'#14b8a6','venture':'#84cc16'
-};
-
-const ITEMS = [
-ITEMS_PLACEHOLDER
-];
-
-const META = META_PLACEHOLDER;
-
-var activeCat = 'all';
-var activeUrg = 'all';
-var activeSrc = null;
-
-function urgLabel(u){ return u==='now'?'🔴':u==='deep'?'🔵':'🟡'; }
-function urgName(u){ return u==='now'?'🔴 Act Now':u==='deep'?'🔵 Deep':'🟡 Watch'; }
-
-function copyTweet(itemId, which) {
-  var item = ITEMS.find(function(i){ return i.id === itemId; });
-  var text = which === 'a' ? item.tweetA : item.tweetB;
-  var ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.position = 'fixed';
-  ta.style.left = '-9999px';
-  document.body.appendChild(ta);
-  ta.select();
-  document.execCommand('copy');
-  document.body.removeChild(ta);
-  var btn = event.target;
-  btn.textContent = '✓ Copied';
-  setTimeout(function(){ btn.textContent = '📋 Copy'; }, 1500);
-}
-
-function toggleCard(id) {
-  var body = document.getElementById('cb-' + id);
-  var chv = document.getElementById('chv-' + id);
-  if (!body) return;
-  if (body.classList.contains('open')) {
-    body.classList.remove('open');
-    chv.textContent = '▶';
-  } else {
-    body.classList.add('open');
-    chv.textContent = '▼';
+  "insights": [
+    {
+      "author": "biancoresearch",
+      "tweet_url": "https://x.com/biancoresearch/status/2061125427633008710",
+      "text": "AI token usage has been exploding higher since January 2026, when agentic AI (Claude Code-style agents) went mainstream. Users are creating agents and writing code, leading to exponential growth in AI usage. \"It's just starting.\" biancoresearch argues this is a more important chart than the concentration narrative — demand is real, not just hype.",
+      "images": ["https://pbs.twimg.com/media/HJqV2D9WEAA2rEO.jpg"],
+      "created_at": "2026-05-31T16:39:00.000Z",
+      "category": "AI",
+      "is_thread": True
+    },
+    {
+      "author": "aleabitoreddit",
+      "tweet_url": "https://x.com/aleabitoreddit/status/2061252644195504239",
+      "text": "Serenity's favorite photonics exposure in the US market: $AAOI, long from $28 (initial hyperscaler qualification guess), added conviction at $70 post-earnings (1.6T+ volume orders with AMZN/MSFT), capacity projections bullish at $90, now at $150. Thesis intact: laser fab bottlenecks, GS optical TAM projections, Made in America tailwinds, NVDA/AMD rumors. Only headwind: ATM after ATM ($600M latest = mechanical selling). Expects clean rerate once pressure stops. Projects 4-5x return in 12-24M. Notes screener forward P/Es are wildly off for hypergrowth names — needs custom calculation ($AAOI, $SNDK methodology).",
+      "created_at": "2026-06-01T01:05:00.000Z",
+      "category": "tech",
+      "is_thread": True
+    },
+    {
+      "author": "aleabitoreddit",
+      "tweet_url": "https://x.com/aleabitoreddit/status/2061265938612465817",
+      "text": "Serenity teases the \"next AI bottleneck\" to be revealed at NVDA GTC/Computex in Taipei: owned by a 0.6 P/B Japanese company with a 180-year history whose owner cooks potatoes in night markets for 160 yen. The same \"potato farming equipment\" optimizing sunlight is now required for CPO (co-packaged optics) optical alignment. Their \"cooking technique\" is mandatory for thermal requirements for NVIDIA Rubin. MSScorps mentioned as de facto monopoly over CPO inspection yields — but scale hasn't arrived yet. Nippon Chemical (4092) — red phosphorus for InP substrates — already up ~100% as the bottleneck of the bottleneck play.",
+      "images": ["https://pbs.twimg.com/media/HJs4IMXbUAAauxW.jpg"],
+      "created_at": "2026-06-01T01:57:00.000Z",
+      "category": "AI",
+      "is_thread": True
+    },
+    {
+      "author": "aleabitoreddit",
+      "tweet_url": "https://x.com/aleabitoreddit/status/2061233888454988260",
+      "text": "$ARM went from $134 to $354 since Serenity's entry. NVDA is unveiling ARM-based processors at Computex. GPU:CPU ratios require more and more CPUs per accelerator cluster. Counterpoint projects ARM dominating AI ASIC servers by 2029. Parts of localized inference will increasingly run on CPUs as models like Gemma get lighter. Multiple catalysts converging.",
+      "images": ["https://pbs.twimg.com/media/HJr5Srba8AAYAzE.jpg", "https://pbs.twimg.com/media/HJr5SrZa0AAIx94.jpg"],
+      "created_at": "2026-05-31T23:50:00.000Z",
+      "category": "tech",
+      "is_thread": False
+    },
+    {
+      "author": "Crypto_McKenna",
+      "tweet_url": "https://x.com/Crypto_McKenna/status/2061129317665349800",
+      "text": "Structural ETH rotation has been underway for ~6 months and is only now being felt. Every underwater DAO with ETH on its balance sheet will sell into rallies and buy back its own token — creating persistent, low-profile sell flows with no institutional or retail demand to absorb them. No announcement will come; it will \"unravel slowly.\" Target: ETH $1000.",
+      "created_at": "2026-05-31T16:54:00.000Z",
+      "category": "crypto",
+      "is_thread": False
+    },
+    {
+      "author": "Crypto_McKenna",
+      "tweet_url": "https://x.com/Crypto_McKenna/status/2061122408548061206",
+      "text": "Bitcoin's quantum threat is a major blocker for institutional flows and changes how much BTC institutions are willing to underwrite. Post-CLARITY, a credible migration plan for affected public keys would trigger sizable institutional inflows. McKenna is puzzled that Michael Saylor — one of the largest public BTC holders — has not been proactive in this conversation. \"Head in the sand for longer increases risks and reduces flows.\"",
+      "created_at": "2026-05-31T16:27:00.000Z",
+      "category": "crypto",
+      "is_thread": True
+    },
+    {
+      "author": "udiWertheimer",
+      "tweet_url": "https://x.com/udiWertheimer/status/2061260061196837332",
+      "text": "Don't spend serious money on computer hardware. Buy a MacBook Neo for $700 and put the rest into ChatGPT Pro or Claude Max. \"AI PC\" as a category is a scam — the hardware industry has tried to make it a thing for years and nobody cares. Investors are subsidizing hundreds of billions in cloud AI infrastructure every quarter. \"Why on earth would you spend your own money on local inference?\" Geforce Now handles gaming too.",
+      "created_at": "2026-06-01T01:34:00.000Z",
+      "category": "AI",
+      "is_thread": True
+    },
+    {
+      "author": "loomdart",
+      "tweet_url": "https://x.com/loomdart/status/2061149441818841334",
+      "text": "Pokemon cards are the ice breaker for a much larger societal shift from aspirational luxury consumption toward collectibles as investment stores of value. Old guard dying: diamonds collapsing, Rolex/AP artificial scarcity exposed by Chinese manufacturers revealing production costs. Pokemon cards work uniquely because: no fugazi intrinsic value, genuinely supply-constrained unlike Nike/Adidas, and no cartel control. A new class of wealthy, financially-savvy consumers (\"even NBA players now buy investments, not diamonds\") is seeking a new category. Crypto is uniquely suited to dominate the next phase — but needs to be done properly.",
+      "images": ["https://pbs.twimg.com/media/HJqznGxbQAARFyh.jpg"],
+      "created_at": "2026-05-31T18:14:00.000Z",
+      "category": "society",
+      "is_thread": True
+    },
+    {
+      "author": "hooeem",
+      "tweet_url": "https://x.com/hooeem/status/2061122714727760209",
+      "text": "Debunks the viral Wharton/BU \"AI Layoff Trap\" paper (peer-reviewed, March 2026) that claims mathematical proof AI will destroy the economy. Fatal flaw: the model assumes money saved from job displacement simply vanishes — owners never spend it, no new jobs appear, nothing gets cheaper. This is economically impossible. The paper's scariest result also requires \"special knife-edge conditions\" and the authors themselves admit that allowing money to recirculate makes the problem shrink toward nothing. Fear-mongering content that the algorithm rewards.",
+      "images": ["https://pbs.twimg.com/tweet_video_thumb/HJri7-gW0AIZQk_.jpg"],
+      "created_at": "2026-05-31T16:28:00.000Z",
+      "category": "AI",
+      "is_thread": True
+    },
+    {
+      "author": "saxena_puru",
+      "tweet_url": "https://x.com/saxena_puru/status/2061148699682828408",
+      "text": "Citing Bloomberg Intelligence data from Cerebras' April 2026 S-1: AI inference market (Cerebras-addressable slice) grows from ~$66B (2025) to $292B (2029) at 45% CAGR. This dramatically outpaces training infrastructure at ~20% CAGR. Inference-focused plays may be the next phase of the AI trade.",
+      "created_at": "2026-05-31T18:11:00.000Z",
+      "category": "AI",
+      "is_thread": True
+    },
+    {
+      "author": "RaoulGMI",
+      "tweet_url": "https://x.com/RaoulGMI/status/2061235886122062025",
+      "text": "Under-appreciated: the AI race cannot be stopped by governments, markets, or anyone. \"There is no world in which you can allow one superpower to have AGI.\" Game theory means neither the US nor China can slow down. Even if OpenAI collapsed tomorrow, the US government would auction the technology. The race is structurally unstoppable.",
+      "created_at": "2026-05-31T23:58:00.000Z",
+      "category": "AI",
+      "is_thread": False
+    },
+    {
+      "author": "Melt_Dem",
+      "tweet_url": "https://x.com/Melt_Dem/status/2061121928560271362",
+      "text": "Thesis piece on portco Verne Robotics: industrial robotics business model is broken (high integration cost, long contracts, poor cost fit for most businesses). Fix: \"Robotics as a Service\" — physical intelligence like SaaS, low/no integration cost, right-sized contracts. Verne believes every American business deserves a robot. 10-20 minutes to learn most tasks at scale. \"Software ate the world. Robots are up next.\"",
+      "images": ["https://pbs.twimg.com/media/HJqSWt0aUAAMweo.jpg", "https://pbs.twimg.com/media/HJqTqMza0AA1xhT.jpg"],
+      "created_at": "2026-05-31T16:25:00.000Z",
+      "category": "tech",
+      "is_thread": True
+    },
+    {
+      "author": "cryptopunk7213",
+      "tweet_url": "https://x.com/cryptopunk7213/status/2061199112410722738",
+      "text": "Hottest AI job right now: Forward Deployed Engineer (FDE). Salaries hitting $300K before equity, up 15-20% YoY. Part-engineer, part-consultant, part-PM — goes inside companies to build AI agents that actually work. Palantir is the biggest hirer. Cursor, Softbank, Notion listed 4,000 new FDE roles this year. Anthropic and OpenAI planning thousands more hires in this role over 1-2 years.",
+      "images": ["https://pbs.twimg.com/media/HJrZqvTX0Ak1CQA.jpg", "https://pbs.twimg.com/media/HJrZqwhWYAUzREE.jpg"],
+      "created_at": "2026-05-31T21:32:00.000Z",
+      "category": "AI",
+      "is_thread": False
+    },
+    {
+      "author": "DCinvestor",
+      "tweet_url": "https://x.com/DCinvestor/status/2061302524095918588",
+      "text": "Everything is now targeting 401K money: private equity needing to exit before IPO, crypto, and newly listed equities that don't meet criteria held in place for decades. Separately, global world order collapse is deeply underappreciated — \"the scaffolding has been removed or exposed as never having been there.\" US hegemony survived the 1971 dollar-gold break because adversaries collapsed. That may not hold this time.",
+      "created_at": "2026-06-01T04:23:00.000Z",
+      "category": "macro",
+      "is_thread": False
+    },
+    {
+      "author": "PeterDiamandis",
+      "tweet_url": "https://x.com/PeterDiamandis/status/2061213751466942972",
+      "text": "AGI threshold crossed: on MOONSHOTS podcast they defined AGI as 50% on Humanity's Last Exam. Claude Opus 4.8 scored 57.9%. EMostaque's take: \"We should worry less about being turned into paperclips and more about being annoyed to death\" — while also noting Claude 4.6 Max is \"pretty nice.\" Diamandis adds: if machines can write, reason, diagnose, and persuade, human value cannot be based on productivity.",
+      "created_at": "2026-05-31T22:30:00.000Z",
+      "category": "AI",
+      "is_thread": False
+    },
+    {
+      "author": "nicbstme",
+      "tweet_url": "https://x.com/nicbstme/status/2061141377371771134",
+      "text": "Codex (OpenAI) spent 11+ hours attempting to solve the Navier-Stokes Millennium Prize problem ($1M reward) with no tools. Long-running agents are a demonstrated reality. This specific attempt will not succeed without a far more powerful model, custom mathematical verification tools, and scaffolding. Key question: how many tokens ($) will it eventually cost an advanced AI to solve a Millennium Prize problem?",
+      "images": ["https://pbs.twimg.com/media/HJqkagVbUAAQYja.jpg"],
+      "created_at": "2026-05-31T17:42:00.000Z",
+      "category": "AI",
+      "is_thread": True
+    },
+    {
+      "author": "fejau_inc",
+      "tweet_url": "https://x.com/fejau_inc/status/2061302021110763882",
+      "text": "Prediction markets as the cheapest hedge in finance: $50 protects a $10K portfolio against a specific binary event — no options chain, no broker, no greeks, no slippage. If liquidity scales, this could enable sophisticated corporate treasury hedging for specific event risks. Key caveat: assumes liquidity is available, which is a huge assumption.",
+      "created_at": "2026-06-01T04:21:00.000Z",
+      "category": "macro",
+      "is_thread": False
+    },
+    {
+      "author": "buccocapital",
+      "tweet_url": "https://x.com/buccocapital/status/2061161363959894043",
+      "text": "Tokenmaxxing and grindmaxxing are both commoditized, undifferentiated inputs — the wrong things to focus on. What actually matters are scarce, differentiated inputs. The jokes about tech people being obsessed with \"taste\" but having none contain a real signal: differentiated inputs are what compound.",
+      "created_at": "2026-05-31T19:02:00.000Z",
+      "category": "society",
+      "is_thread": False
+    },
+    {
+      "author": "Fiskantes",
+      "tweet_url": "https://x.com/Fiskantes/status/2061159652113473982",
+      "text": "Links article documenting the huge disconnect between what people on podcasts/social media claim they're achieving with AI and what they're actually achieving. \"Emperor has a bit less clothes than previously imagined.\"",
+      "created_at": "2026-05-31T18:55:00.000Z",
+      "category": "AI",
+      "is_thread": False
+    }
+  ],
+  "contrarian": [
+    {
+      "author": "beaniemaxi",
+      "tweet_url": "https://x.com/beaniemaxi/status/2061239043925454932",
+      "text": "\"Solana is basically cooked. Everybody with money on it either lost it to DeFi protocol hackers or memecoin ruggers. There's no coming back from this.\" A strong directional call against the prevailing Solana bull narrative dominant in crypto CT.",
+      "created_at": "2026-06-01T00:10:00.000Z",
+      "category": "crypto",
+      "is_thread": False
+    },
+    {
+      "author": "biancoresearch",
+      "tweet_url": "https://x.com/biancoresearch/status/2061280001136238636",
+      "text": "Against the dominant \"war is over, buy the dip\" trade: the market's scar tissue from 5 years of false alarms has made it reflexively buy every crisis. The energy sector today is genuinely different — inventories are physically tight, tanks are truly running dry, and treating the Hormuz closure as a temporary glitch will cause demand destruction to hit all at once when inventories hit operational minimums. This is not another false alarm.",
+      "images": ["https://pbs.twimg.com/media/HJszn3-XQAIjTsU.png"],
+      "created_at": "2026-06-01T02:53:00.000Z",
+      "category": "energy",
+      "is_thread": True
+    },
+    {
+      "author": "udiWertheimer",
+      "tweet_url": "https://x.com/udiWertheimer/status/2061173495375991046",
+      "text": "Against HYPE mania: \"bullish takes over the past week have transcended beyond all levels of retardation.\" Key point: Hyperliquid is NOT non-custodial — an important qualifier for the decentralization narrative. \"It's a great app, not the second coming.\" Also notes Hyperliquid lacks native SOL deposit support, hinting at product gaps in the bull case.",
+      "created_at": "2026-05-31T19:50:00.000Z",
+      "category": "crypto",
+      "is_thread": True
+    },
+    {
+      "author": "citrini",
+      "tweet_url": "https://x.com/citrini/status/2061249503341015455",
+      "text": "Responding to \"I really have to get better at buying what the President says to buy\": \"I don't care if IBM is up six thousand percent at the open tomorrow, I'm not making this mistake again.\" A pointed refusal to chase politically-driven market signals — with implicit warning about the sustainability of presidential stock picks.",
+      "images": ["https://pbs.twimg.com/tweet_video_thumb/HJsN7UpW4AMBGKo.jpg"],
+      "created_at": "2026-06-01T00:52:00.000Z",
+      "category": "macro",
+      "is_thread": False
+    },
+    {
+      "author": "Crypto_McKenna",
+      "tweet_url": "https://x.com/Crypto_McKenna/status/2061129317665349800",
+      "text": "Against the ETH revival narrative: structural rotation out of ETH has been underway for ~6 months. Underground sell pressure from underwater DAOs unloading ETH balance sheets has no demand to meet it. No announcement, just a slow unravel. Target: $1000.",
+      "created_at": "2026-05-31T16:54:00.000Z",
+      "category": "crypto",
+      "is_thread": False
+    },
+    {
+      "author": "DCinvestor",
+      "tweet_url": "https://x.com/DCinvestor/status/2061228562087281143",
+      "text": "Against prevailing market optimism: most people have \"dramatically underweighted\" how far into the collapse of the global world order we already are. The scaffolding was either removed or was never there. 1971 dollar-gold break is the closest analog — but back then, adversaries were structurally weaker and collapsed over the following decades. That may not be the case today.",
+      "created_at": "2026-05-31T23:29:00.000Z",
+      "category": "macro",
+      "is_thread": True
+    },
+    {
+      "author": "Evan_ss6",
+      "tweet_url": "https://x.com/Evan_ss6/status/2061263984100090182",
+      "text": "Posts the full bear case alongside his bull Iran macro thesis: BTC $40K, ETH $800, HYPE falling from $250 to $189. Also advises \"just always short ETH\" and notes he doesn't see POTUS taking a 10% stake in it (as a potential upside catalyst) as likely.",
+      "created_at": "2026-06-01T01:50:00.000Z",
+      "category": "crypto",
+      "is_thread": False
+    }
+  ],
+  "positioning": [
+    {
+      "author": "saxena_puru",
+      "tweet_url": "https://x.com/saxena_puru/status/2061277057653641482",
+      "text": "New Trading Alert: trimming overextended AI stocks. (i) Trimming 40% of a position at ~90% profit in 6 weeks. (ii) Selling entire position at ~520% profit over 2 years. Signals the AI equity run is getting long in the tooth near-term — taking chips off the table.",
+      "created_at": "2026-06-01T02:42:00.000Z",
+      "category": "positioning",
+      "is_thread": False
+    },
+    {
+      "author": "aleabitoreddit",
+      "tweet_url": "https://x.com/aleabitoreddit/status/2061252644195504239",
+      "text": "Long $AAOI at $150 (entered $28, added at $70). Thesis: laser fab bottlenecks, hyperscaler volume orders (1.6T+), Made in America, NVDA/AMD integration. Only headwind: $600M ATM mechanical selling. Projects 4-5x in 12-24M. Also long Nippon Chemical Japan (4092), up ~100% — red phosphorus for InP substrates = bottleneck of the Western hyperscaler buildout.",
+      "created_at": "2026-06-01T01:05:00.000Z",
+      "category": "positioning",
+      "is_thread": True
+    },
+    {
+      "author": "Bluntz_Capital",
+      "tweet_url": "https://x.com/Bluntz_Capital/status/2061194719624155636",
+      "text": "$ZEC technical long: perfect ABC pullback, 5 subwaves in C, 4H bull div, 4H 200MA bounce. Target: all-time highs by end of next week. Also top-15 holder of $CARDS (up 265%), watching $GACHA protocol flywheel drive revenue into Collector Crypt.",
+      "images": ["https://pbs.twimg.com/media/HJrVqUZbIAAtQGp.jpg"],
+      "created_at": "2026-05-31T21:14:00.000Z",
+      "category": "positioning",
+      "is_thread": True
+    },
+    {
+      "author": "ZeeContrarian1",
+      "tweet_url": "https://x.com/ZeeContrarian1/status/2061251549767373126",
+      "text": "Discloses 7% personal portfolio position in $STAA.",
+      "created_at": "2026-06-01T01:00:00.000Z",
+      "category": "positioning",
+      "is_thread": False
+    },
+    {
+      "author": "zeroxkyle",
+      "tweet_url": "https://x.com/zeroxkyle/status/2061247613262086468",
+      "text": "HYPE + $CARDS as the most asymmetric barbell: HYPE ($16B MC) = perps will eat the world; $CARDS ($61M MC) = TCGs are a new art form. HYPE uncorrelated from BTC is a new-era signal where fundamental analysis wins. \"Strong alts uncorrelated to BTC = good signal of a new era.\"",
+      "created_at": "2026-06-01T00:45:00.000Z",
+      "category": "positioning",
+      "is_thread": False
+    },
+    {
+      "author": "stevehou",
+      "tweet_url": "https://x.com/stevehou/status/2061284848371667281",
+      "text": "Directional long equity / melt-up through October. Iran conflict is the Liberation Day analog — exogenous shock absorbed, now bounce in progress. Also bullish on Tesla FSD competitive advantage vs Waymo via willingness to be aggressive (\"Mad Max\" mode). Endorses Bloomberg earnings inflection index as the right tool to capture the software name rotation.",
+      "created_at": "2026-06-01T03:12:00.000Z",
+      "category": "positioning",
+      "is_thread": True
+    },
+    {
+      "author": "jimcramer",
+      "tweet_url": "https://x.com/jimcramer/status/2061190265243603433",
+      "text": "Berkshire Hathaway buying Taylor Morrison signals possible value in hated homebuilders. Cramer floats: deploying Clayton prefab homes on Taylor Morrison land could be a compelling combination.",
+      "created_at": "2026-05-31T20:57:00.000Z",
+      "category": "positioning",
+      "is_thread": False
+    },
+    {
+      "author": "AndreasSteno",
+      "tweet_url": "https://x.com/AndreasSteno/status/2061124769957748799",
+      "text": "Bought a load of cybersecurity earlier in the year. A couple of the trades are up ~100%. Quiet outperformer of the thematic basket trades.",
+      "created_at": "2026-05-31T16:36:00.000Z",
+      "category": "positioning",
+      "is_thread": False
+    },
+    {
+      "author": "goodalexander",
+      "tweet_url": "https://x.com/goodalexander/status/2061280737651794141",
+      "text": "A wise woman taught him not to hedge the Vision Fund — just run it vs. the Nikkei. Directional positioning implication: unhedged long on Japanese tech/venture-adjacent exposure vs Nikkei benchmark.",
+      "created_at": "2026-06-01T02:56:00.000Z",
+      "category": "positioning",
+      "is_thread": False
+    },
+    {
+      "author": "thedefivillain",
+      "tweet_url": "https://x.com/thedefivillain/status/2061178430146625595",
+      "text": "$STG squeezing shorts on a low cap: STG-to-ZRO migration is one-way, making STG a permanently depegged low-float Binance Futs listing with no natural sellers. Risk: exchange delisting. $LAB at $9B FDV called a scam coin — but with potential 120x from the bottom. Advises against shorting $LAB (use strict stop loss only). Not buy recommendations; informational tracking.",
+      "images": ["https://pbs.twimg.com/media/HJrGbyJWUAQq1en.jpg"],
+      "created_at": "2026-05-31T20:10:00.000Z",
+      "category": "positioning",
+      "is_thread": False
+    }
+  ],
+  "links": [
+    {
+      "author": "spotgamma",
+      "url": "https://spotgamma.com/spx-dispersion-risk-volatility-spasm-june-catalysts/",
+      "description": "SPX Dispersion, Volatility Risk, June Catalysts — 9 weeks ATH, SpaceX IPO + FOMC + OPEX triple threat"
+    },
+    {
+      "author": "laurashin",
+      "url": "https://www.youtube.com/watch?v=1XUdNpnwhBY&feature=youtu.be",
+      "description": "Bits + Bips: Steve Sosnick on ETF tourists, PCE at 3-year high, Kevin Warsh week 1, BTC at $73K vol at 9-month low, AI-bandwidth parallel"
+    },
+    {
+      "author": "pboockvar",
+      "url": "https://t.co/X32oU63QLU",
+      "description": "Goehring & Rozencwajg: 'Could the Tanks Run Dry?' — tightening inventories, slowing shale growth, oil and LNG supply risks"
+    },
+    {
+      "author": "Melt_Dem",
+      "url": "https://t.co/drgNl9UpsQ",
+      "description": "Verne Robotics (portco) long-form piece: Robotics as a Service — why the industrial robotics business model is broken"
+    },
+    {
+      "author": "Fiskantes",
+      "url": "https://t.co/DGrg5VHgm2",
+      "description": "Disconnect between AI productivity claims on social media vs reality — 'Emperor has less clothes than imagined'"
+    },
+    {
+      "author": "laurashin",
+      "url": "https://t.co/7rdZK9Ymix",
+      "description": "Uneasy Money: Illia Polosukhin (NEAR, Transformer paper co-author) on confidentiality for business onchain + NEAR origin story vs Ethereum Foundation"
+    },
+    {
+      "author": "biancoresearch",
+      "url": "https://t.co/fqglYkBweD",
+      "description": "BofA Flow Show: market concentration at 150-year high, cited as context for AI bubble debate"
+    },
+    {
+      "author": "laurashin",
+      "url": "https://t.co/7rdZK9XOsZ",
+      "description": "Uneasy Money: Zcash private stablecoins, why one privacy pool isn't enough — @kaiynne + Illia Polosukhin"
+    }
+  ],
+  "stats": {
+    "received": 201,
+    "after_filter": 132,
+    "authors": 67,
+    "coverage": 69
   }
 }
 
-function filterCat(cat) {
-  activeCat = cat;
-  activeSrc = null;
-  renderFilters();
-  applyFilters();
-}
+with open('/tmp/report_data.json', 'w') as f:
+    json.dump(report, f, indent=2)
 
-function filterUrg(urg) {
-  activeUrg = urg;
-  activeSrc = null;
-  renderFilters();
-  applyFilters();
-}
+print("Report JSON written successfully")
+print(f"Events: {len(report['events'])}")
+print(f"Insights: {len(report['insights'])}")
+print(f"Contrarian: {len(report['contrarian'])}")
+print(f"Positioning: {len(report['positioning'])}")
+print(f"Links: {len(report['links'])}")
 
-function filterBySrc(name) {
-  activeSrc = name;
-  activeCat = 'all';
-  activeUrg = 'all';
-  renderFilters();
-  applyFilters(true);
-}
-
-function applyFilters(expandMatching) {
-  ITEMS.forEach(function(item) {
-    var card = document.getElementById('card-' + item.id);
-    if (!card) return;
-    var show = true;
-    if (activeSrc) {
-      show = item.source.indexOf(activeSrc) !== -1;
-    } else {
-      if (activeCat !== 'all' && item.cat !== activeCat) show = false;
-      if (activeUrg !== 'all' && item.urgency !== activeUrg) show = false;
-    }
-    if (show) {
-      card.classList.remove('hidden');
-      if (expandMatching && activeSrc) {
-        var body = document.getElementById('cb-' + item.id);
-        var chv = document.getElementById('chv-' + item.id);
-        if (body) { body.classList.add('open'); }
-        if (chv) { chv.textContent = '▼'; }
-      }
-    } else {
-      card.classList.add('hidden');
-      var body = document.getElementById('cb-' + item.id);
-      var chv = document.getElementById('chv-' + item.id);
-      if (body) { body.classList.remove('open'); }
-      if (chv) { chv.textContent = '▶'; }
-    }
-  });
-}
-
-function renderFilters() {
-  var cats = {};
-  var urgs = { now: 0, deep: 0, watch: 0 };
-  ITEMS.forEach(function(item) {
-    cats[item.cat] = (cats[item.cat] || 0) + 1;
-    urgs[item.urgency] = (urgs[item.urgency] || 0) + 1;
-  });
-
-  var cp = document.getElementById('cat-pills');
-  var up = document.getElementById('urg-pills');
-
-  var catHtml = '<span class="flabel">Category</span>';
-  var allCatActive = activeCat === 'all' ? ' active" style="background:#555;border-color:#555' : '';
-  catHtml += '<span class="pill' + (activeCat==='all'?' active" style="background:#555;border-color:#555"':'"') + ' onclick="filterCat(\'all\')">All <span class="pcnt">' + ITEMS.length + '</span></span>';
-  Object.keys(cats).sort().forEach(function(cat) {
-    var color = CAT_COLORS[cat] || '#888';
-    var isActive = activeCat === cat;
-    var style = isActive ? ' style="background:' + color + ';border-color:' + color + '"' : ' style="border-color:' + color + ';color:' + color + '"';
-    catHtml += '<span class="pill' + (isActive?' active':'') + '"' + style + ' onclick="filterCat(\'' + cat + '\')">' + cat + ' <span class="pcnt">' + cats[cat] + '</span></span>';
-  });
-  cp.innerHTML = catHtml;
-
-  var urgHtml = '<span class="flabel">Urgency</span>';
-  urgHtml += '<span class="pill' + (activeUrg==='all'?' active" style="background:#555;border-color:#555"':'"') + ' onclick="filterUrg(\'all\')">All <span class="pcnt">' + ITEMS.length + '</span></span>';
-  [['now','#e24b4a'],['deep','#378add'],['watch','#ef9f27']].forEach(function(pair) {
-    var u = pair[0], color = pair[1];
-    var cnt = urgs[u] || 0;
-    var isActive = activeUrg === u;
-    var style = isActive ? ' style="background:' + color + ';border-color:' + color + '"' : ' style="border-color:' + color + ';color:' + color + '"';
-    urgHtml += '<span class="pill' + (isActive?' active':'') + '"' + style + ' onclick="filterUrg(\'' + u + '\')">' + urgName(u) + ' <span class="pcnt">' + cnt + '</span></span>';
-  });
-  up.innerHTML = urgHtml;
-}
-
-function renderCards() {
-  var container = document.getElementById('cards');
-  var html = '';
-  ITEMS.forEach(function(item) {
-    var color = CAT_COLORS[item.cat] || '#888';
-    var chartHtml = '';
-    if (item.charts.count > 0 || item.charts.desc) {
-      var hotClass = item.charts.hot ? ' hot' : '';
-      var hotIcon = item.charts.hot ? '🔥 ' : '📊 ';
-      chartHtml = '<div class="chart-info' + hotClass + '">' + hotIcon + item.charts.desc + '</div>';
-    }
-    var chartBadge = (item.charts.hot ? ' 🔥' : item.charts.count > 0 || item.charts.desc ? ' 📊' : '');
-    html += '<div class="card" id="card-' + item.id + '">';
-    html += '<div class="card-hdr" onclick="toggleCard(' + item.id + ')">';
-    html += '<span class="cnum">' + item.id + '</span>';
-    html += '<span class="urg">' + urgLabel(item.urgency) + '</span>';
-    html += '<span class="sbadge" style="background:' + color + '">' + item.source.split('/')[0].trim() + '</span>';
-    html += '<span class="ctag">' + item.cat + '</span>';
-    if (chartBadge) html += '<span>' + chartBadge.trim() + '</span>';
-    html += '<span class="ctitle">' + item.title + '</span>';
-    html += '<span class="chv" id="chv-' + item.id + '">▶</span>';
-    html += '</div>';
-    html += '<div class="cbody" id="cb-' + item.id + '">';
-    html += '<div class="slabel">The Idea</div>';
-    html += '<div class="idea-txt">' + item.idea + '</div>';
-    html += '<div class="slabel">My Angle</div>';
-    html += '<div class="angle-box" style="border-left-color:' + color + ';background:' + color + '18">' + item.angle + '</div>';
-    html += chartHtml;
-    html += '<div class="tw-row">';
-    html += '<div class="tw-box">';
-    html += '<div class="tw-lbl a">TWEET A</div>';
-    html += '<div class="tw-txt">' + item.tweetA + '</div>';
-    html += '<button class="copy-btn" onclick="copyTweet(' + item.id + ',\'a\')">📋 Copy</button>';
-    html += '</div>';
-    html += '<div class="tw-box">';
-    html += '<div class="tw-lbl b">TWEET B</div>';
-    html += '<div class="tw-txt">' + item.tweetB + '</div>';
-    html += '<button class="copy-btn" onclick="copyTweet(' + item.id + ',\'b\')">📋 Copy</button>';
-    html += '</div>';
-    html += '</div>';
-    if (item.link) {
-      html += '<a class="art-link" href="' + item.link + '" target="_blank">↗ Read full article</a>';
-    }
-    html += '</div>';
-    html += '</div>';
-  });
-  container.innerHTML = html;
-}
-
-function renderHeader() {
-  document.getElementById('hdr-meta').textContent =
-    META.date + ' · ' + META.time + ' · ' + META.itemsExtracted + ' items · Window: ' + META.windowStart + ' – ' + META.windowEnd;
-}
-
-function renderReport() {
-  var body = document.getElementById('rpt-body');
-  var html = '<p style="font-size:12.5px;color:#666;margin:8px 0 12px">Window: <strong>' + META.windowStart + '</strong> to <strong>' + META.windowEnd + '</strong>. Emails in window: ' + META.emailsInWindow + '. Emails read: ' + META.emailsRead + '. Items extracted: ' + META.itemsExtracted + '.</p>';
-  html += '<div class="slabel" style="margin-top:4px">Included Sources</div>';
-  html += '<table class="rt"><tr><th>Source</th><th>Items</th></tr>';
-  META.includedSources.forEach(function(s) {
-    var shortName = s.name.split('/')[0].trim();
-    html += '<tr><td><span class="srclink" onclick="filterBySrc(\'' + shortName.replace(/'/g,"\\'") + '\')">' + s.name + '</span></td><td>' + s.items + '</td></tr>';
-  });
-  html += '</table>';
-  if (META.skippedSources && META.skippedSources.length > 0) {
-    html += '<div class="slabel" style="margin-top:12px">Skipped Sources</div>';
-    html += '<table class="rt"><tr><th>Source</th><th>Reason</th></tr>';
-    META.skippedSources.forEach(function(s) {
-      html += '<tr><td>' + s.name + '</td><td style="color:#999">' + s.reason + '</td></tr>';
-    });
-    html += '</table>';
-  }
-  body.innerHTML = html;
-}
-
-function init() {
-  renderHeader();
-  renderFilters();
-  renderCards();
-  renderReport();
-}
-
-init();
-</script>
-</body>
-</html>"""
-
-items_js = build_items_js()
-meta_js = build_meta_js()
-
-html_out = HTML.replace('ITEMS_PLACEHOLDER', items_js).replace('META_PLACEHOLDER', meta_js)
-
-os.makedirs('reports', exist_ok=True)
-os.makedirs('data', exist_ok=True)
-
-html_path = 'reports/research_2026-05-31_2328.html'
-with open(html_path, 'w', encoding='utf-8') as f:
-    f.write(html_out)
-print(f"HTML written: {html_path} ({len(html_out):,} bytes)")
-
-json_out = {"meta": META, "items": ITEMS}
-json_path = 'data/research_2026-05-31_2328.json'
-with open(json_path, 'w', encoding='utf-8') as f:
-    json.dump(json_out, f, ensure_ascii=False, indent=2)
-print(f"JSON written: {json_path}")
+# Validate JSON
+with open('/tmp/report_data.json') as f:
+    json.load(f)
+print("JSON valid!")
