@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER BANK RESEARCH",
+  "date": "2026-06-02 05:22 UTC",
+  "collected_at": "2026-06-02T05:22:38Z",
+  "window_days": 4,
+  "freshness_gate": "PASSED — collected_at 2026-06-02T05:22:38+00:00 (0.4h old)",
+  "input_stats": {
+    "total_tweets": 60,
+    "considered": 60,
+    "kept": 23,
+    "dropped": 37,
+    "deduped": 0
+  },
+  "summary": "Goldman led with 6 items: risk appetite indicator at extreme levels, bond term premium compression flagged as likely maxed out (long-end outperformance more challenging), easing financial conditions providing GDP tailwind, trimmed core inflation at ~2.2% for US and Euro Area, and Q2 GDP tracking trimmed 0.1pp to +1.9% post-ISM.\n\nNeil Sethi (15 items) covered SPX's 8-day winning streak (longest since May 2025) driven almost entirely by Tech (+2.5%), ISM manufacturing hitting a 4-year high of 54 with persistent price pressures (above 80 for the second straight month, zero industries reporting declining prices), the Micron leveraged ETF surge to $7.55bn AUM, and Bitcoin ETF 10-day outflow streak.\n\nDeutsche Bank flagged financials sector positioning at the 9th percentile — historically light since 2021. BofA noted global equity breadth at a 52-week low with only 30% of stocks outperforming ACWI over the past year.\n\n**By bank: Goldman 6 | Neil Sethi 15 | BofA 1 | Deutsche 1 — Total kept: 23 of 60 tweets**",
+  "by_bank_counts": {
+    "Goldman": 6,
+    "BofA": 1,
+    "Deutsche": 1,
+    "Neil Sethi": 15
+  },
+  "topics": [
+    {
+      "topic": "Neil Sethi — SPX 8-day streak, narrow Tech leadership, ISM 4-year high with persistent price pressures",
+      "items": [
+        {
+          "author_username": "neilksethi",
+          "text": "From the Markets Update (https://t.co/cgFkRbuJp8):\n\nWith the weekend behind, the 1-day VIX fell back to the lowest close since Feb 2nd at 9.6. That's consistent with just a move of 0.6% in the SPX Wednesday.",
+          "tweet_url": "https://x.com/neilksethi/status/2061623835817054347",
+          "images": [
+            "https://pbs.twimg.com/media/HJxUjuuWoAAVkun.jpg"
+          ],
+          "created_at": "2026-06-02T01:40:00.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "Still ~70 SPX components up over 3%, double Friday, while ~45 were down -3% or more from ~20 Friday.",
+          "tweet_url": "https://x.com/neilksethi/status/2061618802434163104",
+          "images": [
+            "https://pbs.twimg.com/media/HJxTgxRWsAAV63K.jpg"
+          ],
+          "created_at": "2026-06-02T01:20:00.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "From the Markets Update (https://t.co/URqvQfM9WQ):\n\nDespite another (small) SPX gain, for a second session we had just 2 of 11 sectors higher according to CME Cash Indices, but again led by the heavyweight Tech sector +2.5% after +1.9% Friday (and +20% in May), again keeping the index afloat. The other was lightweight Energy +2.9%, only its 2nd gain in 8 sessions.\n\nSix sectors though down around -1% more (after five Friday) led by Utilities -3%. Consumer Discretionary was -2.6%, and RE, Comm Services, Staples, and Health Care were also down more than -1% (all down at least -0.9% Friday).",
+          "tweet_url": "https://x.com/neilksethi/status/2061614393343750351",
+          "images": [
+            "https://pbs.twimg.com/media/HJxTXS7XcAALPZ1.jpg"
+          ],
+          "created_at": "2026-06-02T01:02:28.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "Markets Update - 6/1/26\nA detailed look at what happened today impacting US equity, Treasury, and selected commodity markets, and what to watch for tomorrow.\n\nhttps://t.co/cgFkRbubzA",
+          "tweet_url": "https://x.com/neilksethi/status/2061571256474870050",
+          "images": [
+            "https://pbs.twimg.com/media/HJwsIEkXQAAqTnK.jpg"
+          ],
+          "created_at": "2026-06-01T22:11:04.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "Nvidia pushing into PC semiconductors wasn't all good news for the tech sector with most of the other makers seeing notable losses.",
+          "tweet_url": "https://x.com/neilksethi/status/2061557744931328419",
+          "images": [
+            "https://pbs.twimg.com/media/HJwflQSWkAIVX17.png"
+          ],
+          "created_at": "2026-06-01T21:17:22.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "US equity indices under pressure until early afternoon when Trump post of Lebanon de-escalation and Iran talks continuing gave them lift, although less so for RUT which was -0.5%. \n\nLarge caps fared better led again by Tech w/Nasdaq +0.4%, SPX +0.3%, DJIA +0.1%.",
+          "tweet_url": "https://x.com/neilksethi/status/2061543520100360375",
+          "images": [
+            "https://pbs.twimg.com/media/HJwSc2_WEAAhhBw.png"
+          ],
+          "created_at": "2026-06-01T20:20:51.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "https://t.co/VpR26V91l2",
+          "tweet_url": "https://x.com/neilksethi/status/2061539784057552940",
+          "images": [
+            "https://pbs.twimg.com/media/HJwPgOlW0AAJMtf.png"
+          ],
+          "created_at": "2026-06-01T20:06:00.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "SPX eighth straight advance, longest streak since May of last year.",
+          "tweet_url": "https://x.com/neilksethi/status/2061539430209401341",
+          "images": [
+            "https://pbs.twimg.com/media/HJwPK42XwAERrhG.png"
+          ],
+          "created_at": "2026-06-01T20:04:36.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "The commentary from the ISM report didn't reflect the strong metrics: \n\n“25 percent of the comments were positive and 69 percent negative, with a 1-to-2.7 ratio of positive to negative sentiment. Among comments, the Iran war was mentioned in 42 percent and tariffs in 18 percent; 57 percent of the panelists mentioned pricing volatility as an issue.” \n\nEvery single comment referenced higher prices but one (Transportation) which referenced supply chain constraints. In that regard a notable comment was from electrical equipment noting memory chip volatility, “increased gas prices and tarris are causing long lead constraints and price hikes that customers are not willing to bear. Panic is starting within our industry.”\n\nA couple of mentions of stronger than expected demand but also a couple of weakening, but the overwhelming focus of the comments was prices and supply chains.\n\nhttps://t.co/3YD6RO3FZM",
+          "tweet_url": "https://x.com/neilksethi/status/2061536124670038509",
+          "images": [
+            "https://pbs.twimg.com/media/HJwLm-XXsAAfCHN.jpg"
+          ],
+          "created_at": "2026-06-01T19:51:28.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "From the Week Ahead (https://t.co/dK8IKSbarp):\n\nLooking at potential vol control buying/selling this week, things are more favorable, although still just one 1%+ day falling off the lookbacks (still more than last week). \n\nThe average for the rest of the days though on the 3-month lookback (the “trigger” given 1-month realized volatility remains under 3-month), is 0.78% up from 0.45% the prior week and 0.48% on the 1-month (from 0.2% the prior week).",
+          "tweet_url": "https://x.com/neilksethi/status/2061515623822188551",
+          "images": [
+            "https://pbs.twimg.com/media/HJvdWFUWAAAnCR2.png"
+          ],
+          "created_at": "2026-06-01T18:30:00.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "CNBC reports that the Bitcoin ETF outflows reached a 10th straight session Friday.\n\nAnd in another negative headline, CNBC notes $MSTR Strategy sold bitcoin for second time every and first in almost four years, albeit a tiny $2.5 million.",
+          "tweet_url": "https://x.com/neilksethi/status/2061501026629538160",
+          "images": [
+            "https://pbs.twimg.com/media/HJvPZl5XwAAYpwF.png"
+          ],
+          "created_at": "2026-06-01T17:32:00.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "The surge in popularity in leveraged/inverse $MU Micron ETFs has seen it surge to the top of the leveraged single-stick ETF list jumping $3.1bn last week alone (which is as much as the AUM of leveraged/inverse ETF outside of TSLA and NVDA) to $7.55bn.",
+          "tweet_url": "https://x.com/neilksethi/status/2061492470287061172",
+          "images": [
+            "https://pbs.twimg.com/media/HJvdG__XUAAzMWa.jpg"
+          ],
+          "created_at": "2026-06-01T16:58:00.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "$IGV now positive on the year.",
+          "tweet_url": "https://x.com/neilksethi/status/2061474099814101140",
+          "images": [
+            "https://pbs.twimg.com/media/HJvQI3kXwAAmorS.png"
+          ],
+          "created_at": "2026-06-01T15:45:00.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "The % of manufacturing GDP that contracted fell sharply to just 2% (from 19% in April and 16% in March), while the share in strong contraction (PMI at or below 45, “a good barometer of overall manufacturing weakness”) also remained at 2% (same as April, down from 4% in March and well below 43% in Dec). \n\n16 of 18 industries overall expanded (up from 13 in Apr, same as March) led by printing, textile mills and nonmetallic minerals, while just one contracted (Wood Products).\n\nBut prices remained above 80 for a second month for the first time since April 2022. For a third straight month zero industries reported declining prices (16 reported higher prices), and no commodities appeared on the down list.",
+          "tweet_url": "https://x.com/neilksethi/status/2061470324441657436",
+          "images": [
+            "https://pbs.twimg.com/media/HJvM9AQWsAMJ9ag.jpg"
+          ],
+          "created_at": "2026-06-01T15:30:00.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "ISM US Manufacturing PMI - May 2026\nISM manufacturing PMI accelerates to 4-year high with improving production, new orders, and employment with just 2% of manufacturing GDP contracting, but prices remain 2nd highest since 2022.\n\nhttps://t.co/CajtWGUnSV",
+          "tweet_url": "https://x.com/neilksethi/status/2061465172678488389",
+          "images": [
+            "https://pbs.twimg.com/media/HJvLiJpXMAA3Dsk.png",
+            "https://pbs.twimg.com/media/HJvLlO4WQAAKhpR.jpg",
+            "https://pbs.twimg.com/media/HJvLmMtWwAA382A.jpg",
+            "https://pbs.twimg.com/media/HJvLo-tWoAEv8W6.jpg"
+          ],
+          "created_at": "2026-06-01T15:09:31.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Goldman — risk appetite extreme, term premium compressed, easing conditions GDP tailwind, Q2 at +1.9%",
+      "items": [
+        {
+          "author_username": "MikeZaccardi",
+          "text": "GS Risk Appetite Indicator is in extreme territory",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061587598909276432",
+          "images": [
+            "https://pbs.twimg.com/media/HJw6_yaXsAAEmMr.png"
+          ],
+          "created_at": "2026-06-01T23:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "MikeZaccardi",
+          "text": "GS: The recent bond rally was led by flatter real rate curves and lower front-end inflation",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061580060037886432",
+          "images": [
+            "https://pbs.twimg.com/media/HJw0I0-W0AAJZ3r.png"
+          ],
+          "created_at": "2026-06-01T22:46:03.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "MikeZaccardi",
+          "text": "GS: Easing financial conditions providing a meaningful GDP boost",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061576276553486795",
+          "images": [
+            "https://pbs.twimg.com/media/HJwwsrtXoAEFl6M.png"
+          ],
+          "created_at": "2026-06-01T22:31:01.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "MikeZaccardi",
+          "text": "GS Trimmed Core Inflation hovering just under 2.2% for the US and Euro Area",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061573183271022807",
+          "images": [
+            "https://pbs.twimg.com/media/HJwt0h9XQAEEJcP.png"
+          ],
+          "created_at": "2026-06-01T22:18:43.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "MikeZaccardi",
+          "text": "Post-ISM & Construction Spending from GS \"We lowered our Q2 GDP tracking estimate by 0.1pp to +1.9%\"",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061503718726549695",
+          "images": [
+            "https://pbs.twimg.com/media/HJvutNEWgAErwKk.png",
+            "https://pbs.twimg.com/media/HJvutTOWUAANp_J.png"
+          ],
+          "created_at": "2026-06-01T17:42:42.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "Goldman notes the drop in 10yr Treasury yields has mostly been through term premium (the extra risk for carrying duration vs overnight rates) but says that may have run its course:\n\nThe long-end yield move has largely shown up as a compression in Treasury term premium, with only modest contribution from the expectations component of yields (Exhibit 1).\n\n That dynamic that has seen the yield curve move steadily flatter through the course of the month despite the back and forth in outright yield levels. While hawkish Fed communication has reinforced the curve shift, we think that the argument for continued long-end outperformance looks more challenging... We think a meaningful extension of the yield move would likely need to incorporate some shift in the distribution of risks around the Fed path.",
+          "tweet_url": "https://x.com/neilksethi/status/2061484243679649991",
+          "images": [
+            "https://pbs.twimg.com/media/HJvc_qwXUAACDR0.png"
+          ],
+          "created_at": "2026-06-01T16:25:18.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "BofA — global equity breadth at 52-week low, 30% of stocks outperforming ACWI",
+      "items": [
+        {
+          "author_username": "MikeZaccardi",
+          "text": "Global equity breadth just hit a 52wk low $ACWI\n\nLast 12 months, 30% stocks outperformed the index BofA",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061508326781833545",
+          "images": [
+            "https://pbs.twimg.com/media/HJvy5hvWoAAqpVD.png"
+          ],
+          "created_at": "2026-06-01T18:01:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Deutsche Bank — financials sector positioning at 9th-percentile historic lows",
+      "items": [
+        {
+          "author_username": "neilksethi",
+          "text": "DB: Financials positioning is at the 9th percentile after hitting the least since 2021 earlier this month.",
+          "tweet_url": "https://x.com/neilksethi/status/2061522920837410867",
+          "images": [
+            "https://pbs.twimg.com/media/HJqzANuWMAI0u4T.png"
+          ],
+          "created_at": "2026-06-01T18:59:00.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ],
+  "banks": [
+    {
+      "bank": "Goldman",
+      "theme": "GS — risk appetite in extreme territory, bond term premium compression, easing financial conditions GDP tailwind",
+      "items": [
+        {
+          "author_username": "MikeZaccardi",
+          "text": "GS Risk Appetite Indicator is in extreme territory",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061587598909276432",
+          "images": [
+            "https://pbs.twimg.com/media/HJw6_yaXsAAEmMr.png"
+          ],
+          "created_at": "2026-06-01T23:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "MikeZaccardi",
+          "text": "GS: The recent bond rally was led by flatter real rate curves and lower front-end inflation",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061580060037886432",
+          "images": [
+            "https://pbs.twimg.com/media/HJw0I0-W0AAJZ3r.png"
+          ],
+          "created_at": "2026-06-01T22:46:03.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "MikeZaccardi",
+          "text": "GS: Easing financial conditions providing a meaningful GDP boost",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061576276553486795",
+          "images": [
+            "https://pbs.twimg.com/media/HJwwsrtXoAEFl6M.png"
+          ],
+          "created_at": "2026-06-01T22:31:01.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "MikeZaccardi",
+          "text": "GS Trimmed Core Inflation hovering just under 2.2% for the US and Euro Area",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061573183271022807",
+          "images": [
+            "https://pbs.twimg.com/media/HJwt0h9XQAEEJcP.png"
+          ],
+          "created_at": "2026-06-01T22:18:43.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "MikeZaccardi",
+          "text": "Post-ISM & Construction Spending from GS \"We lowered our Q2 GDP tracking estimate by 0.1pp to +1.9%\"",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061503718726549695",
+          "images": [
+            "https://pbs.twimg.com/media/HJvutNEWgAErwKk.png",
+            "https://pbs.twimg.com/media/HJvutTOWUAANp_J.png"
+          ],
+          "created_at": "2026-06-01T17:42:42.000Z",
+          "relayers": []
+        },
+        {
+          "author_username": "neilksethi",
+          "text": "Goldman notes the drop in 10yr Treasury yields has mostly been through term premium (the extra risk for carrying duration vs overnight rates) but says that may have run its course:\n\nThe long-end yield move has largely shown up as a compression in Treasury term premium, with only modest contribution from the expectations component of yields (Exhibit 1).\n\n That dynamic that has seen the yield curve move steadily flatter through the course of the month despite the back and forth in outright yield levels. While hawkish Fed communication has reinforced the curve shift, we think that the argument for continued long-end outperformance looks more challenging... We think a meaningful extension of the yield move would likely need to incorporate some shift in the distribution of risks around the Fed path.",
+          "tweet_url": "https://x.com/neilksethi/status/2061484243679649991",
+          "images": [
+            "https://pbs.twimg.com/media/HJvc_qwXUAACDR0.png"
+          ],
+          "created_at": "2026-06-01T16:25:18.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "BofA",
+      "theme": "BofA — global equity breadth at 52-week low, 30% of stocks outperforming ACWI over past 12 months",
+      "items": [
+        {
+          "author_username": "MikeZaccardi",
+          "text": "Global equity breadth just hit a 52wk low $ACWI\n\nLast 12 months, 30% stocks outperformed the index BofA",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061508326781833545",
+          "images": [
+            "https://pbs.twimg.com/media/HJvy5hvWoAAqpVD.png"
+          ],
+          "created_at": "2026-06-01T18:01:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Deutsche",
+      "theme": "Deutsche Bank — financials sector positioning at 9th percentile, historically light since 2021",
+      "items": [
+        {
+          "author_username": "neilksethi",
+          "text": "DB: Financials positioning is at the 9th percentile after hitting the least since 2021 earlier this month.",
+          "tweet_url": "https://x.com/neilksethi/status/2061522920837410867",
+          "images": [
+            "https://pbs.twimg.com/media/HJqzANuWMAI0u4T.png"
+          ],
+          "created_at": "2026-06-01T18:59:00.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
