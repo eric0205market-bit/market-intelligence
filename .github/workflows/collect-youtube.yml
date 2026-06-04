@@ -1,0 +1,88 @@
+name: Collect YouTube
+
+on:
+  schedule:
+    # 09:00 UTC daily. Deliberately clear of the other collectors so they never
+    # contend for main: twitter 05:30/17:30, institutional 06:00 Sun,
+    # research-pdfs 07:00 Sun.
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+    inputs:
+      max_channels:
+        description: 'Process only the first N channels (spike test). Blank = all.'
+        required: false
+        default: ''
+      channels:
+        description: 'Restrict to comma-separated slugs/name substrings (spike). Blank = all.'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Dry run: fetch + summarize but do NOT commit (transcript spike).'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # yt-dlp listing + per-video metadata + subtitle fetch for up to ~60 videos.
+    # Cap defensively so a throttled/blocking YouTube can't burn the whole day.
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install yt-dlp (+ impersonation) and transcript fallback
+        # curl_cffi gives yt-dlp browser impersonation, which materially reduces
+        # YouTube blocking of subtitle fetches from cloud (Actions) IPs.
+        # youtube-transcript-api is the tier-3 transcript fallback.
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "yt-dlp[default]" curl_cffi youtube-transcript-api
+          yt-dlp --version
+
+      - name: Collect YouTube transcripts
+        run: |
+          FLAGS=""
+          if [ -n "${{ github.event.inputs.max_channels }}" ]; then
+            FLAGS="$FLAGS --max-channels ${{ github.event.inputs.max_channels }}"
+          fi
+          if [ -n "${{ github.event.inputs.channels }}" ]; then
+            FLAGS="$FLAGS --channels ${{ github.event.inputs.channels }}"
+          fi
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            FLAGS="$FLAGS --dry-run"
+          fi
+          echo "Running: collect_youtube.py $FLAGS"
+          python3 scripts/collect_youtube.py $FLAGS
+
+      - name: Commit data to main
+        # Same direct-to-main pattern as collect-twitter.yml / collect-institutional.yml:
+        # pushes made by Actions with the default GITHUB_TOKEN do NOT re-trigger
+        # workflows, so a claude/** -> merge-to-main hop would silently never fire.
+        # Committing straight to main removes that dependency. Only raw transcripts
+        # + the seen-state are staged (Phase 1 has no reports/dashboard). A dry-run
+        # writes nothing to these paths, so this step is a no-op for spike runs.
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git checkout main 2>/dev/null || git checkout -b main
+          git add raw/youtube state/youtube_seen.json
+          if git diff --cached --quiet; then
+            echo "No new YouTube data to commit"
+            exit 0
+          fi
+          git commit -m "data: youtube collection $(date -u '+%Y-%m-%d %H:%M')"
+          for i in 1 2 3; do
+            git push origin main && break
+            git pull --rebase origin main
+          done

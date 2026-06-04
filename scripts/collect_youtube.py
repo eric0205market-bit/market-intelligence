@@ -1,0 +1,514 @@
+#!/usr/bin/env python3
+"""YouTube/Podcasts Collector — Phase 1: collection only.
+
+Daily collector for a pilot set of YouTube channels / playlists. For each
+source it lists recent uploads (yt-dlp, no API key), fetches the transcript of
+each NEW video, and writes one raw JSON per video plus a per-channel seen-state
+so videos are never re-fetched. NO LLM, NO summarization, NO report — that is
+deliberately out of scope for Phase 1 (see BUILD_BRIEF).
+
+This is a deterministic sibling to the other collectors in this repo
+(scripts/collect_twitter.py, collect_institutional.py, collect_research_pdfs.py)
+and follows their conventions: REPO_ROOT-relative paths, a timestamped log(),
+raw output under raw/<source>/, a run summary, and a workflow that commits the
+results straight to main.
+
+WINDOW / DEDUP (BUILD_BRIEF):
+  * State: state/youtube_seen.json — per channel slug, the set of already-seen
+    video ids (+ last run / last upload seen).
+  * First ever run for a channel: only fetch uploads within the last
+    `first_run_window_days` (config, default 7). This avoids pulling history.
+  * Subsequent runs: fetch uploads NOT in the seen set, restricted to the last
+    ~14 days, so a newly-added channel can't backfill its whole history.
+  * Safety caps: <= MAX_NEW_PER_CHANNEL new videos/channel/run, <= MAX_NEW_TOTAL
+    per run.
+  * Listings are newest-first, so once we hit an upload older than the window we
+    mark it (and everything past it) seen and stop scanning that channel — old
+    videos are skipped permanently, never re-examined.
+
+TRANSCRIPTS (BUILD_BRIEF order):
+  1. yt-dlp manual subtitles (--write-subs)         -> source "manual"
+  2. yt-dlp auto subtitles    (--write-auto-subs)   -> source "auto"
+  3. youtube-transcript-api fallback                -> source "auto"/"manual"
+  A video with no obtainable transcript is STILL written, with
+  transcript_available=false / transcript=null, so we keep a record and don't
+  retry it forever.
+
+CLOUD-IP NOTE: YouTube frequently throttles transcript/subtitle fetching from
+cloud IPs (GitHub Actions runners). yt-dlp impersonation (curl_cffi) materially
+helps; the workflow installs it. The per-channel "ZERO transcripts" list in the
+run summary is the early-warning signal for blocked channels.
+
+Run:
+    python3 scripts/collect_youtube.py                       # full daily run
+    python3 scripts/collect_youtube.py --max-channels 3 --dry-run   # spike test
+    python3 scripts/collect_youtube.py --channels cnbc,wealthion    # subset
+"""
+import argparse
+import datetime
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+# --- Paths ------------------------------------------------------------------
+REPO_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PATH = REPO_ROOT / "config" / "youtube_sources_pilot.json"
+STATE_PATH = REPO_ROOT / "state" / "youtube_seen.json"
+RAW_ROOT = REPO_ROOT / "raw" / "youtube"
+RUNLOG_DIR = RAW_ROOT / "_runlog"
+
+# --- Tunables ---------------------------------------------------------------
+DEFAULT_FIRST_RUN_WINDOW_DAYS = 7    # first-ever run per channel (config wins)
+STEADY_WINDOW_DAYS = 14              # guard so newly-added channels can't backfill
+MAX_NEW_PER_CHANNEL = 10            # safety cap (BUILD_BRIEF)
+MAX_NEW_TOTAL = 60                  # safety cap (BUILD_BRIEF)
+LIST_LIMIT = 25                    # how many recent uploads to flat-list per source
+SHORT_MAX_SECONDS = 20 * 60        # <20min = "short", >=20min = "long" (tag only)
+YTDLP_TIMEOUT = 120                # per yt-dlp subprocess (s)
+# Browser impersonation dramatically reduces YouTube blocking from cloud IPs;
+# requires the curl_cffi extra (installed by the workflow). Harmless if absent.
+IMPERSONATE = ["--extractor-args", "youtube:player_client=default,web_safari"]
+SUB_LANGS_MANUAL = "en,en-US,en-GB,en-CA,en-AU,en-IE"
+SUB_LANGS_AUTO = "en,en-US,en-GB"
+
+
+def log(msg):
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S")
+    print(f"[{ts}] {msg}", flush=True)
+
+
+def slugify(name):
+    s = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    return s or "channel"
+
+
+def handle_from_source(source, vtype):
+    """Human-friendly @handle (channels) or playlist id (playlists) for output."""
+    if vtype == "playlist":
+        qs = parse_qs(urlparse(source).query)
+        return (qs.get("list") or [""])[0]
+    m = re.search(r"/(@[^/?#]+)", source)
+    if m:
+        return m.group(1)
+    return source
+
+
+# --- yt-dlp plumbing --------------------------------------------------------
+def run_ytdlp(args, capture=True, timeout=YTDLP_TIMEOUT):
+    """Invoke yt-dlp. Returns (returncode, stdout, stderr). Never raises."""
+    cmd = ["yt-dlp", "--ignore-config", "--no-warnings", "--no-progress"] + args
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=capture, text=True, timeout=timeout,
+        )
+        return proc.returncode, (proc.stdout or ""), (proc.stderr or "")
+    except subprocess.TimeoutExpired:
+        return 124, "", "timeout"
+    except FileNotFoundError:
+        log("FATAL: yt-dlp not found on PATH")
+        sys.exit(2)
+
+
+def list_source(source, vtype, limit):
+    """Flat-list the most recent uploads (newest-first). Returns [{id,title}]."""
+    url = source
+    if vtype == "channel":
+        # Target the uploads ("Videos") tab so we don't pull Shorts/Live tabs.
+        base = url.rstrip("/")
+        if not base.endswith("/videos"):
+            url = base + "/videos"
+    args = [
+        "--flat-playlist", "--playlist-end", str(limit),
+        "--print", "%(id)s\t%(title)s",
+    ] + IMPERSONATE + [url]
+    rc, out, err = run_ytdlp(args)
+    entries = []
+    for line in out.splitlines():
+        if "\t" not in line:
+            continue
+        vid, title = line.split("\t", 1)
+        vid = vid.strip()
+        if vid and vid != "NA":
+            entries.append({"id": vid, "title": title.strip()})
+    if not entries and rc != 0:
+        log(f"    list failed (rc={rc}): {err.strip().splitlines()[-1] if err.strip() else 'no output'}")
+    return entries
+
+
+def get_metadata(video_id):
+    """dump-json (simulate, no file writes) -> dict of the fields we need, or None."""
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    args = ["--skip-download", "--dump-json"] + IMPERSONATE + [url]
+    rc, out, err = run_ytdlp(args)
+    if rc != 0 or not out.strip():
+        return None
+    try:
+        d = json.loads(out.splitlines()[0])
+    except (json.JSONDecodeError, IndexError):
+        return None
+    return {
+        "title": d.get("title") or "",
+        "upload_date": d.get("upload_date"),          # YYYYMMDD or None
+        "duration": d.get("duration"),                # seconds or None
+        "manual_langs": list((d.get("subtitles") or {}).keys()),
+        "auto_langs": list((d.get("automatic_captions") or {}).keys()),
+    }
+
+
+def _pick_langs(available, wanted_csv):
+    """Intersect available caption langs with our wanted list, preserving order;
+    fall back to any en* the video actually has."""
+    avail = set(available)
+    picked = [w for w in wanted_csv.split(",") if w in avail]
+    if picked:
+        return picked
+    en_like = [a for a in available if a.lower().startswith("en")
+               and not a.lower().endswith("-orig")]
+    return en_like[:1] or ([a for a in available if a.lower().startswith("en")][:1])
+
+
+def _vtt_to_text(vtt_path):
+    """Strip a VTT subtitle file to clean plain text (handles auto-caption
+    rolling duplicates and inline <...> word-timing tags)."""
+    try:
+        raw = Path(vtt_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    lines_out = []
+    last = None
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if s == "WEBVTT" or s.startswith(("Kind:", "Language:", "NOTE", "STYLE")):
+            continue
+        if "-->" in s:                       # timestamp / cue-timing line
+            continue
+        if re.fullmatch(r"\d+", s):          # numeric cue index
+            continue
+        s = re.sub(r"<[^>]+>", "", s)        # inline word-timing tags
+        s = re.sub(r"\{[^}]+\}", "", s)      # rare cue styling
+        s = re.sub(r"\s+", " ", s).strip()
+        if not s or s == last:               # collapse rolling auto-caption dups
+            continue
+        lines_out.append(s)
+        last = s
+    return " ".join(lines_out).strip()
+
+
+def _download_subs(video_id, mode, langs, tmpdir):
+    """Download subtitles with yt-dlp. mode in {'manual','auto'}. Returns the
+    best plain-text transcript found, or ''."""
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    flag = "--write-subs" if mode == "manual" else "--write-auto-subs"
+    out_tmpl = str(Path(tmpdir) / "%(id)s.%(ext)s")
+    args = [
+        "--skip-download", flag,
+        "--sub-langs", ",".join(langs), "--sub-format", "vtt",
+        "--convert-subs", "vtt", "-o", out_tmpl,
+    ] + IMPERSONATE + [url]
+    run_ytdlp(args, capture=True)
+    # Prefer a clean lang file over the ASR "-orig" variant (which is word-tagged).
+    vtts = sorted(Path(tmpdir).glob(f"{video_id}*.vtt"),
+                  key=lambda p: ("-orig" in p.name, len(p.name)))
+    for vtt in vtts:
+        text = _vtt_to_text(vtt)
+        if text:
+            return text
+    return ""
+
+
+def fetch_transcript(video_id, meta):
+    """Try manual subs -> auto subs -> youtube-transcript-api.
+    Returns (text|None, source|None, language)."""
+    tmpdir = tempfile.mkdtemp(prefix="ytsub_")
+    try:
+        # 1. manual subtitles
+        if meta.get("manual_langs"):
+            langs = _pick_langs(meta["manual_langs"], SUB_LANGS_MANUAL)
+            if langs:
+                text = _download_subs(video_id, "manual", langs, tmpdir)
+                if text:
+                    return text, "manual", langs[0]
+        # 2. auto subtitles
+        if meta.get("auto_langs"):
+            langs = _pick_langs(meta["auto_langs"], SUB_LANGS_AUTO)
+            if langs:
+                text = _download_subs(video_id, "auto", langs, tmpdir)
+                if text:
+                    return text, "auto", langs[0]
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+    # 3. youtube-transcript-api fallback
+    text, source, lang = _transcript_api_fallback(video_id)
+    if text:
+        return text, source, lang
+    return None, None, "en"
+
+
+def _transcript_api_fallback(video_id):
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+    except ImportError:
+        return None, None, "en"
+    try:
+        listing = YouTubeTranscriptApi.list_transcripts(video_id)
+        tr = None
+        for cand in listing:                         # prefer English
+            if cand.language_code.lower().startswith("en"):
+                tr = cand
+                break
+        if tr is None:
+            tr = next(iter(listing), None)
+        if tr is None:
+            return None, None, "en"
+        chunks = tr.fetch()
+        text = re.sub(r"\s+", " ",
+                      " ".join(c["text"] for c in chunks if c.get("text"))).strip()
+        if not text:
+            return None, None, "en"
+        source = "auto" if getattr(tr, "is_generated", True) else "manual"
+        return text, source, tr.language_code
+    except Exception as exc:                          # noqa: BLE001 — best-effort
+        log(f"    transcript-api fallback failed: {type(exc).__name__}")
+        return None, None, "en"
+
+
+# --- State ------------------------------------------------------------------
+def load_state():
+    if STATE_PATH.exists():
+        try:
+            return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            log("WARNING: state file unreadable; starting fresh")
+    return {"channels": {}}
+
+
+def save_state(state, dry_run):
+    if dry_run:
+        return
+    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    STATE_PATH.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+# --- Core -------------------------------------------------------------------
+def fmt_window_start(days):
+    start = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
+    return start.strftime("%Y%m%d")
+
+
+def length_bucket(duration):
+    if not duration:
+        return "long"        # unknown duration -> treat as long (conservative tag)
+    return "short" if duration < SHORT_MAX_SECONDS else "long"
+
+
+def upload_date_iso(yyyymmdd):
+    if yyyymmdd and re.fullmatch(r"\d{8}", yyyymmdd):
+        return f"{yyyymmdd[0:4]}-{yyyymmdd[4:6]}-{yyyymmdd[6:8]}"
+    return None
+
+
+def process_channel(ch, state, args, total_so_far):
+    """Returns (records, stats_dict). records are written by the caller."""
+    name = ch["name"]
+    source = ch["source"]
+    vtype = ch.get("type", "channel")
+    section = ch.get("section", "")
+    slug = slugify(name)
+    handle = handle_from_source(source, vtype)
+
+    ch_state = state["channels"].get(slug, {"seen_ids": []})
+    seen = set(ch_state.get("seen_ids", []))
+    first_run = not ch_state.get("seen_ids") and "last_run" not in ch_state
+
+    window_days = (args.first_run_window_days if first_run else STEADY_WINDOW_DAYS)
+    window_start = fmt_window_start(window_days)
+
+    log(f"  {name} [{slug}] — {'first run' if first_run else 'steady'}, "
+        f"window {window_days}d")
+
+    listed = list_source(source, vtype, LIST_LIMIT)
+    if not listed:
+        return [], {"slug": slug, "name": name, "found": 0, "ok": 0, "missing": 0,
+                    "error": "no listing (channel resolve/list failed)"}
+
+    new_candidates = [v for v in listed if v["id"] not in seen]
+    records = []
+    ok = missing = 0
+    newest_upload = ch_state.get("last_upload_date")
+
+    for idx, v in enumerate(new_candidates):
+        vid = v["id"]
+        # global + per-channel caps
+        if len(records) >= MAX_NEW_PER_CHANNEL or total_so_far + len(records) >= MAX_NEW_TOTAL:
+            # remaining new candidates: leave UNSEEN (they are newer than the cap
+            # boundary; we just ran out of budget this run and want them next run)
+            break
+
+        meta = get_metadata(vid)
+        if meta is None:
+            log(f"    {vid}: metadata unavailable — skipping (marked seen)")
+            seen.add(vid)
+            continue
+
+        upd = meta.get("upload_date")
+        if upd and upd < window_start:
+            # newest-first listing => this and everything after is out of window.
+            # Mark the whole tail seen so old videos are never re-examined.
+            for tail in new_candidates[idx:]:
+                seen.add(tail["id"])
+            log(f"    {vid}: older than window ({upd}) — stop; tail marked seen")
+            break
+
+        text, src, lang = fetch_transcript(vid, meta)
+        available = bool(text)
+        iso = upload_date_iso(upd)
+        record = {
+            "video_id": vid,
+            "url": f"https://www.youtube.com/watch?v={vid}",
+            "channel_name": name,
+            "channel_handle": handle,
+            "section": section,
+            "video_title": meta.get("title") or v.get("title") or "",
+            "upload_date": iso,
+            "duration_seconds": meta.get("duration") or 0,
+            "length_bucket": length_bucket(meta.get("duration")),
+            "transcript_available": available,
+            "transcript_source": src,
+            "language": lang,
+            "transcript": text if available else None,
+            "fetched_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+        records.append(record)
+        seen.add(vid)
+        if available:
+            ok += 1
+            log(f"    {vid}: transcript OK ({src}, {len(text)} chars) — {record['video_title'][:60]}")
+        else:
+            missing += 1
+            log(f"    {vid}: NO transcript — {record['video_title'][:60]}")
+        if iso and (newest_upload is None or iso > newest_upload):
+            newest_upload = iso
+
+    # persist channel state
+    ch_state["seen_ids"] = sorted(seen)
+    ch_state["last_run"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    if newest_upload:
+        ch_state["last_upload_date"] = newest_upload
+    state["channels"][slug] = ch_state
+
+    return records, {"slug": slug, "name": name, "found": len(records),
+                     "ok": ok, "missing": missing, "error": None}
+
+
+def write_records(records, dry_run):
+    base = Path(tempfile.gettempdir()) / "youtube_dryrun" if dry_run else RAW_ROOT
+    for r in records:
+        slug = slugify(r["channel_name"])
+        out_dir = base / slug
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / f"{r['video_id']}.json").write_text(
+            json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def write_runlog(stats, totals, dry_run):
+    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    lines = [f"# YouTube collector run — {today}", ""]
+    lines.append(f"- Channels processed: {totals['channels']}")
+    lines.append(f"- Videos found (new): {totals['found']}")
+    lines.append(f"- Transcripts OK: {totals['ok']}")
+    lines.append(f"- Transcripts missing: {totals['missing']}")
+    hit = (100.0 * totals["ok"] / totals["found"]) if totals["found"] else 0.0
+    lines.append(f"- Transcript hit-rate: {hit:.0f}%")
+    lines.append("")
+    lines.append("## Per channel")
+    lines.append("")
+    lines.append("| Channel | Found | OK | Missing | Note |")
+    lines.append("|---|---|---|---|---|")
+    for s in stats:
+        note = s["error"] or ""
+        lines.append(f"| {s['name']} | {s['found']} | {s['ok']} | {s['missing']} | {note} |")
+    zero = [s["name"] for s in stats
+            if (s["found"] > 0 and s["ok"] == 0) or s["error"]]
+    lines.append("")
+    lines.append("## Channels returning ZERO transcripts (watch these)")
+    lines.append("")
+    if zero:
+        for n in zero:
+            lines.append(f"- {n}")
+    else:
+        lines.append("- (none)")
+    body = "\n".join(lines) + "\n"
+
+    base = Path(tempfile.gettempdir()) / "youtube_dryrun" / "_runlog" if dry_run else RUNLOG_DIR
+    base.mkdir(parents=True, exist_ok=True)
+    (base / f"{today}.md").write_text(body, encoding="utf-8")
+    print("\n" + body, flush=True)
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description="YouTube/Podcasts collector (Phase 1)")
+    p.add_argument("--max-channels", type=int, default=None,
+                   help="process only the first N channels (spike test)")
+    p.add_argument("--channels", default=None,
+                   help="comma-separated slugs or name substrings to restrict to")
+    p.add_argument("--first-run-window-days", type=int, default=None,
+                   help="override config first_run_window_days")
+    p.add_argument("--dry-run", action="store_true",
+                   help="write outputs under the temp dir, do not touch repo/state")
+    return p.parse_args()
+
+
+def main():
+    args = parse_args()
+    config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    if args.first_run_window_days is None:
+        args.first_run_window_days = config.get(
+            "first_run_window_days", DEFAULT_FIRST_RUN_WINDOW_DAYS)
+
+    channels = config.get("channels", [])
+    if args.channels:
+        wanted = [w.strip().lower() for w in args.channels.split(",") if w.strip()]
+        channels = [c for c in channels
+                    if slugify(c["name"]) in wanted
+                    or any(w in c["name"].lower() for w in wanted)]
+    if args.max_channels:
+        channels = channels[:args.max_channels]
+
+    mode = "DRY-RUN" if args.dry_run else "LIVE"
+    log(f"YouTube collector [{mode}] — {len(channels)} source(s), "
+        f"first-run window {args.first_run_window_days}d")
+
+    state = load_state()
+    all_stats = []
+    totals = {"channels": 0, "found": 0, "ok": 0, "missing": 0}
+
+    for ch in channels:
+        if totals["found"] >= MAX_NEW_TOTAL:
+            log(f"  Global cap {MAX_NEW_TOTAL} reached — stopping.")
+            break
+        records, stats = process_channel(ch, state, args, totals["found"])
+        write_records(records, args.dry_run)
+        all_stats.append(stats)
+        totals["channels"] += 1
+        totals["found"] += stats["found"]
+        totals["ok"] += stats["ok"]
+        totals["missing"] += stats["missing"]
+
+    save_state(state, args.dry_run)
+    write_runlog(all_stats, totals, args.dry_run)
+    log(f"Done. {totals['ok']}/{totals['found']} transcripts OK "
+        f"across {totals['channels']} channel(s).")
+
+
+if __name__ == "__main__":
+    main()
