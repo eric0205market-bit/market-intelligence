@@ -147,6 +147,8 @@ def get_metadata(video_id):
     args = ["--skip-download", "--dump-json"] + IMPERSONATE + [url]
     rc, out, err = run_ytdlp(args)
     if rc != 0 or not out.strip():
+        if err.strip():
+            log(f"      yt-dlp: {err.strip().splitlines()[-1][:160]}")
         return None
     try:
         d = json.loads(out.splitlines()[0])
@@ -159,6 +161,44 @@ def get_metadata(video_id):
         "manual_langs": list((d.get("subtitles") or {}).keys()),
         "auto_langs": list((d.get("automatic_captions") or {}).keys()),
     }
+
+
+def diagnose(config):
+    """Cloud-IP probe: YouTube frequently blocks per-video extraction from
+    datacenter (Actions) IPs even when flat listing works. Try several yt-dlp
+    player clients against one freshly-listed video and report which (if any)
+    return metadata + subtitle info. Run from inside Actions to find a working
+    transport before committing to a transport in the steady collector."""
+    clients = ["tv", "ios", "mweb", "web_safari", "android", "default", "web"]
+    # Get one real, current video id from the first source (listing works).
+    first = config["channels"][0]
+    listed = list_source(first["source"], first.get("type", "channel"), 1)
+    if not listed:
+        log("DIAGNOSE: could not even list a video — listing is blocked too.")
+        return
+    vid = listed[0]["id"]
+    url = f"https://www.youtube.com/watch?v={vid}"
+    log(f"DIAGNOSE: probing player clients on {vid} ({first['name']})")
+    log(f"DIAGNOSE: yt-dlp {subprocess.run(['yt-dlp','--version'],capture_output=True,text=True).stdout.strip()}")
+    print("", flush=True)
+    print(f"| player_client | result | detail |", flush=True)
+    print(f"|---|---|---|", flush=True)
+    for c in clients:
+        args = ["--skip-download", "--dump-json",
+                "--extractor-args", f"youtube:player_client={c}", url]
+        rc, out, err = run_ytdlp(args, timeout=90)
+        if rc == 0 and out.strip():
+            try:
+                d = json.loads(out.splitlines()[0])
+                man = len(d.get("subtitles") or {})
+                auto = len(d.get("automatic_captions") or {})
+                print(f"| {c} | OK | dur={d.get('duration')} subs(man={man},auto={auto}) |",
+                      flush=True)
+                continue
+            except (json.JSONDecodeError, IndexError):
+                pass
+        last = err.strip().splitlines()[-1][:120] if err.strip() else f"rc={rc}"
+        print(f"| {c} | FAIL | {last} |", flush=True)
 
 
 def _pick_langs(available, wanted_csv):
@@ -465,12 +505,17 @@ def parse_args():
                    help="override config first_run_window_days")
     p.add_argument("--dry-run", action="store_true",
                    help="write outputs under the temp dir, do not touch repo/state")
+    p.add_argument("--diagnose", action="store_true",
+                   help="cloud-IP probe: test yt-dlp player clients and exit")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
     config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    if args.diagnose:
+        diagnose(config)
+        return
     if args.first_run_window_days is None:
         args.first_run_window_days = config.get(
             "first_run_window_days", DEFAULT_FIRST_RUN_WINDOW_DAYS)
