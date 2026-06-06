@@ -30,8 +30,9 @@ REPORT_TYPES = {
     "research_pdfs":    {"label": "Bank PDF",       "color": "#D97706", "icon": "📑", "group": "research"},
     "institutional":    {"label": "Institutional Research", "color": "#EA580C", "icon": "🏛️", "group": "research"},
     "research":         {"label": "Newsletters & News", "color": "#06B6D4", "icon": "🔬", "group": "pulse"},
+    # KNOWLEDGE group — long-form transcript insight digests.
+    "youtube":          {"label": "YouTube / Podcasts", "color": "#059669", "icon": "▶️", "group": "knowledge"},
     # Future sources (no reports yet — appear automatically once files land):
-    "youtube":          {"label": "YouTube",          "color": "#dc2626", "icon": "▶️", "group": "pulse"},
     "podcasts":         {"label": "Podcasts",         "color": "#8b5cf6", "icon": "🎙️", "group": "research"},
     "concepts":         {"label": "Concepts",         "color": "#0891b2", "icon": "💡", "group": "research"},
     "tech":             {"label": "Tech",             "color": "#475569", "icon": "⚙️", "group": "research"},
@@ -47,6 +48,7 @@ FALLBACK_ICON = "📄"
 GROUPS = [
     {"key": "pulse",    "label": "⚡ PULSE",    "caption": "· intraday · 2–3×/day"},
     {"key": "research", "label": "📑 RESEARCH", "caption": "· daily to weekly"},
+    {"key": "knowledge", "label": "🧠 KNOWLEDGE", "caption": "· deep-dives · transcripts & insights", "color": "#059669"},
 ]
 DEFAULT_GROUP = "pulse"
 
@@ -150,10 +152,13 @@ def render_top_section(reports):
                     f'<div class="cards">{cards}</div></div>'
                 )
         if rows:
+            gcolor = group.get("color")
+            grp_style = f' style="border-top:3px solid {gcolor}"' if gcolor else ""
+            lbl_style = f' style="color:{gcolor}"' if gcolor else ""
             blocks.append(
-                f'<div class="group">'
+                f'<div class="group"{grp_style}>'
                 f'<div class="group-head">'
-                f'<span class="group-label">{group["label"]}</span>'
+                f'<span class="group-label"{lbl_style}>{group["label"]}</span>'
                 f'<span class="group-caption">{group["caption"]}</span></div>'
                 f'{"".join(rows)}</div>'
             )

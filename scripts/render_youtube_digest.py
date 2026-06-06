@@ -23,7 +23,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 PROCESSED = REPO / "processed" / "youtube"
-OUT_DIR = REPO / "youtube_digests"
+OUT_DIR = REPO / "reports"
 
 TYPE_COLORS = {
     "thesis": "#6366f1", "prediction": "#0ea5e9", "framework": "#8b5cf6",
@@ -167,7 +167,7 @@ def main():
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>YouTube Insights Digest — {date}</title>
 <style>
-:root {{ --bg:#0b1020; --card:#141a2e; --card2:#1b2238; --tx:#e6e9f2; --mut:#9aa4bf; --br:#283150; --acc:#6366f1; }}
+:root {{ --bg:#f6f7fb; --card:#ffffff; --card2:#f1f3f9; --tx:#1b2230; --mut:#5b6478; --br:#dde2ec; --acc:#4f46e5; }}
 * {{ box-sizing:border-box; }}
 body {{ margin:0; background:var(--bg); color:var(--tx); font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }}
 .wrap {{ max-width:1040px; margin:0 auto; padding:28px 20px 80px; }}
@@ -181,33 +181,34 @@ header.top .sub {{ color:var(--mut); font-size:14px; }}
 .ch-h {{ font-size:18px; margin:0 0 12px; padding:8px 0; border-bottom:1px solid var(--br); position:sticky; top:0; background:var(--bg); z-index:2; }}
 .ch-meta {{ color:var(--mut); font-size:13px; font-weight:400; }}
 .ep {{ background:var(--card); border:1px solid var(--br); border-radius:12px; margin:0 0 12px; overflow:hidden; }}
-.ep[open] {{ border-color:#3a4a72; }}
+.ep {{ box-shadow:0 1px 2px rgba(16,24,40,.05); }}
+.ep[open] {{ border-color:#c7d2fe; }}
 .ep-sum {{ cursor:pointer; padding:14px 16px; display:flex; justify-content:space-between; align-items:flex-start; gap:14px; list-style:none; }}
 .ep-sum::-webkit-details-marker {{ display:none; }}
 .ep-title {{ font-weight:600; }}
 .ep-badges {{ display:flex; gap:6px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end; }}
 .ep-body {{ padding:4px 16px 18px; border-top:1px solid var(--br); }}
 .ep-link {{ margin:10px 0 4px; }}
-.ep-link a, a {{ color:#8ab4ff; text-decoration:none; }}
+.ep-link a, a {{ color:#2563eb; text-decoration:none; }}
 .ep-link a:hover {{ text-decoration:underline; }}
-.ep-gist {{ color:#cfd6ea; font-size:14.5px; margin:10px 0 12px; padding:10px 12px; background:var(--card2); border-left:3px solid var(--acc); border-radius:6px; }}
+.ep-gist {{ color:#334155; font-size:14.5px; margin:10px 0 12px; padding:10px 12px; background:var(--card2); border-left:3px solid var(--acc); border-radius:6px; }}
 .ep-themes-row {{ display:flex; flex-wrap:wrap; gap:6px; margin:0 0 14px; }}
 .theme {{ margin:16px 0; }}
-.theme-h {{ font-size:15px; font-weight:700; color:#fff; margin:0 0 8px; }}
+.theme-h {{ font-size:15px; font-weight:700; color:#0f172a; margin:0 0 8px; }}
 .theme-n {{ background:var(--acc); color:#fff; border-radius:20px; padding:1px 8px; font-size:12px; margin-left:4px; }}
-.insight {{ border:1px solid var(--br); border-radius:10px; padding:11px 13px; margin:8px 0; background:var(--card2); }}
-.i-claim {{ font-weight:550; margin-bottom:7px; }}
+.insight {{ border:1px solid var(--br); border-radius:10px; padding:11px 13px; margin:8px 0; background:#fbfcfe; }}
+.i-claim {{ font-weight:600; margin-bottom:7px; color:#161c28; }}
 .i-meta {{ display:flex; flex-wrap:wrap; gap:5px; margin-bottom:6px; }}
-.chip {{ display:inline-block; font-size:11.5px; padding:2px 8px; border-radius:20px; border:1px solid var(--br); background:#0e1426; color:var(--mut); white-space:nowrap; }}
-.chip-spk {{ color:#cbd5e1; }}
-.chip-ent {{ background:#0e1426; color:#93c5fd; border-color:#1d4ed855; }}
-.i-sowhat {{ font-size:13.5px; color:#d7deef; margin:5px 0; }}
-.i-sowhat b {{ color:#a5b4fc; }}
-.i-quote {{ font-size:13.5px; color:#b9c2da; font-style:italic; margin-top:6px; padding-left:10px; border-left:2px solid var(--br); }}
-.ts {{ font-style:normal; color:#fca5a5; font-size:12px; margin-left:4px; white-space:nowrap; }}
+.chip {{ display:inline-block; font-size:11.5px; padding:2px 8px; border-radius:20px; border:1px solid var(--br); background:#eef1f8; color:var(--mut); white-space:nowrap; }}
+.chip-spk {{ color:#475569; }}
+.chip-ent {{ background:#eef2ff; color:#3730a3; border-color:#c7d2fe; }}
+.i-sowhat {{ font-size:13.5px; color:#334155; margin:5px 0; }}
+.i-sowhat b {{ color:#4f46e5; }}
+.i-quote {{ font-size:13.5px; color:#475569; font-style:italic; margin-top:6px; padding-left:10px; border-left:2px solid var(--br); }}
+.ts {{ font-style:normal; color:#b91c1c; font-size:12px; margin-left:4px; white-space:nowrap; }}
 a.ts:hover {{ text-decoration:underline; }}
-.i-para {{ border-left-color:#7c5e1a; }}
-.para-tag {{ font-style:normal; font-size:10.5px; color:#d9b35b; border:1px solid #7c5e1a; border-radius:10px; padding:0 6px; margin-left:4px; cursor:help; }}
+.i-para {{ border-left-color:#d97706; }}
+.para-tag {{ font-style:normal; font-size:10.5px; color:#92660e; background:#fef6e3; border:1px solid #e6cf94; border-radius:10px; padding:0 6px; margin-left:4px; cursor:help; }}
 .legend {{ color:var(--mut); font-size:12px; margin-top:8px; }}
 .legend code {{ background:var(--card2); padding:1px 5px; border-radius:4px; }}
 </style></head><body><div class="wrap">
@@ -225,7 +226,9 @@ a.ts:hover {{ text-decoration:underline; }}
 </div></body></html>"""
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out = OUT_DIR / f"{date}.html"
+    # Filename prefix "youtube_" matches the dashboard's report discovery
+    # (update_dashboard.py FILENAME_RE: <type>_YYYY-MM-DD.html).
+    out = OUT_DIR / f"youtube_{date}.html"
     out.write_text(page, encoding="utf-8")
     print(f"Wrote {out}  ({len(recs)} episodes, {total_ins} insights, {len(by_ch)} channels)")
 
