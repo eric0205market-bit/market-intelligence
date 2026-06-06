@@ -242,9 +242,71 @@ def _vtt_to_text(vtt_path):
     return " ".join(lines_out).strip()
 
 
+def _ts_to_sec(ts):
+    """'00:01:02.345' / '01:02.345' / '00:01:02,345' -> float seconds."""
+    parts = ts.strip().replace(",", ".").split(":")
+    try:
+        sec = 0.0
+        for p in parts:
+            sec = sec * 60 + float(p)
+        return round(sec, 3)
+    except ValueError:
+        return None
+
+
+def _parse_vtt_segments(vtt_path):
+    """Parse a VTT into timed cues: [{start, end, text}] (seconds). Collapses the
+    rolling-duplicate cues that auto-captions emit, keeping the earliest start
+    and extending the end. This preserves cue timing for later timestamp mapping."""
+    try:
+        raw = Path(vtt_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    segs = []
+    cur_start = cur_end = None
+    cur_lines = []
+
+    def flush():
+        nonlocal cur_lines, cur_start, cur_end
+        if cur_start is not None and cur_lines:
+            txt = re.sub(r"\s+", " ", " ".join(cur_lines)).strip()
+            if txt:
+                segs.append({"start": cur_start, "end": cur_end, "text": txt})
+        cur_lines = []
+
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if s == "WEBVTT" or s.startswith(("Kind:", "Language:", "NOTE", "STYLE")):
+            continue
+        if "-->" in s:
+            flush()
+            m = re.match(r"([\d:.,]+)\s*-->\s*([\d:.,]+)", s)
+            cur_start = _ts_to_sec(m.group(1)) if m else None
+            cur_end = _ts_to_sec(m.group(2)) if m else None
+            continue
+        if re.fullmatch(r"\d+", s):                # numeric cue index
+            continue
+        s = re.sub(r"<[^>]+>", "", s)              # inline word-timing tags
+        s = re.sub(r"\{[^}]+\}", "", s)            # cue styling
+        s = re.sub(r"\s+", " ", s).strip()
+        if s:
+            cur_lines.append(s)
+    flush()
+    # collapse consecutive identical cue texts (rolling auto-captions)
+    deduped = []
+    for seg in segs:
+        if deduped and deduped[-1]["text"] == seg["text"]:
+            deduped[-1]["end"] = seg["end"]
+            continue
+        deduped.append(seg)
+    return deduped
+
+
 def _download_subs(video_id, mode, langs, tmpdir):
-    """Download subtitles with yt-dlp. mode in {'manual','auto'}. Returns the
-    best plain-text transcript found, or ''."""
+    """Download subtitles with yt-dlp. mode in {'manual','auto'}. Returns
+    (plain_text, segments) for the best vtt found, or ('', [])."""
     url = f"https://www.youtube.com/watch?v={video_id}"
     flag = "--write-subs" if mode == "manual" else "--write-auto-subs"
     out_tmpl = str(Path(tmpdir) / "%(id)s.%(ext)s")
@@ -260,44 +322,45 @@ def _download_subs(video_id, mode, langs, tmpdir):
     for vtt in vtts:
         text = _vtt_to_text(vtt)
         if text:
-            return text
-    return ""
+            return text, _parse_vtt_segments(vtt)
+    return "", []
 
 
 def fetch_transcript(video_id, meta):
     """Try manual subs -> auto subs -> youtube-transcript-api.
-    Returns (text|None, source|None, language)."""
+    Returns (text|None, segments(list), source|None, language). `segments` are
+    timed caption cues [{start,end,text}] (seconds) — empty if none obtained."""
     tmpdir = tempfile.mkdtemp(prefix="ytsub_")
     try:
         # 1. manual subtitles
         if meta.get("manual_langs"):
             langs = _pick_langs(meta["manual_langs"], SUB_LANGS_MANUAL)
             if langs:
-                text = _download_subs(video_id, "manual", langs, tmpdir)
+                text, segs = _download_subs(video_id, "manual", langs, tmpdir)
                 if text:
-                    return text, "manual", langs[0]
+                    return text, segs, "manual", langs[0]
         # 2. auto subtitles
         if meta.get("auto_langs"):
             langs = _pick_langs(meta["auto_langs"], SUB_LANGS_AUTO)
             if langs:
-                text = _download_subs(video_id, "auto", langs, tmpdir)
+                text, segs = _download_subs(video_id, "auto", langs, tmpdir)
                 if text:
-                    return text, "auto", langs[0]
+                    return text, segs, "auto", langs[0]
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     # 3. youtube-transcript-api fallback
-    text, source, lang = _transcript_api_fallback(video_id)
+    text, segs, source, lang = _transcript_api_fallback(video_id)
     if text:
-        return text, source, lang
-    return None, None, "en"
+        return text, segs, source, lang
+    return None, [], None, "en"
 
 
 def _transcript_api_fallback(video_id):
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
     except ImportError:
-        return None, None, "en"
+        return None, [], None, "en"
     try:
         listing = YouTubeTranscriptApi.list_transcripts(video_id)
         tr = None
@@ -308,17 +371,25 @@ def _transcript_api_fallback(video_id):
         if tr is None:
             tr = next(iter(listing), None)
         if tr is None:
-            return None, None, "en"
+            return None, [], None, "en"
         chunks = tr.fetch()
-        text = re.sub(r"\s+", " ",
-                      " ".join(c["text"] for c in chunks if c.get("text"))).strip()
+        segs = []
+        for c in chunks:
+            t = (c.get("text") or "").strip()
+            if not t:
+                continue
+            start = round(float(c.get("start", 0.0)), 3)
+            segs.append({"start": start,
+                         "end": round(start + float(c.get("duration", 0.0)), 3),
+                         "text": re.sub(r"\s+", " ", t)})
+        text = re.sub(r"\s+", " ", " ".join(s["text"] for s in segs)).strip()
         if not text:
-            return None, None, "en"
+            return None, [], None, "en"
         source = "auto" if getattr(tr, "is_generated", True) else "manual"
-        return text, source, tr.language_code
+        return text, segs, source, tr.language_code
     except Exception as exc:                          # noqa: BLE001 — best-effort
         log(f"    transcript-api fallback failed: {type(exc).__name__}")
-        return None, None, "en"
+        return None, [], None, "en"
 
 
 # --- State ------------------------------------------------------------------
@@ -409,7 +480,17 @@ def process_channel(ch, state, args, total_so_far):
             log(f"    {vid}: older than window ({upd}) — stop; tail marked seen")
             break
 
-        text, src, lang = fetch_transcript(vid, meta)
+        # Minimum-duration gate (config: minimum_duration_minutes). Skip shorter
+        # uploads and mark them seen so they are never re-checked. Unknown
+        # duration (0) is kept rather than dropped.
+        dur = meta.get("duration") or 0
+        min_dur = getattr(args, "min_duration_seconds", 0)
+        if min_dur and dur and dur < min_dur:
+            log(f"    {vid}: {dur // 60}m < min {min_dur // 60}m — skip (marked seen)")
+            seen.add(vid)
+            continue
+
+        text, segments, src, lang = fetch_transcript(vid, meta)
         available = bool(text)
         iso = upload_date_iso(upd)
         record = {
@@ -418,6 +499,7 @@ def process_channel(ch, state, args, total_so_far):
             "channel_name": name,
             "channel_handle": handle,
             "section": section,
+            "tier": ch.get("tier"),
             "video_title": meta.get("title") or v.get("title") or "",
             "upload_date": iso,
             "duration_seconds": meta.get("duration") or 0,
@@ -426,6 +508,10 @@ def process_channel(ch, state, args, total_so_far):
             "transcript_source": src,
             "language": lang,
             "transcript": text if available else None,
+            # Timed caption cues kept alongside the plain transcript so future
+            # records carry timing for timestamp mapping.
+            "timestamps_available": bool(segments),
+            "transcript_segments": segments if available else None,
             "fetched_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
         records.append(record)
@@ -519,6 +605,7 @@ def main():
     if args.first_run_window_days is None:
         args.first_run_window_days = config.get(
             "first_run_window_days", DEFAULT_FIRST_RUN_WINDOW_DAYS)
+    args.min_duration_seconds = int(config.get("minimum_duration_minutes", 0)) * 60
 
     channels = config.get("channels", [])
     if args.channels:
