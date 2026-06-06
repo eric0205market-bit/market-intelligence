@@ -32,7 +32,7 @@ REPO = Path(__file__).resolve().parent.parent
 RAW_DIR = REPO / "raw" / "youtube"
 PROC_DIR = REPO / "processed" / "youtube"
 CONFIG = REPO / "config" / "youtube_sources_pilot.json"
-RUBRIC = REPO / "prompts" / "youtube_extraction.md"
+RUBRIC = REPO / "routines" / "routine_youtube.md"
 
 DUP_DURATION_TOLERANCE = 3   # seconds; same channel + ~same length => re-upload
 
