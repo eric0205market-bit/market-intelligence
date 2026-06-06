@@ -226,8 +226,11 @@ def cmd_postprocess(args):
 
 def cmd_publish(args):
     date = args.date or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
-    subprocess.run([sys.executable, str(REPO / "scripts" / "render_youtube_digest.py"),
-                    "--date", date], check=True)
+    render_cmd = [sys.executable, str(REPO / "scripts" / "render_youtube_digest.py"),
+                  "--date", date]
+    if args.ids:                       # NEW-ONLY: restrict to this run's episodes
+        render_cmd += ["--ids", args.ids]
+    subprocess.run(render_cmd, check=True)
     subprocess.run([sys.executable, str(REPO / "scripts" / "update_dashboard.py")], check=True)
     bb = REPO / "scripts" / "inject_back_button.py"
     if bb.exists():
@@ -242,7 +245,8 @@ def main():
     a = sub.add_parser("tier"); a.add_argument("id"); a.set_defaults(fn=cmd_tier)
     a = sub.add_parser("prompt"); a.add_argument("id"); a.set_defaults(fn=cmd_prompt)
     a = sub.add_parser("postprocess"); a.add_argument("ids", nargs="+"); a.set_defaults(fn=cmd_postprocess)
-    a = sub.add_parser("publish"); a.add_argument("--date", default=None); a.set_defaults(fn=cmd_publish)
+    a = sub.add_parser("publish"); a.add_argument("--date", default=None)
+    a.add_argument("--ids", default=None); a.set_defaults(fn=cmd_publish)
     args = p.parse_args()
     args.fn(args)
 

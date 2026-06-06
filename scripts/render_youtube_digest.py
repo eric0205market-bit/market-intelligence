@@ -130,7 +130,13 @@ def render_episode(rec):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=None)
+    # NEW-ONLY per-day reports (like the other routines): restrict the digest to
+    # a specific run's episodes. --ids is the explicit list; with neither flag we
+    # fall back to records whose processed_at date == --date. (No more cumulative.)
+    ap.add_argument("--ids", default=None,
+                    help="comma-separated video_ids to include (this run's new episodes)")
     args = ap.parse_args()
+    date = args.date or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 
     files = sorted(glob.glob(str(PROCESSED / "*.json")))
     recs = []
@@ -139,6 +145,13 @@ def main():
             recs.append(json.load(open(f)))
         except (json.JSONDecodeError, OSError) as e:
             print(f"WARN: skip {f}: {e}")
+
+    if args.ids:
+        wanted = {x.strip() for x in args.ids.split(",") if x.strip()}
+        recs = [r for r in recs if r.get("video_id") in wanted]
+    else:
+        recs = [r for r in recs if (r.get("processed_at") or "")[:10] == date]
+
     # group by channel
     by_ch = defaultdict(list)
     for r in recs:
@@ -148,7 +161,6 @@ def main():
 
     total_ins = sum(sum(len(t.get("insights", []) or []) for t in (r.get("themes") or []))
                     for r in recs)
-    date = args.date or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 
     blocks = []
     for ch in sorted(by_ch, key=lambda c: -sum(

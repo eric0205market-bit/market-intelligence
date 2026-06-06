@@ -125,8 +125,9 @@ fi
 # --- timestamps + quote_verified, then render + dashboard -------------------
 echo "=== post-processing ${#extracted[@]} record(s) (timestamps + quote_verified) ==="
 "$PY" scripts/youtube_extract.py postprocess "${extracted[@]}"
-echo "=== rendering digest + rebuilding dashboard ==="
-"$PY" scripts/youtube_extract.py publish --date "$DATE"
+echo "=== rendering digest (NEW-ONLY: this run's episodes) + rebuilding dashboard ==="
+ids_csv=$(IFS=,; echo "${extracted[*]}")
+"$PY" scripts/youtube_extract.py publish --date "$DATE" --ids "$ids_csv"
 
 # --- commit & push ----------------------------------------------------------
 git config user.name "github-actions" >/dev/null 2>&1
