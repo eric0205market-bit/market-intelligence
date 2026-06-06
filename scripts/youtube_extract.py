@@ -146,7 +146,13 @@ def cmd_prompt(args):
         "video_id", "url", "channel_name", "channel_handle", "section",
         "video_title", "upload_date", "duration_seconds", "length_bucket", "language")}
     meta["tier"] = tier_for(d)
-    rubric = RUBRIC.read_text(encoding="utf-8")
+    # Embed only the STEP 2 PROCESS rubric — the per-episode extraction spec —
+    # not the routine's STEP 0/1/3 (worklist / fetch / publish+git), which would
+    # be noise in a single-episode headless prompt. Falls back to the whole file.
+    full = RUBRIC.read_text(encoding="utf-8")
+    m = re.search(r"## STEP 2: PROCESS\s*(.*?)(?:\n## STEP 3|\Z)", full, re.S)
+    rubric = m.group(1).strip() if m else full
+    print("Extract investor insights from ONE podcast episode, following this rubric exactly:\n")
     print(rubric)
     print("\n---\nRAW METADATA (copy these fields into your output):\n")
     print(json.dumps(meta, ensure_ascii=False, indent=2))
