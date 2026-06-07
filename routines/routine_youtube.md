@@ -22,6 +22,8 @@ Each raw record carries the metadata (channel_name, channel_handle, section, tie
 
 You are an investor-grade analyst mining a podcast/interview transcript for EDGE. Read the WHOLE transcript, then emit one JSON object. Be faithful: every claim must be supported by the transcript. Do not invent facts, tickers, or quotes.
 
+**ONE TRANSCRIPT ONLY.** Work EXCLUSIVELY from the single raw record you are given. Every claim, entity, and quote must come from THIS episode's transcript — never from another episode, a sibling task running in parallel, the video title alone, or your own prior knowledge. If the transcript's content seems to contradict its title, extract from the actual TRANSCRIPT CONTENT (and note the discrepancy in the gist) — but never substitute a different episode's material. A record whose `top_entities` don't actually appear in its own transcript is QUARANTINED by the publish guard (STEP 3) and not published.
+
 ### INPUT
 One raw record per episode (STEP 1): metadata + the full `transcript` (+ `transcript_segments` when present). One episode → one JSON object written to `processed/youtube/<video_id>.json`.
 
@@ -83,6 +85,7 @@ Output ONLY the JSON object (valid, parseable, UTF-8) — no markdown fences, no
 ### VERIFICATION CHECKLIST (do AFTER drafting each episode, before writing its JSON)
 - [ ] Does every `claim` stand alone WITHOUT the video title for context? If any reads as "He's bullish", rewrite it with the subject + specifics.
 - [ ] No fabricated facts, tickers, or quotes — every claim is supported by the transcript?
+- [ ] Do the `top_entities` (and the gist's subject) actually appear in THIS transcript? If the record is about a different topic than the transcript you read, you used the wrong source — re-read the correct transcript and redo it. (The publish guard quarantines any record whose entities are <~40% present in its transcript.)
 - [ ] Every `quote` is either verbatim from the transcript or `null` (no paraphrase dressed as a quote)?
 - [ ] Is the insight count scaled to the episode's length & density (exhaustive on long/dense, light on thin) and NOT padded?
 - [ ] Are theme names short and specific (not generic buckets)?
@@ -91,7 +94,9 @@ Output ONLY the JSON object (valid, parseable, UTF-8) — no markdown fences, no
 If any check fails, fix it before writing the episode's JSON.
 
 ## STEP 3 — PUBLISH (final step — after every episode's JSON is written and its checklist passes)
-The repository is already cloned and you are at its root (the local dedicated clone). The deterministic publish maps each quote to a caption cue time from the raw record's stored `transcript_segments`, sets `quote_verified`, renders the NEW-ONLY `reports/youtube_<date>.html` (only this run's episodes, like the other routines), rebuilds the dashboard (KNOWLEDGE → YouTube / Podcasts), and commits & pushes to `main`. Run exactly this from the repo root, with `IDS` set to the comma-separated video_ids you processed this run:
+The repository is already cloned and you are at its root (the local dedicated clone). The deterministic publish maps each quote to a caption cue time from the raw record's stored `transcript_segments`, sets `quote_verified`, runs the **entity-presence guard**, renders the NEW-ONLY `reports/youtube_<date>.html` (only this run's episodes, like the other routines), rebuilds the dashboard (KNOWLEDGE → YouTube / Podcasts), and commits & pushes to `main`. Run exactly this from the repo root, with `IDS` set to the comma-separated video_ids you processed this run:
+
+**ENTITY-PRESENCE GUARD (automatic, every run).** Before rendering, `youtube_extract.py publish` checks every candidate record: what fraction of its `top_entities` actually appear in its raw transcript. Any record below ~40% is treated as a topic mismatch (a hallucinated or cross-contaminated extraction), is **QUARANTINED — excluded from the report, NOT auto-deleted** — logged to `processed/youtube/_quarantine.json`, and printed in the publish output. If the publish step prints a quarantine warning: STOP, report the quarantined id(s) to the owner, re-extract them from their correct raw transcript, and re-publish. Never hand-edit a record to pass the guard.
 
 ```
 IDS=<id1,id2,...>                       # the episodes you just wrote

@@ -234,12 +234,78 @@ def cmd_postprocess(args):
     print(f"postprocess totals: quotes={total} verified={verified} timestamped={mapped}")
 
 
+ENTITY_PRESENCE_MIN = 0.40   # a record whose top_entities are <40% present in its
+                             # raw transcript is treated as a topic mismatch
+                             # (hallucinated/cross-contaminated extraction) and quarantined.
+ENTITY_CHECK_MIN_N = 4       # only judge records with >=4 entities (small lists are noisy)
+QUARANTINE_LOG = PROC_DIR / "_quarantine.json"
+
+
+def entity_presence(rec, raw):
+    """Fraction of a record's top_entities that actually appear in its raw transcript.
+    Returns (fraction, n_entities). The exact integrity check that caught the one
+    hallucinated extraction: a real record sits well above 0.40; a fabricated one ~0."""
+    tx = _norm((raw or {}).get("transcript"))
+    seg = " ".join(s.get("text", "") for s in ((raw or {}).get("transcript_segments") or []))
+    body = (tx + " " + _norm(seg)).strip()
+    ents = [e for e in (rec.get("top_entities") or []) if e]
+    if not body or len(ents) < ENTITY_CHECK_MIN_N:
+        return 1.0, len(ents)            # can't judge -> pass through
+    def present(e):
+        ws = [w for w in _norm(e).split() if len(w) > 3]
+        return any(w in body for w in ws) if ws else (_norm(e) in body)
+    hit = sum(1 for e in ents if present(e))
+    return hit / len(ents), len(ents)
+
+
 def cmd_publish(args):
     date = args.date or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+
+    # Candidate ids for this publish (explicit --ids, else everything processed today).
+    if args.ids:
+        cand = [x.strip() for x in args.ids.split(",") if x.strip()]
+    else:
+        cand = []
+        for f in sorted(glob.glob(str(PROC_DIR / "*.json"))):
+            try:
+                d = json.load(open(f))
+            except (json.JSONDecodeError, OSError):
+                continue
+            if (d.get("processed_at") or "")[:10] == date:
+                cand.append(d["video_id"])
+
+    # --- ENTITY-PRESENCE GUARD: quarantine topic-mismatch records, never publish them ---
+    ok, quarantined = [], []
+    for vid in cand:
+        pf = PROC_DIR / f"{vid}.json"
+        if not pf.exists():
+            continue
+        try:
+            rec = json.load(open(pf))
+        except (json.JSONDecodeError, OSError):
+            continue
+        frac, n = entity_presence(rec, _raw_by_id(vid))
+        if frac < ENTITY_PRESENCE_MIN:
+            quarantined.append({"video_id": vid, "title": rec.get("video_title"),
+                                "entity_presence": round(frac, 3), "n_entities": n})
+        else:
+            ok.append(vid)
+
+    if quarantined:
+        print("\n⚠ QUARANTINED (entity presence < %d%% — NOT published, kept for your review):"
+              % int(ENTITY_PRESENCE_MIN * 100))
+        for q in quarantined:
+            print(f"    ✗ [{q['video_id']}] {q['title']}  "
+                  f"({int(q['entity_presence']*100)}% of {q['n_entities']} entities in transcript)")
+        QUARANTINE_LOG.write_text(json.dumps(quarantined, ensure_ascii=False, indent=2),
+                                  encoding="utf-8")
+        print(f"    -> logged to {QUARANTINE_LOG}. Re-extract these from their raw transcripts, "
+              f"then re-publish. (Processed files left in place; not deleted.)\n")
+
     render_cmd = [sys.executable, str(REPO / "scripts" / "render_youtube_digest.py"),
                   "--date", date]
-    if args.ids:                       # NEW-ONLY: restrict to this run's episodes
-        render_cmd += [f"--ids={args.ids}"]   # = form: safe for ids starting with '-'
+    # Always pass an explicit (guard-filtered) id list so quarantined records can't render.
+    render_cmd += [f"--ids={','.join(ok)}"]
     subprocess.run(render_cmd, check=True)
     subprocess.run([sys.executable, str(REPO / "scripts" / "update_dashboard.py")], check=True)
     bb = REPO / "scripts" / "inject_back_button.py"
