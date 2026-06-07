@@ -223,6 +223,9 @@ def cmd_postprocess(args):
             print(f"  postprocess: {vid} — no processed file, skip"); continue
         d = json.load(open(pf))
         raw = _raw_by_id(vid) or {}
+        has_segs = bool(raw.get("transcript_segments"))   # records collected before
+        # the timed-caption feature have none; their timestamps came from the one-time
+        # re-fetch backfill and must be PRESERVED (never clobbered to null here).
         seg_body, starts, times = _build_index(raw.get("transcript_segments"))
         # Verify quotes against BOTH the flat transcript AND the timed segments.
         # Some raw records have a flat `transcript` that is out of sync with
@@ -246,17 +249,22 @@ def cmd_postprocess(args):
                 ins["quote_verified"] = ok
                 if ok:
                     verified += 1
-                # timestamp: map first fragment to a cue start (only if segments exist)
-                ts = None
-                if times:
+                # timestamp: map first fragment to a cue start — ONLY when this record
+                # has stored segments. With no segments, leave the existing timestamp
+                # untouched (do not clobber a backfilled one to null).
+                if has_segs:
+                    ts = None
                     frag = frags[0] if frags else _norm(q)[:40]
                     pos = seg_body.find(frag) if len(frag) >= 12 else -1
                     if pos >= 0:
                         i = bisect.bisect_right(starts, pos) - 1
                         ts = _fmt_ts(times[max(i, 0)])
                         mapped += 1; any_ts = True
-                ins["timestamp"] = ts
-        d["timestamps_available"] = any_ts
+                    ins["timestamp"] = ts
+                elif ins.get("timestamp"):
+                    mapped += 1                       # preserved existing timestamp
+        if has_segs:                                  # only recompute the flag when we
+            d["timestamps_available"] = any_ts        # actually (re)mapped from segments
         json.dump(d, open(pf, "w"), ensure_ascii=False, indent=2)
         print(f"  postprocess: {vid} — quotes verified, timestamps {'set' if any_ts else 'none (no segments)'}")
     print(f"postprocess totals: quotes={total} verified={verified} timestamped={mapped}")
