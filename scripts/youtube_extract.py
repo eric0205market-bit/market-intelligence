@@ -195,8 +195,12 @@ def cmd_postprocess(args):
             print(f"  postprocess: {vid} — no processed file, skip"); continue
         d = json.load(open(pf))
         raw = _raw_by_id(vid) or {}
-        body_tx = _norm(raw.get("transcript"))
         seg_body, starts, times = _build_index(raw.get("transcript_segments"))
+        # Verify quotes against BOTH the flat transcript AND the timed segments.
+        # Some raw records have a flat `transcript` that is out of sync with
+        # `transcript_segments`; the segments are the authoritative caption text,
+        # so a quote sourced from them must still verify.
+        body_tx = (_norm(raw.get("transcript")) + " " + seg_body).strip()
         any_ts = False
         for t in d.get("themes", []):
             for ins in t.get("insights", []):
