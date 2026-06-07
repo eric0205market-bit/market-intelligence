@@ -174,10 +174,38 @@ def _fragments(quote):
     return [n for n in (_norm(p) for p in re.split(r"\.\.\.|…|\[.*?\]", quote)) if len(n) >= 15]
 
 
+def _collapse_rolling(segs):
+    """Collapse rolling-window caption overlap (same logic as the collector) so
+    stored segments read as clean prose — lifts quote/timestamp matching for the
+    existing corpus without re-collecting. Manual (non-rolling) cues are unchanged."""
+    out = []
+    prev = []
+    for s in segs or []:
+        words = (s.get("text") or "").split()
+        if not words:
+            continue
+        lp = [w.lower() for w in prev]
+        lw = [w.lower() for w in words]
+        k = 0
+        for j in range(min(len(lp), len(lw)), 0, -1):
+            if lp[-j:] == lw[:j]:
+                k = j
+                break
+        new = words[k:]
+        if not new:
+            if out:
+                out[-1]["end"] = s.get("end")
+            prev = words
+            continue
+        out.append({"start": s.get("start"), "end": s.get("end"), "text": " ".join(new)})
+        prev = words
+    return out
+
+
 def _build_index(segments):
     import bisect  # noqa: F401 (used by caller)
     starts, times, parts, cur = [], [], [], 0
-    for seg in segments or []:
+    for seg in _collapse_rolling(segments):
         nt = _norm(seg.get("text"))
         if not nt:
             continue

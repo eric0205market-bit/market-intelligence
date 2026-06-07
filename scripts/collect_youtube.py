@@ -294,14 +294,37 @@ def _parse_vtt_segments(vtt_path):
         if s:
             cur_lines.append(s)
     flush()
-    # collapse consecutive identical cue texts (rolling auto-captions)
-    deduped = []
-    for seg in segs:
-        if deduped and deduped[-1]["text"] == seg["text"]:
-            deduped[-1]["end"] = seg["end"]
+    return _collapse_rolling(segs)
+
+
+def _collapse_rolling(segs):
+    """Collapse rolling-window caption overlap so segment text reads as clean
+    prose (matching the de-duplicated flat transcript). Auto-captions emit cues
+    like 'A B C' then 'A B C D E' then 'D E F'; this keeps only each cue's NEW
+    words while preserving that cue's start time. Non-rolling (manual) captions,
+    where consecutive cues don't overlap, are left unchanged."""
+    out = []
+    prev = []
+    for s in segs:
+        words = (s.get("text") or "").split()
+        if not words:
             continue
-        deduped.append(seg)
-    return deduped
+        lp = [w.lower() for w in prev]
+        lw = [w.lower() for w in words]
+        k = 0
+        for j in range(min(len(lp), len(lw)), 0, -1):     # longest suffix==prefix overlap
+            if lp[-j:] == lw[:j]:
+                k = j
+                break
+        new = words[k:]
+        if not new:                                       # fully contained -> extend end
+            if out:
+                out[-1]["end"] = s.get("end")
+            prev = words
+            continue
+        out.append({"start": s.get("start"), "end": s.get("end"), "text": " ".join(new)})
+        prev = words
+    return out
 
 
 def _download_subs(video_id, mode, langs, tmpdir):
