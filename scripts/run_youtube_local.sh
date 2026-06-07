@@ -46,29 +46,38 @@ log "=== YouTube local run starting in $REPO_DIR ==="
 git config user.name  "github-actions"   >/dev/null 2>&1
 git config user.email "actions@github.com" >/dev/null 2>&1
 
-# Sync to the authoritative main, discarding any local state in this clone.
+# Ensure we are on main, but NEVER `git reset --hard`: this script may run in the
+# browsable working copy, so it must not discard the user's edits. We touch ONLY
+# our own output paths (raw/youtube, state) and integrate via rebase --autostash,
+# which parks any unrelated working changes and restores them afterward.
 git fetch origin main --quiet || { log "FATAL: git fetch failed"; exit 1; }
 git checkout main --quiet 2>/dev/null || git checkout -b main --quiet
-git reset --hard origin/main --quiet || { log "FATAL: git reset failed"; exit 1; }
 
 # Collect (writes raw/youtube/** and state/youtube_seen.json). Pass through any
 # extra flags, e.g. --max-channels for a smoke run.
 python3 scripts/collect_youtube.py "$@" 2>&1 | tee -a "$LOG"
 
+# Stage ONLY our outputs and commit them if there are any.
 git add -- raw/youtube state/youtube_seen.json 2>/dev/null || true
 if git diff --cached --quiet; then
   log "No new YouTube data to commit."
-  log "=== done (nothing to commit) ==="
-  exit 0
+else
+  git commit -q -m "data: youtube collection $(date -u '+%Y-%m-%d %H:%M')"
+  log "Committed new collection data."
 fi
 
-git commit -q -m "data: youtube collection $(date -u '+%Y-%m-%d %H:%M')"
+# Integrate latest main and push. --autostash preserves any unrelated edits in
+# the working tree (the browsable copy); no hard reset, ever.
 for i in 1 2 3; do
+  if ! git pull --rebase --autostash origin main --quiet 2>>"$LOG"; then
+    log "pull --rebase failed (attempt $i); aborting rebase and retrying."
+    git rebase --abort 2>/dev/null || true
+    continue
+  fi
   if git push origin main --quiet; then
-    log "Pushed to main."
+    log "Pushed to main (or already up to date)."
     break
   fi
-  log "Push attempt $i failed; rebasing and retrying."
-  git pull --rebase origin main --quiet || true
+  log "Push attempt $i failed; retrying."
 done
 log "=== done ==="
