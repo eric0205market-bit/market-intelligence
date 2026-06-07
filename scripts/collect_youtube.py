@@ -58,7 +58,7 @@ from urllib.parse import parse_qs, urlparse
 
 # --- Paths ------------------------------------------------------------------
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = REPO_ROOT / "config" / "youtube_sources_pilot.json"
+CONFIG_PATH = REPO_ROOT / "config" / "youtube_sources_full.json"
 STATE_PATH = REPO_ROOT / "state" / "youtube_seen.json"
 RAW_ROOT = REPO_ROOT / "raw" / "youtube"
 RUNLOG_DIR = RAW_ROOT / "_runlog"
