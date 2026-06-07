@@ -239,7 +239,7 @@ def cmd_publish(args):
     render_cmd = [sys.executable, str(REPO / "scripts" / "render_youtube_digest.py"),
                   "--date", date]
     if args.ids:                       # NEW-ONLY: restrict to this run's episodes
-        render_cmd += ["--ids", args.ids]
+        render_cmd += [f"--ids={args.ids}"]   # = form: safe for ids starting with '-'
     subprocess.run(render_cmd, check=True)
     subprocess.run([sys.executable, str(REPO / "scripts" / "update_dashboard.py")], check=True)
     bb = REPO / "scripts" / "inject_back_button.py"
