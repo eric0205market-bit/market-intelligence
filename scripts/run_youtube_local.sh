@@ -9,21 +9,21 @@
 # and the results are committed straight to main — the same commit-to-main flow
 # the Actions collectors use.
 #
-# This script is meant to run against a DEDICATED CLONE kept OUTSIDE Dropbox
-# (so Dropbox can't sync .git mid-commit). It always hard-resets to origin/main
-# before collecting, so the clone never diverges. Idempotent and safe to re-run.
+# Runs against the Dropbox working copy (unified repo). Path is resolved
+# relative to this script's location — no hardcoded paths. Working-tree edits
+# are preserved via --autostash; only raw/youtube and state/youtube_seen.json
+# are ever staged or committed. Idempotent and safe to re-run.
 #
 # Schedule it with the launchd plist in this repo (see SETUP below), or invoke
 # it by hand:  bash scripts/run_youtube_local.sh
 #
 # SETUP (one time):
-#   git clone https://github.com/eric0205market-bit/market-intelligence.git \
-#       "$HOME/market-intel-youtube"
 #   # install deps into the python3 the plist uses:
 #   python3 -m pip install --upgrade "yt-dlp[default]" curl_cffi youtube-transcript-api
-#   cp "$HOME/market-intel-youtube/config/com.marketintel.youtube.plist" \
-#       "$HOME/Library/LaunchAgents/"
-#   launchctl load "$HOME/Library/LaunchAgents/com.marketintel.youtube.plist"
+#   cp config/com.marketintel.youtube.plist ~/Library/LaunchAgents/
+#   # edit the plist's ProgramArguments path to this file's absolute location,
+#   # then:
+#   launchctl load ~/Library/LaunchAgents/com.marketintel.youtube.plist
 set -uo pipefail
 
 # Repo root = parent of this script's dir (scripts/..).
