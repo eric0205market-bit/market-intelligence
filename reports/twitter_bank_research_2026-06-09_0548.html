@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER BANK RESEARCH",
+  "collected_at": "2026-06-09T05:23:06Z",
+  "window_days": 4,
+  "freshness_gate": "FRESHNESS GATE PASSED.",
+  "input_stats": {
+    "total_tweets": 60,
+    "considered": 60,
+    "kept": 12,
+    "dropped": 48,
+    "deduped": 0
+  },
+  "date": "TWITTER BANK RESEARCH — 2026-06-09 05:48 UTC",
+  "summary": "Goldman dominated with 9 items: below-consensus May core CPI call (GS: +0.17% vs +0.3% est, +2.79% YoY vs +2.9% est); World Cup tailwinds — hotel prices +1% in June, retail sales +0.3pp peak boost, foreign tourism uplift in June-July; falling 5yr breakevens to under 2.5%; and rising global EPS — ACWI 2027 estimates soaring, trading at 16.2x forward, with forward earnings the main YTD equity driver. GS market-implied US recession probability: only 11%.\n\nCiti Economic Surprise Index hit a fresh high back to Oct 2023 (via Yardeni), consistent with the benign inflation / data-beat theme running through Goldman's CPI calls.\n\nJPMorgan AM (Kelly): S&P 500 companies are shifting to capex-led growth, less shareholder-friendly on capital return. Apollo/Slok: no evidence yet of AI boosting revenues or margins outside the Mag-7.\n\nBy bank: Goldman 9, Citi 2, JPM 1, Yardeni 1, Apollo/Slok 1.",
+  "by_bank_counts": {
+    "Goldman": 9,
+    "Citi": 2,
+    "Yardeni": 1,
+    "JPM": 1,
+    "Apollo/Slok": 1
+  },
+  "topics": [
+    {
+      "topic": "Goldman — World Cup CPI/tourism uplift, below-consensus inflation, rising global EPS",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We expect a 0.17% increase in May core CPI (vs. +0.3% consensus), corresponding to a year-over-year rate of +2.79% (vs. +2.9% consensus). https://t.co/8r8hhfXllp",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064097889576423451",
+          "images": ["https://pbs.twimg.com/media/HKUmF7pWYAEXlGH.png"],
+          "created_at": "2026-06-08T21:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS on CPI: Sharply Higher Hotel Prices in Host Cities Around Match Days Imply a World Cup Boost to Average US Hotel Prices of About 1% in June https://t.co/suFvJUClx1",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064092546540732617",
+          "images": ["https://pbs.twimg.com/media/HKUhO7FXYAM9H7v.png"],
+          "created_at": "2026-06-08T21:09:46.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We Estimate That Spending by Foreign and Domestic World Cup Fans Should Provide a Peak Boost to Retail Sales Growth of 0.3pp in June and to Consumer Spending of 0.05pp in Q2 https://t.co/uiziR1bG1Y",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064092462654611953",
+          "images": ["https://pbs.twimg.com/media/HKUhKBvWgAI4WUq.jpg"],
+          "created_at": "2026-06-08T21:09:26.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: The World Cup Should Provide a Tailwind to Foreign Tourism in the US in June and July https://t.co/CcBxZcZdhr",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064092401707176143",
+          "images": ["https://pbs.twimg.com/media/HKUhGf5WMAAT6E6.png"],
+          "created_at": "2026-06-08T21:09:12.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "11% market-implied US recession chance in the next year GS https://t.co/DBrj69wEwq",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064010263246864401",
+          "images": ["https://pbs.twimg.com/media/HKTWZacXgAATZ4N.png"],
+          "created_at": "2026-06-08T15:42:48.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "5yr breakeven inflation rate has fallen from 2.75% to under 2.5% in recent weeks GS https://t.co/KpYBT9UrmZ",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064010134246801918",
+          "images": ["https://pbs.twimg.com/media/HKTWR52XcAED8S1.png"],
+          "created_at": "2026-06-08T15:42:18.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "$ACWI trades 16.2x out-year earnings GS https://t.co/0uXsnTJ8IS",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2063965688809640164",
+          "images": ["https://pbs.twimg.com/media/HKSt2x1XAAAlcCF.png"],
+          "created_at": "2026-06-08T12:45:41.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "2027 EPS estimates continue soaring $ACWI GS https://t.co/fojQt5dydu",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2063965529870619134",
+          "images": ["https://pbs.twimg.com/media/HKSttldXIAAJ8Ys.png"],
+          "created_at": "2026-06-08T12:45:03.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "12-month forward earnings contributing the most to YTD equity gains GS https://t.co/AZuIPFUGrT",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2063965440313803031",
+          "images": ["https://pbs.twimg.com/media/HKStoYkX0AA7Cs0.png"],
+          "created_at": "2026-06-08T12:44:42.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Citi — Economic Surprise Index at Oct-2023 high; World Cup hotel price boost",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Citi Economic Surprise Index - fresh high back to Oct 2023 @yardeni https://t.co/IIhoLkX1pn",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064085863642919143",
+          "images": ["https://pbs.twimg.com/media/HKUbJ4-WMAAZVol.jpg"],
+          "created_at": "2026-06-08T20:43:13.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS on CPI: Sharply Higher Hotel Prices in Host Cities Around Match Days Imply a World Cup Boost to Average US Hotel Prices of About 1% in June https://t.co/suFvJUClx1",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064092546540732617",
+          "images": ["https://pbs.twimg.com/media/HKUhO7FXYAM9H7v.png"],
+          "created_at": "2026-06-08T21:09:46.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Apollo/Slok — No AI revenue/margin lift visible outside Mag-7",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "No signs that AI is boosting revenues or profit margins outside the Mag 7 \n\nTorsten at Apollo https://t.co/y3pxATLShb",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2063963114056405050",
+          "images": ["https://pbs.twimg.com/media/HKSrg7kXAAE6qEz.jpg"],
+          "created_at": "2026-06-08T12:35:27.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "JPM — JPMAM Kelly: S&P 500 capex shift, less shareholder return",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "JPMAM Kelly: S&P 500 companies are investing for growth... less shareholder-friendly https://t.co/my6ofMLXSP",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2063972752575394097",
+          "images": ["https://pbs.twimg.com/media/HKS0SAWXsAArb57.png"],
+          "created_at": "2026-06-08T13:13:45.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Yardeni — Citi ESI at fresh multi-year high",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Citi Economic Surprise Index - fresh high back to Oct 2023 @yardeni https://t.co/IIhoLkX1pn",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064085863642919143",
+          "images": ["https://pbs.twimg.com/media/HKUbJ4-WMAAZVol.jpg"],
+          "created_at": "2026-06-08T20:43:13.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ],
+  "banks": [
+    {
+      "bank": "Goldman",
+      "theme": "World Cup CPI/tourism uplift, below-consensus inflation, rising global EPS",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We expect a 0.17% increase in May core CPI (vs. +0.3% consensus), corresponding to a year-over-year rate of +2.79% (vs. +2.9% consensus). https://t.co/8r8hhfXllp",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064097889576423451",
+          "images": ["https://pbs.twimg.com/media/HKUmF7pWYAEXlGH.png"],
+          "created_at": "2026-06-08T21:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS on CPI: Sharply Higher Hotel Prices in Host Cities Around Match Days Imply a World Cup Boost to Average US Hotel Prices of About 1% in June https://t.co/suFvJUClx1",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064092546540732617",
+          "images": ["https://pbs.twimg.com/media/HKUhO7FXYAM9H7v.png"],
+          "created_at": "2026-06-08T21:09:46.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We Estimate That Spending by Foreign and Domestic World Cup Fans Should Provide a Peak Boost to Retail Sales Growth of 0.3pp in June and to Consumer Spending of 0.05pp in Q2 https://t.co/uiziR1bG1Y",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064092462654611953",
+          "images": ["https://pbs.twimg.com/media/HKUhKBvWgAI4WUq.jpg"],
+          "created_at": "2026-06-08T21:09:26.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: The World Cup Should Provide a Tailwind to Foreign Tourism in the US in June and July https://t.co/CcBxZcZdhr",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064092401707176143",
+          "images": ["https://pbs.twimg.com/media/HKUhGf5WMAAT6E6.png"],
+          "created_at": "2026-06-08T21:09:12.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "11% market-implied US recession chance in the next year GS https://t.co/DBrj69wEwq",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064010263246864401",
+          "images": ["https://pbs.twimg.com/media/HKTWZacXgAATZ4N.png"],
+          "created_at": "2026-06-08T15:42:48.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "5yr breakeven inflation rate has fallen from 2.75% to under 2.5% in recent weeks GS https://t.co/KpYBT9UrmZ",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064010134246801918",
+          "images": ["https://pbs.twimg.com/media/HKTWR52XcAED8S1.png"],
+          "created_at": "2026-06-08T15:42:18.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "$ACWI trades 16.2x out-year earnings GS https://t.co/0uXsnTJ8IS",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2063965688809640164",
+          "images": ["https://pbs.twimg.com/media/HKSt2x1XAAAlcCF.png"],
+          "created_at": "2026-06-08T12:45:41.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "2027 EPS estimates continue soaring $ACWI GS https://t.co/fojQt5dydu",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2063965529870619134",
+          "images": ["https://pbs.twimg.com/media/HKSttldXIAAJ8Ys.png"],
+          "created_at": "2026-06-08T12:45:03.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "12-month forward earnings contributing the most to YTD equity gains GS https://t.co/AZuIPFUGrT",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2063965440313803031",
+          "images": ["https://pbs.twimg.com/media/HKStoYkX0AA7Cs0.png"],
+          "created_at": "2026-06-08T12:44:42.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Citi",
+      "theme": "Economic Surprise Index at Oct-2023 high; World Cup hotel price boost",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Citi Economic Surprise Index - fresh high back to Oct 2023 @yardeni https://t.co/IIhoLkX1pn",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064085863642919143",
+          "images": ["https://pbs.twimg.com/media/HKUbJ4-WMAAZVol.jpg"],
+          "created_at": "2026-06-08T20:43:13.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS on CPI: Sharply Higher Hotel Prices in Host Cities Around Match Days Imply a World Cup Boost to Average US Hotel Prices of About 1% in June https://t.co/suFvJUClx1",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064092546540732617",
+          "images": ["https://pbs.twimg.com/media/HKUhO7FXYAM9H7v.png"],
+          "created_at": "2026-06-08T21:09:46.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Apollo/Slok",
+      "theme": "No AI revenue/margin lift visible outside Mag-7",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "No signs that AI is boosting revenues or profit margins outside the Mag 7 \n\nTorsten at Apollo https://t.co/y3pxATLShb",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2063963114056405050",
+          "images": ["https://pbs.twimg.com/media/HKSrg7kXAAE6qEz.jpg"],
+          "created_at": "2026-06-08T12:35:27.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "JPM",
+      "theme": "JPMAM Kelly: S&P 500 capex shift, less shareholder return",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "JPMAM Kelly: S&P 500 companies are investing for growth... less shareholder-friendly https://t.co/my6ofMLXSP",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2063972752575394097",
+          "images": ["https://pbs.twimg.com/media/HKS0SAWXsAArb57.png"],
+          "created_at": "2026-06-08T13:13:45.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Yardeni",
+      "theme": "Citi ESI at fresh multi-year high",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Citi Economic Surprise Index - fresh high back to Oct 2023 @yardeni https://t.co/IIhoLkX1pn",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2064085863642919143",
+          "images": ["https://pbs.twimg.com/media/HKUbJ4-WMAAZVol.jpg"],
+          "created_at": "2026-06-08T20:43:13.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  const relayerFooter = (item.relayers && item.relayers.length)
+    ? `\n\nalso carried by: ${item.relayers.map(r => '@' + r).join(', ')}`
+    : '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body + relayerFooter)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const ins = d.input_stats || {};
+  if (ins.total_tweets != null) parts.push(`total <strong>${ins.total_tweets}</strong>`);
+  if (ins.considered != null)   parts.push(`considered <strong>${ins.considered}</strong>`);
+  if (ins.kept != null)         parts.push(`kept <strong>${ins.kept}</strong>`);
+  if (ins.dropped != null)      parts.push(`dropped <strong>${ins.dropped}</strong>`);
+  if (ins.deduped != null)      parts.push(`deduped <strong>${ins.deduped}</strong>`);
+  const topicCount = (d.topics || []).length;
+  parts.push(`banks <strong>${topicCount}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Banks', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
