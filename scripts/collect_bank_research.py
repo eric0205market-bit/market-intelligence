@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import collect_twitter as ct  # noqa: E402 — reuse the existing API client/plumbing
 
-BANK_RESEARCH_ACCOUNTS = ["neilksethi", "MikeZaccardi", "LanceRoberts",
+BANK_RESEARCH_ACCOUNTS = ["neilksethi", "neilksethinew", "MikeZaccardi", "LanceRoberts",
                           "TheChartReport", "HFI_Research", "eliant_capital",
                           "dailychartbook"]
 

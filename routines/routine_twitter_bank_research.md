@@ -20,7 +20,7 @@ If the gate prints `FRESHNESS GATE FAILED` or exits non-zero, **STOP**: do not r
 Read `data/twitter/latest/tweets_bank_research.json` ENTIRELY. Consider only tweets whose `created_at` is within the **last 4 days** of the file's `collected_at`. From the considered set, **KEEP** an item only if:
 
   (a) its `banks` tag is non-empty (a canonical bank or strategist matched) — research; keep regardless of author; OR
-  (b) its `banks` tag is empty BUT `author_username == "neilksethi"` (case-insensitive) — Neil's image tweets are almost all research; keep.
+  (b) its `banks` tag is empty BUT `author_username` is one of `{neilksethi, neilksethinew}` (case-insensitive) — `@neilksethi` was suspended by X; `@neilksethinew` is his new account; treat both as Neil. His image tweets are almost all research; keep.
 
 **DROP** the rest. Rationale: empty-banks tweets from high-volume relayers like MikeZaccardi are price-chart / meme noise without a research signal.
 
@@ -31,7 +31,7 @@ Repost accounts (especially `dailychartbook`) frequently mirror an original twee
 - Same `images` URL set → duplicate.
 - Near-identical normalized text (case-folded, whitespace-collapsed, stripped of leading "@user " or trailing "https://t.co/…" URLs) → duplicate.
 
-For each duplicate cluster: **PREFER** the original poster over the relayer, and within ties, prefer the version with the most narrative text (keep Neil's commentary). The surviving item carries a `relayers: [usernames]` array listing every account that also carried it (excluding the kept author).
+For each duplicate cluster: **PREFER** the original poster over the relayer, and within ties, prefer the version with the most narrative text (keep Neil's commentary — treat both `neilksethi` and `neilksethinew` as Neil for this preference). The surviving item carries a `relayers: [usernames]` array listing every account that also carried it (excluding the kept author).
 
 ## STEP 3 — BUILD DIGEST (catalog, not analysis)
 
@@ -41,7 +41,7 @@ For each bank section:
 - One-line **theme subheading** synthesizing the tweets under it (e.g., "Hartnett FMS — cash low, risk-on tilt"). Keep it descriptive, not editorial.
 - One entry per item:
   - chart image(s) inline (every image rendered — images are the content)
-  - relayer text **verbatim** (do not paraphrase; Neil's commentary is high-signal)
+  - relayer text **verbatim** (do not paraphrase; Neil's commentary — from either `@neilksethi` or `@neilksethinew` — is high-signal)
   - author handle + tweet link
   - date (`created_at`)
   - if `relayers` non-empty: small footer "also carried by: @a, @b"
@@ -70,7 +70,7 @@ Top of the report — **SUMMARY** (4–6 lines): recurring themes across banks +
       "theme": "<one-line subheading>",
       "items": [
         {
-          "author": "neilksethi",
+          "author": "neilksethinew",
           "text": "<verbatim>",
           "tweet_url": "...",
           "images": ["..."],
@@ -86,7 +86,7 @@ Top of the report — **SUMMARY** (4–6 lines): recurring themes across banks +
 ### RULES
 1. **Catalog, don't analyze.** No buy/sell calls. No "this means…". Just group + caption.
 2. **Images are the content.** Every image rendered inline. Never drop a chart.
-3. **Verbatim text.** Do not rewrite the relayer's caption. Neil's narrative especially.
+3. **Verbatim text.** Do not rewrite the relayer's caption. Neil's narrative especially (from `@neilksethi` or `@neilksethinew`).
 4. **One item per tweet per bank** — same tweet can appear under two banks if it tags two.
 5. **Theme subheadings are descriptive, not editorial** — name what the chart shows.
 
@@ -94,7 +94,7 @@ Top of the report — **SUMMARY** (4–6 lines): recurring themes across banks +
 
 - [ ] STEP 0 actually run and PASS reproduced verbatim at the top of the JSON output.
 - [ ] `kept + dropped == considered`; `considered ≤ total_tweets`.
-- [ ] Every KEPT item has `banks` non-empty OR `author_username == neilksethi` (lowercased).
+- [ ] Every KEPT item has `banks` non-empty OR `author_username` in `{neilksethi, neilksethinew}` (lowercased).
 - [ ] Every kept item carries ≥1 image.
 - [ ] `by_bank_counts` matches the sum of `items` in `banks`.
 - [ ] No paraphrasing in any `text` field.
