@@ -138,10 +138,10 @@ def _raw_by_id(vid):
     return None
 
 
-def cmd_prompt(args):
-    d = _raw_by_id(args.id)
-    if not d:
-        sys.exit(f"raw record not found for {args.id}")
+def build_prompt(d):
+    """Build the single-episode extraction prompt (rubric + metadata + transcript)
+    from a raw/history record `d`. Shared by the daily (cmd_prompt) and the backfill
+    path so both feed the model an IDENTICAL prompt — only the input dir differs."""
     meta = {k: d.get(k) for k in (
         "video_id", "url", "channel_name", "channel_handle", "section",
         "video_title", "upload_date", "duration_seconds", "length_bucket", "language")}
@@ -152,12 +152,21 @@ def cmd_prompt(args):
     full = RUBRIC.read_text(encoding="utf-8")
     m = re.search(r"## STEP 2: PROCESS\s*(.*?)(?:\n## STEP 3|\Z)", full, re.S)
     rubric = m.group(1).strip() if m else full
-    print("Extract investor insights from ONE podcast episode, following this rubric exactly:\n")
-    print(rubric)
-    print("\n---\nRAW METADATA (copy these fields into your output):\n")
-    print(json.dumps(meta, ensure_ascii=False, indent=2))
-    print("\n---\nTRANSCRIPT (read all of it):\n")
-    print(d.get("transcript") or "")
+    return "\n".join([
+        "Extract investor insights from ONE podcast episode, following this rubric exactly:\n",
+        rubric,
+        "\n---\nRAW METADATA (copy these fields into your output):\n",
+        json.dumps(meta, ensure_ascii=False, indent=2),
+        "\n---\nTRANSCRIPT (read all of it):\n",
+        d.get("transcript") or "",
+    ])
+
+
+def cmd_prompt(args):
+    d = _raw_by_id(args.id)
+    if not d:
+        sys.exit(f"raw record not found for {args.id}")
+    print(build_prompt(d))
 
 
 # --- deterministic timestamp + quote_verified post-processing -----------------
@@ -214,57 +223,68 @@ def _build_index(segments):
     return " ".join(parts), starts, times
 
 
-def cmd_postprocess(args):
+def postprocess_record(d, raw):
+    """Deterministically set quote_verified + timestamp on every insight of card `d`
+    from its raw record. Mutates `d` in place; returns (total, mapped, verified, any_ts).
+    Shared by the daily (cmd_postprocess) and the backfill path so the timestamp +
+    quote-verification logic is IDENTICAL — only the file I/O around it differs."""
     import bisect
+    raw = raw or {}
+    has_segs = bool(raw.get("transcript_segments"))   # records collected before
+    # the timed-caption feature have none; their timestamps came from the one-time
+    # re-fetch backfill and must be PRESERVED (never clobbered to null here).
+    seg_body, starts, times = _build_index(raw.get("transcript_segments"))
+    # Verify quotes against BOTH the flat transcript AND the timed segments.
+    # Some raw records have a flat `transcript` that is out of sync with
+    # `transcript_segments`; the segments are the authoritative caption text,
+    # so a quote sourced from them must still verify.
+    body_tx = (_norm(raw.get("transcript")) + " " + seg_body).strip()
+    total = mapped = verified = 0
+    any_ts = False
+    for t in d.get("themes", []):
+        for ins in t.get("insights", []):
+            q = ins.get("quote")
+            if not q:
+                ins["timestamp"] = None
+                continue
+            total += 1
+            frags = _fragments(q)
+            # quote_verified: all fragments present in the raw plain transcript
+            ok = bool(frags) and all(fr in body_tx for fr in frags)
+            if not ok:
+                nq = _norm(q)
+                ok = len(nq) >= 25 and nq in body_tx
+            ins["quote_verified"] = ok
+            if ok:
+                verified += 1
+            # timestamp: map first fragment to a cue start — ONLY when this record
+            # has stored segments. With no segments, leave the existing timestamp
+            # untouched (do not clobber a backfilled one to null).
+            if has_segs:
+                ts = None
+                frag = frags[0] if frags else _norm(q)[:40]
+                pos = seg_body.find(frag) if len(frag) >= 12 else -1
+                if pos >= 0:
+                    i = bisect.bisect_right(starts, pos) - 1
+                    ts = _fmt_ts(times[max(i, 0)])
+                    mapped += 1; any_ts = True
+                ins["timestamp"] = ts
+            elif ins.get("timestamp"):
+                mapped += 1                       # preserved existing timestamp
+    if has_segs:                                  # only recompute the flag when we
+        d["timestamps_available"] = any_ts        # actually (re)mapped from segments
+    return total, mapped, verified, any_ts
+
+
+def cmd_postprocess(args):
     total = mapped = verified = 0
     for vid in args.ids:
         pf = PROC_DIR / f"{vid}.json"
         if not pf.exists():
             print(f"  postprocess: {vid} — no processed file, skip"); continue
         d = json.load(open(pf))
-        raw = _raw_by_id(vid) or {}
-        has_segs = bool(raw.get("transcript_segments"))   # records collected before
-        # the timed-caption feature have none; their timestamps came from the one-time
-        # re-fetch backfill and must be PRESERVED (never clobbered to null here).
-        seg_body, starts, times = _build_index(raw.get("transcript_segments"))
-        # Verify quotes against BOTH the flat transcript AND the timed segments.
-        # Some raw records have a flat `transcript` that is out of sync with
-        # `transcript_segments`; the segments are the authoritative caption text,
-        # so a quote sourced from them must still verify.
-        body_tx = (_norm(raw.get("transcript")) + " " + seg_body).strip()
-        any_ts = False
-        for t in d.get("themes", []):
-            for ins in t.get("insights", []):
-                q = ins.get("quote")
-                if not q:
-                    ins["timestamp"] = None
-                    continue
-                total += 1
-                frags = _fragments(q)
-                # quote_verified: all fragments present in the raw plain transcript
-                ok = bool(frags) and all(fr in body_tx for fr in frags)
-                if not ok:
-                    nq = _norm(q)
-                    ok = len(nq) >= 25 and nq in body_tx
-                ins["quote_verified"] = ok
-                if ok:
-                    verified += 1
-                # timestamp: map first fragment to a cue start — ONLY when this record
-                # has stored segments. With no segments, leave the existing timestamp
-                # untouched (do not clobber a backfilled one to null).
-                if has_segs:
-                    ts = None
-                    frag = frags[0] if frags else _norm(q)[:40]
-                    pos = seg_body.find(frag) if len(frag) >= 12 else -1
-                    if pos >= 0:
-                        i = bisect.bisect_right(starts, pos) - 1
-                        ts = _fmt_ts(times[max(i, 0)])
-                        mapped += 1; any_ts = True
-                    ins["timestamp"] = ts
-                elif ins.get("timestamp"):
-                    mapped += 1                       # preserved existing timestamp
-        if has_segs:                                  # only recompute the flag when we
-            d["timestamps_available"] = any_ts        # actually (re)mapped from segments
+        t_, m_, v_, any_ts = postprocess_record(d, _raw_by_id(vid) or {})
+        total += t_; mapped += m_; verified += v_
         json.dump(d, open(pf, "w"), ensure_ascii=False, indent=2)
         print(f"  postprocess: {vid} — quotes verified, timestamps {'set' if any_ts else 'none (no segments)'}")
     print(f"postprocess totals: quotes={total} verified={verified} timestamped={mapped}")
