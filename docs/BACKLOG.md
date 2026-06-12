@@ -5,3 +5,7 @@ PHASE 1 (done): Freshness gate — routines abort and publish nothing if collect
 - PHASE 3 — Single alert channel. One notification (email/Telegram) that fires ONLY when a routine goes red, built on top of the Phase 2 status file, so no manual checking is needed.
 
 Rationale: per-routine banners = clutter and don't scale; relying on report dates across many routines = silent misses. One status file -> one panel -> one alert.
+
+## Conventions
+
+- **Local-Dropbox sync after every main push.** After any commit/push to `origin/main` (including worktree-based pushes), end by syncing the user's working clone at `~/Dropbox (Personal)/Business/InvestTool/market-intelligence/market-intelligence`: `git stash --include-untracked` → `git fetch origin main` → `git checkout main` → `git pull --rebase origin main` → `git stash pop`. The Dropbox folder and `origin/main` must never be left divergent. If `stash pop` conflicts, STOP and report — do not force.
