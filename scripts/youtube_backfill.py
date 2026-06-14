@@ -175,16 +175,39 @@ def _raw_cards():
     return out
 
 
+def _global_done_vids():
+    """Set of video_ids that are DONE *anywhere* in the corpus: a FINALIZED card
+    under ANY slug in _processed/, OR any card in _quarantine/. A YouTube video_id
+    is globally unique, so one finalized card means the whole video is done — even
+    if a second channel slug re-hosts the same episode (cross-posted shows). This
+    is the global-video_id dedup: one video = one card, regardless of which slug
+    the collector filed the transcript under. Built once per worklist call."""
+    done = set()
+    for f in glob.glob(str(PROC_DIR / "*" / "*.json")):
+        try:
+            card = json.load(open(f))
+        except (json.JSONDecodeError, OSError):
+            continue   # unreadable/raw -> not done (heal/finalize will re-handle)
+        if _is_finalized(card):
+            done.add(Path(f).name[:-5])
+    for f in glob.glob(str(QUAR_DIR / "*" / "*.json")):
+        done.add(Path(f).name[:-5])
+    return done
+
+
 def worklist(order="newest", limit=None):
     """Backfill transcripts that still need EXTRACTION: a transcript is present and
-    has NO FINALIZED (or quarantined) card yet. Dedup is by FINALIZED status, not
-    mere file presence — but callers should self-heal first (see cmd_worklist /
-    `heal`) so raw leftovers become finalized rather than re-extracted."""
+    its video_id has NO FINALIZED (or quarantined) card under ANY slug. Dedup is
+    by FINALIZED status AND GLOBAL video_id (one video = one card; a cross-posted
+    episode already done under another slug is not re-extracted) — not mere
+    file presence. Callers should self-heal first (see cmd_worklist / `heal`) so
+    raw leftovers become finalized rather than re-extracted."""
+    done_vids = _global_done_vids()
     elig = []
     for d in _hist_records():
         if not (d.get("transcript") or d.get("transcript_available")):
             continue
-        if _card_status(d["_slug"], d["video_id"]) in ("finalized", "quarantined"):
+        if d["video_id"] in done_vids:   # finalized/quarantined under ANY slug
             continue
         elig.append(d)
 
