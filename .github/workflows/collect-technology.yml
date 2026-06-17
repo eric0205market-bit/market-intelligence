@@ -1,0 +1,90 @@
+name: Collect Technology
+
+# Technology stream of the KNOWLEDGE track. Clone of collect-concepts.yml. DAILY,
+# like Concepts. Flow-heavy (67 sources = 17 Deep + 50 Flow) -> the collector
+# triages Flow articles at input (watchlist + recency + per-source cap) before
+# they are worklisted for extraction; Deep sources extract-all. See
+# scripts/collect_technology.py and config/technology_watchlist.json.
+#
+# CRON IS ASLEEP: the schedule is intentionally COMMENTED OUT until the canary +
+# staged rollout pass. Only workflow_dispatch is live, so nothing runs on a timer.
+# Landing this on main early lets workflow_dispatch target the default branch for
+# a later cloud verification run (it cannot dispatch from a non-default branch).
+on:
+  # schedule:
+  #   # 10:30 UTC daily = 12:30 CEST. Offset 30 min from Concepts (10:00 UTC) so the
+  #   # two KNOWLEDGE collectors don't contend. No clash with the other cloud
+  #   # collectors (institutional Sun 06:00, research-pdfs Sun 07:00, twitter
+  #   # 05:30 & 17:30 UTC). UNCOMMENT ONLY AFTER THE CANARY + ROLLOUT PASS.
+  #   - cron: '30 10 * * *'
+  workflow_dispatch:
+    inputs:
+      ids:
+        description: 'Comma-separated source slugs (blank = all 67)'
+        required: false
+        default: ''
+      days:
+        description: 'Lookback window in days'
+        required: false
+        default: '3'
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # 67 text sources at 30-120s each is well under 90 minutes in practice — cap
+    # defensively so a stuck site can't burn the whole day.
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Playwright + Chromium (with system deps)
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install playwright
+          python3 -m playwright install --with-deps chromium
+
+      - name: Run technology collector
+        run: |
+          python3 scripts/collect_technology.py \
+            ${{ github.event.inputs.ids && format('--ids {0}', github.event.inputs.ids) || '' }} \
+            --days ${{ github.event.inputs.days || '3' }}
+
+      # Always retrievable, even when no data is committed (e.g. a branch test):
+      # the per-run funnel + manifest + progress, downloadable from the run page.
+      - name: Upload run diagnostics (funnel + manifest)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: technology-run-${{ github.run_id }}
+          path: raw/technology/_runs/
+          if-no-files-found: warn
+
+      - name: Commit data to the branch this run is on
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          # Commit collected data to the BRANCH THIS RUN IS ON (github.ref_name),
+          # never hardcoded to main. A workflow_dispatch from a feature branch
+          # commits to THAT branch, so a test run never touches main. Diagnostics
+          # are also uploaded above.
+          BRANCH="${{ github.ref_name }}"
+          git add raw/technology
+          if git diff --cached --quiet; then
+            echo "No new technology data to commit"
+            exit 0
+          fi
+          git commit -m "data: technology collection $(date -u '+%Y-%m-%d %H:%M') [$BRANCH]"
+          for i in 1 2 3; do
+            git push origin "HEAD:$BRANCH" && break
+            git pull --rebase origin "$BRANCH"
+          done

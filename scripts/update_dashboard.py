@@ -33,6 +33,7 @@ REPORT_TYPES = {
     # KNOWLEDGE group — long-form transcript & article insight digests.
     "youtube":          {"label": "YouTube / Podcasts", "color": "#059669", "icon": "▶️", "group": "knowledge"},
     "concepts":         {"label": "Concepts",         "color": "#0891b2", "icon": "💡", "group": "knowledge"},
+    "technology":       {"label": "Technology",       "color": "#7c3aed", "icon": "🤖", "group": "knowledge"},
     # Future sources (no reports yet — appear automatically once files land):
     "podcasts":         {"label": "Podcasts",         "color": "#8b5cf6", "icon": "🎙️", "group": "research"},
     "tech":             {"label": "Tech",             "color": "#475569", "icon": "⚙️", "group": "research"},
