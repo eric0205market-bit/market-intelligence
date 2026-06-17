@@ -737,6 +737,12 @@ def collect_source(page, limiter, source, cutoff_date, errors,
             extra_re = re.compile(source["article_path_re"], re.I)
         except re.error:
             log(f"  {slug}: bad article_path_re — ignoring")
+    # Optional PER-SOURCE scope: only keep article links whose URL contains this
+    # substring. Used when the listing lives on a subdomain that shares an apex
+    # with a nav-heavy main site (e.g. NY Fed's Liberty Street Economics blog on
+    # libertystreeteconomics.newyorkfed.org vs the www.newyorkfed.org nav). Does
+    # NOT affect the shared looks_like_article detector or any other source.
+    url_must = (source.get("url_must_contain") or "").lower()
     start = time.monotonic()
     seen = {norm_url(u) for u in urls}   # don't treat index pages as articles
     candidates = []
@@ -767,6 +773,8 @@ def collect_source(page, limiter, source, cutoff_date, errors,
                 if (apex_domain(parsed.netloc) == apex
                         and extra_re.match(parsed.path)):
                     is_article = True
+            if is_article and url_must and url_must not in link.lower():
+                continue   # per-source scope: outside the allowed host/path
             if is_article:
                 seen.add(key)
                 candidates.append(link)

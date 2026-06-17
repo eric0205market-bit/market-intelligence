@@ -30,11 +30,11 @@ REPORT_TYPES = {
     "research_pdfs":    {"label": "Bank PDF",       "color": "#D97706", "icon": "📑", "group": "research"},
     "institutional":    {"label": "Institutional Research", "color": "#EA580C", "icon": "🏛️", "group": "research"},
     "research":         {"label": "Newsletters & News", "color": "#06B6D4", "icon": "🔬", "group": "pulse"},
-    # KNOWLEDGE group — long-form transcript insight digests.
+    # KNOWLEDGE group — long-form transcript & article insight digests.
     "youtube":          {"label": "YouTube / Podcasts", "color": "#059669", "icon": "▶️", "group": "knowledge"},
+    "concepts":         {"label": "Concepts",         "color": "#0891b2", "icon": "💡", "group": "knowledge"},
     # Future sources (no reports yet — appear automatically once files land):
     "podcasts":         {"label": "Podcasts",         "color": "#8b5cf6", "icon": "🎙️", "group": "research"},
-    "concepts":         {"label": "Concepts",         "color": "#0891b2", "icon": "💡", "group": "research"},
     "tech":             {"label": "Tech",             "color": "#475569", "icon": "⚙️", "group": "research"},
     "society":          {"label": "Society",          "color": "#be185d", "icon": "🌐", "group": "pulse"},
 }
