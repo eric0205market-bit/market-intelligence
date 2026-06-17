@@ -6,6 +6,13 @@ PHASE 1 (done): Freshness gate — routines abort and publish nothing if collect
 
 Rationale: per-routine banners = clutter and don't scale; relying on report dates across many routines = silent misses. One status file -> one panel -> one alert.
 
+## KNOWLEDGE shared-capability backlog → ARCHITECTURE CHAT (logged 2026-06-16, Concepts canary)
+These are SHARED across the KNOWLEDGE track (Concepts/Technology/Society hit the same sources). Decide once in the Architecture chat — do NOT build per-source hacks into Concepts.
+
+- **Residential-collection supplement for cloud-IP-blocked sources.** Some sources collect fine from a residential IP but the GitHub Actions IP range is blocked (~2 anchors). Confirmed in the Concepts cloud test (2026-06-16): **Chatham House** and **IEA Oil Market Report** are healthy locally (k5 each) but blocked from Actions — same pattern as the YouTube collector (works residential, blocked from Actions). Both set `collect:false` + `block_type:cloud_ip_blocked, recoverable:residential` in `config/concepts_sources.json`. YouTube already collects residentially; a shared residential supplement would recover these. (Technology/Society will hit more.)
+- **RSS / newsletter ingestion route** for bot-blocked sites (block headless at ANY IP). Concepts dropped, HIGH-VALUE, `revisit_route: rss_or_newsletter`: **McKinsey Global Institute, McKinsey Insights, Citi GPS**.
+- **JS-render (headed/interaction) collection path** for client-rendered SPAs (static anchor harvest can't reach article links, any IP). Concepts dropped: HIGH-VALUE `revisit_route: rss_or_js_render` — **Bain Insights, Sequoia Arc, Lux Capital**; lower-priority `js_render` — **Stimson Center**.
+
 ## Conventions
 
 - **Local-Dropbox sync — first AND last action of every session that touches this repo.** Whenever a session touches this repo (read or write), the FIRST action AND the LAST action is to sync the user's working clone at `~/Dropbox (Personal)/Business/InvestTool/market-intelligence/market-intelligence` to `origin/main` — regardless of whether THIS session pushed anything. CI collection commits (collect-twitter, bank-research, merge-to-main, …) advance `origin/main` continuously, so the Dropbox folder can drift behind even when Claude Code did nothing. The sequence (run via `git -C "<that path>"`): `git stash push --include-untracked` → `git fetch origin main` → `git checkout main` → `git pull --rebase origin main` → `git stash pop`. The Dropbox folder and `origin/main` must never be left divergent. If `stash pop` conflicts, STOP and report — do not force, do not discard.
