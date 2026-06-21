@@ -138,6 +138,25 @@ def handle_from_source(source: str, vtype: str) -> str:
     return m.group(1) if m else source
 
 
+def _norm_handle(h) -> str:
+    return str(h or "").lstrip("@").strip().lower()
+
+
+def resolve_channel(name: str, cfg_handle: str, meta: dict) -> tuple[str, str]:
+    """Per-video selective attribution. Compare the video's real uploader
+    (yt-dlp uploader_id) to the slug's CONFIGURED handle:
+      • MATCH  -> keep the curated config channel_name/handle (preserves host
+                  suffixes and sub-show names, e.g. Animal Spirits on @TheCompoundNews).
+      • DIFFER -> genuine cross-post: use the real yt-dlp channel + uploader_id.
+    section/tier come from config; video_title is never touched here.
+    Falls back to config when yt-dlp gave no uploader_id."""
+    yt_uid = str(meta.get("yt_uploader_id") or "").strip()
+    if yt_uid and _norm_handle(yt_uid) and _norm_handle(yt_uid) != _norm_handle(cfg_handle):
+        ytc = str(meta.get("yt_channel") or "").strip()
+        return (ytc or name, yt_uid if yt_uid.startswith("@") else "@" + yt_uid)
+    return name, cfg_handle
+
+
 def upload_date_iso(yyyymmdd) -> str | None:
     if yyyymmdd and re.fullmatch(r"\d{8}", str(yyyymmdd)):
         return f"{yyyymmdd[0:4]}-{yyyymmdd[4:6]}-{yyyymmdd[6:8]}"
@@ -248,6 +267,11 @@ def get_metadata(video_id: str) -> dict | None:
         "duration": d.get("duration"),
         "manual_langs": list((d.get("subtitles") or {}).keys()),
         "auto_langs": list((d.get("automatic_captions") or {}).keys()),
+        # Ground-truth posting channel (previously not captured) — for selective
+        # per-video attribution and stored on the record.
+        "yt_channel": d.get("channel"),
+        "yt_uploader_id": d.get("uploader_id"),
+        "yt_channel_id": d.get("channel_id"),
     }
 
 
@@ -489,7 +513,11 @@ def save_backfill_state(state: dict, history_root: Path, dry_run: bool) -> None:
 def write_record(record: dict, history_root: Path, dry_run: bool) -> None:
     if dry_run:
         return
-    slug = slugify(record["channel_name"])
+    # Output folder is PINNED to the source slug (carried on the record as a
+    # private "_slug"), never derived from channel_name — so per-video relabels
+    # (cross-posts, display names) cannot fragment a channel's folder. Falls back
+    # to slugify(channel_name) only for legacy records without _slug.
+    slug = record.pop("_slug", None) or slugify(record["channel_name"])
     out_dir = history_root / slug
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / f"{record['video_id']}.json").write_text(
@@ -520,8 +548,9 @@ def process_channel(
     name = ch["name"]
     source = ch["source"]
     vtype = ch.get("type", "channel")
-    slug = slugify(name)
-    handle = handle_from_source(source, vtype)
+    slug = slugify(name)                       # PINNED: folder/state/dedup key
+    display = ch.get("display_name") or name   # attribution label (channel_name)
+    handle = ch.get("handle") or handle_from_source(source, vtype)
 
     ch_state = backfill_state["channels"].setdefault(slug, {
         "fetched_ids": [],
@@ -627,11 +656,19 @@ def process_channel(
             text, segments, src, lang = fetch_transcript(vid, meta)
             available = bool(text)
 
+            # Selective attribution: keep curated config display-name/handle when the
+            # video is genuinely on this slug's channel; use the real yt-dlp channel
+            # for cross-posts. section/tier stay from config; video_title untouched.
+            # `display` is the attribution label (display_name override or name);
+            # the output folder stays pinned to `slug` via the private "_slug".
+            ch_name, ch_handle = resolve_channel(display, handle, meta)
+
             record = {
+                "_slug": slug,
                 "video_id": vid,
                 "url": f"https://www.youtube.com/watch?v={vid}",
-                "channel_name": name,
-                "channel_handle": handle,
+                "channel_name": ch_name,
+                "channel_handle": ch_handle,
                 "section": ch.get("section", ""),
                 "tier": ch.get("tier"),
                 "video_title": meta.get("title") or v.get("title") or "",
@@ -644,6 +681,9 @@ def process_channel(
                 "transcript": text if available else None,
                 "timestamps_available": bool(segments),
                 "transcript_segments": segments if available else None,
+                "yt_channel": meta.get("yt_channel"),
+                "yt_uploader_id": meta.get("yt_uploader_id"),
+                "yt_channel_id": meta.get("yt_channel_id"),
                 "fetched_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "backfill": True,
             }

@@ -99,6 +99,25 @@ def handle_from_source(source, vtype):
     return source
 
 
+def _norm_handle(h):
+    return str(h or "").lstrip("@").strip().lower()
+
+
+def resolve_channel(name, cfg_handle, meta):
+    """Per-video selective attribution. Compare the video's real uploader (yt-dlp
+    uploader_id) to the slug's CONFIGURED handle:
+      • MATCH  -> keep curated config channel_name/handle (preserves host suffixes
+                  and sub-show names, e.g. Animal Spirits on @TheCompoundNews).
+      • DIFFER -> genuine cross-post: use the real yt-dlp channel + uploader_id.
+    section/tier stay from config; video_title is never touched. Falls back to
+    config when yt-dlp returned no uploader_id."""
+    yt_uid = str(meta.get("yt_uploader_id") or "").strip()
+    if yt_uid and _norm_handle(yt_uid) and _norm_handle(yt_uid) != _norm_handle(cfg_handle):
+        ytc = str(meta.get("yt_channel") or "").strip()
+        return (ytc or name, yt_uid if yt_uid.startswith("@") else "@" + yt_uid)
+    return name, cfg_handle
+
+
 # --- yt-dlp plumbing --------------------------------------------------------
 def run_ytdlp(args, capture=True, timeout=YTDLP_TIMEOUT):
     """Invoke yt-dlp. Returns (returncode, stdout, stderr). Never raises."""
@@ -160,6 +179,11 @@ def get_metadata(video_id):
         "duration": d.get("duration"),                # seconds or None
         "manual_langs": list((d.get("subtitles") or {}).keys()),
         "auto_langs": list((d.get("automatic_captions") or {}).keys()),
+        # Ground-truth posting channel (previously not captured) — for selective
+        # per-video attribution and stored on the record.
+        "yt_channel": d.get("channel"),
+        "yt_uploader_id": d.get("uploader_id"),
+        "yt_channel_id": d.get("channel_id"),
     }
 
 
@@ -457,8 +481,9 @@ def process_channel(ch, state, args, total_so_far):
     source = ch["source"]
     vtype = ch.get("type", "channel")
     section = ch.get("section", "")
-    slug = slugify(name)
-    handle = handle_from_source(source, vtype)
+    slug = slugify(name)                       # PINNED: folder/state/dedup key
+    display = ch.get("display_name") or name   # attribution label (channel_name)
+    handle = ch.get("handle") or handle_from_source(source, vtype)
 
     ch_state = state["channels"].get(slug, {"seen_ids": []})
     seen = set(ch_state.get("seen_ids", []))
@@ -516,11 +541,17 @@ def process_channel(ch, state, args, total_so_far):
         text, segments, src, lang = fetch_transcript(vid, meta)
         available = bool(text)
         iso = upload_date_iso(upd)
+        # Selective attribution: keep curated config display-name/handle when the
+        # video is genuinely on this slug's channel; use the real yt-dlp channel
+        # for cross-posts. section/tier stay from config; video_title untouched.
+        # Output folder stays pinned to `slug` via the private "_slug".
+        ch_name, ch_handle = resolve_channel(display, handle, meta)
         record = {
+            "_slug": slug,
             "video_id": vid,
             "url": f"https://www.youtube.com/watch?v={vid}",
-            "channel_name": name,
-            "channel_handle": handle,
+            "channel_name": ch_name,
+            "channel_handle": ch_handle,
             "section": section,
             "tier": ch.get("tier"),
             "video_title": meta.get("title") or v.get("title") or "",
@@ -535,6 +566,9 @@ def process_channel(ch, state, args, total_so_far):
             # records carry timing for timestamp mapping.
             "timestamps_available": bool(segments),
             "transcript_segments": segments if available else None,
+            "yt_channel": meta.get("yt_channel"),
+            "yt_uploader_id": meta.get("yt_uploader_id"),
+            "yt_channel_id": meta.get("yt_channel_id"),
             "fetched_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
         records.append(record)
@@ -562,7 +596,9 @@ def process_channel(ch, state, args, total_so_far):
 def write_records(records, dry_run):
     base = Path(tempfile.gettempdir()) / "youtube_dryrun" if dry_run else RAW_ROOT
     for r in records:
-        slug = slugify(r["channel_name"])
+        # Folder PINNED to the source slug (private "_slug"), never derived from
+        # channel_name — per-video relabels can't fragment a channel's folder.
+        slug = r.pop("_slug", None) or slugify(r["channel_name"])
         out_dir = base / slug
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / f"{r['video_id']}.json").write_text(
