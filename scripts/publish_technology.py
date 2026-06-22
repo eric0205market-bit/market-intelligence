@@ -45,6 +45,55 @@ def _norm(s):
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
 
+# --- author / speaker cleanup (deterministic, no LLM) ------------------------
+# Shared KNOWLEDGE-track polish: CMS bylines often leak a bare @handle, a URL, a
+# login/path, or an empty string instead of a human/org name. Clean those to a
+# real name, falling back to the source's own name. Generic on purpose so the
+# Society stream (which clones this) inherits it unchanged.
+_AUTHOR_JUNK_RE = re.compile(r"https?://|www\.|@|[\\/]|\.com\b|\.org\b|\blogin\b|\bsign[\s-]?in\b", re.I)
+# Trailing words that make a source NAME read as a feed rather than an org/person.
+_SRC_SUFFIX_RE = re.compile(r"\s*(?:\bblog\b|\bnews\b|\(free content\)|\(top stories\)|\barchived\b)\s*$", re.I)
+
+
+def _source_person(source_name):
+    """Source name reduced to an org-ish label for use as a byline fallback
+    (strip trailing 'Blog'/'News'/'(free content)' etc.)."""
+    name = (source_name or "").strip()
+    cleaned = _SRC_SUFFIX_RE.sub("", name).strip()
+    return cleaned or name
+
+
+def _is_byline_junk(value):
+    """True if a byline value is not a usable human/org name: empty, a bare
+    @handle/URL/path/login, or a single all-lowercase token (handle-like)."""
+    v = (value or "").strip().lstrip("@").strip()
+    if not v:
+        return True
+    if _AUTHOR_JUNK_RE.search(v):
+        return True
+    # A lone all-lowercase token with no space reads as a handle, not a name
+    # ("cohere", "benchmarkmin"); a capitalised single name ("Lysandre") is kept.
+    if " " not in v and v == v.lower():
+        return True
+    return False
+
+
+def clean_author(author, source_name):
+    """Return a clean byline: strip a leading '@'; if the value is junk (handle/
+    URL/login/empty), fall back to the source name. Never returns junk."""
+    if _is_byline_junk(author):
+        return _source_person(source_name)
+    return (author or "").strip().lstrip("@").strip()
+
+
+def clean_speaker(speaker, cleaned_author, source_name):
+    """Clean an insight speaker the same way; when junk, prefer the already-cleaned
+    author, else the source name."""
+    if _is_byline_junk(speaker):
+        return cleaned_author or _source_person(source_name)
+    return (speaker or "").strip().lstrip("@").strip()
+
+
 # --- raw / processed indexing ----------------------------------------------
 def _raw_files():
     """All collector records, skipping _-prefixed run-artifact dirs (_runs)."""
@@ -123,12 +172,21 @@ def postprocess_record(card, raw):
     actual insight count (schema §1: insight_total = total across all themes — the
     LLM's self-count can drift by one). Returns (quotes, verified)."""
     body = _norm((raw or {}).get("text"))
+    # --- byline cleanup: scrub @handle/URL/login junk from author + speakers ---
+    source_name = card.get("source_name", "")
+    sm = card.get("source_meta")
+    if isinstance(sm, dict):
+        sm["author"] = clean_author(sm.get("author"), source_name)
+        author_clean = sm["author"]
+    else:
+        author_clean = clean_author(card.get("author"), source_name)
     quotes = verified = total = 0
     for theme in (card.get("themes") or []):
         for ins in (theme.get("insights") or []):
             if not isinstance(ins, dict):
                 continue
             total += 1
+            ins["speaker"] = clean_speaker(ins.get("speaker"), author_clean, source_name)
             if ins.get("quote"):
                 quotes += 1
                 ok = bool(body) and _quote_present(ins["quote"], body)
