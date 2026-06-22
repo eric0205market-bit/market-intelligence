@@ -98,6 +98,14 @@ USER_AGENT = (
 N_FLOW = 25        # max newest articles kept per Flow source per run     (TUNE)
 N_FIREHOSE = 8     # stricter cap for high-volume/aggregator Flow sources (TUNE)
 
+# Watchlist relevance gate. After the wide-diagnostic re-cut, Technology runs over
+# a curated DURABLE-KNOWLEDGE source set (perishable news migrated to the FLOW /
+# Newsletters track), so it does NOT gate Flow on the watchlist — Flow now means
+# "recency + per-source cap only", identical to Deep on relevance. The watchlist /
+# discovery-sample machinery below is retained intact for FUTURE streams (e.g.
+# Society) that re-cut differently: flip this True to re-arm the entity gate.
+WATCHLIST_GATE = False
+
 # Two-label public suffixes we must keep intact when deriving the apex domain.
 MULTI_TLDS = (
     "co.uk", "org.uk", "ac.uk", "gov.uk",
@@ -897,8 +905,12 @@ def collect_source(page, limiter, source, cutoff_date, errors, collected_at,
                 funnel["dropped_junk"] += 1
             continue
 
-        # (a) WATCHLIST gate — Flow sources only; Deep extracts all -------------
-        if not is_deep and not watchlist_hit(title + "\n" + text, watchlist_rx):
+        # (a) WATCHLIST gate — DISABLED for Technology (durable extract-all set).
+        # Retained behind WATCHLIST_GATE for future streams that DO want to filter
+        # high-volume Flow feeds by entity/agenda. When off, Flow == Deep on
+        # relevance (recency + per-source cap only); dropped_watchlist stays 0 and
+        # watchlist_passed counts everything that cleared recency + quality.
+        if WATCHLIST_GATE and not is_deep and not watchlist_hit(title + "\n" + text, watchlist_rx):
             off_watchlist += 1
             funnel["dropped_watchlist"] += 1
             continue
@@ -1038,7 +1050,12 @@ def main():
 
     # Watchlist (triage gate). Empty/missing -> gate disabled (pass-through).
     watchlist_terms, watchlist_rx = load_watchlist()
-    if watchlist_rx is None:
+    if not WATCHLIST_GATE:
+        log(f"Watchlist gate OFF for this stream (durable extract-all set); "
+            f"{len(watchlist_terms)} term(s) loaded but unused. "
+            f"Per-source caps still apply (N_FLOW={N_FLOW}, N_FIREHOSE={N_FIREHOSE}); "
+            f"firehose sources: {sorted(firehose_slugs) or 'none'}")
+    elif watchlist_rx is None:
         log("WARN: watchlist empty/missing — Flow watchlist gate DISABLED "
             "(pass-through). Curate config/technology_watchlist.json.")
     else:
