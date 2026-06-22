@@ -5,11 +5,19 @@
 # backfill writes everything to concepts-history/ (OUTSIDE the git repo, sibling
 # of youtube-history/); nothing is ever committed, pushed, or staged.
 #
-# Fires overnight (02:00 + 04:00 local) via com.marketintel.concepts-backfill.plist
-# — clear of the Concepts daily cloud cron (10:00 UTC = 12:00 local), the YouTube
-# daily collector (12:00), and the YouTube backfill (16:00 / 21:00). Each firing
-# chips a session-capped chunk off the Stage-1+2 signal tier, resumable via
-# file-dedup + the _state/backfill_state.json done-set, then NO-OPs once complete.
+# Fires at 16:45 + 21:45 local via com.marketintel.concepts-backfill.plist — the
+# owner's at-computer window, mirroring the YouTube backfill (16:00 / 21:00) but
+# offset +45 min so the two heavy local jobs never start together. Clear of the
+# Concepts daily cloud cron (10:00 UTC = 12:00 local) and the YouTube daily
+# collector (12:00).
+#
+# UNCAPPED: one firing drains the whole Stage-1+2 signal-tier backlog in a single
+# multi-hour run. The backfill hits ~30 DIFFERENT sites (load distributed, no
+# single-IP-ban risk), so the old session/per-source throttle is unnecessary.
+# Resumable via file-dedup + the _state/backfill_state.json done-set — the 21:45
+# firing / next day continues any tail (e.g. the slow fetch-to-date sources), then
+# NO-OPs once complete. Per-SITE politeness (spaced same-domain fetches inside the
+# collector) and the exit-10 hard-stop / 24h BACKOFF are retained.
 #
 # Safeguards:
 #   lockfile  — PID-based single-instance guard (no stacked runs)
@@ -35,8 +43,11 @@ BACKOFF_FILE="$STATE_DIR/BACKOFF"
 TODAY="$(date -u '+%Y-%m-%d')"
 LOG="$RUNLOG_DIR/launchd_${TODAY}.md"
 
-# Per-firing throttle budget (articles). Overnight 2 firings ≈ 2×SESSION_CAP/night.
-SESSION_CAP="${CONCEPTS_BACKFILL_SESSION_CAP:-150}"
+# UNCAPPED by default — one firing drains the entire signal-tier backlog (resumable
+# via file-dedup, so a tail just spills into the next firing). Overridable via env
+# for testing. Per-SITE politeness + exit-10 hard-stop still bound the run safely.
+SESSION_CAP="${CONCEPTS_BACKFILL_SESSION_CAP:-1000000}"
+PER_SOURCE_CAP="${CONCEPTS_BACKFILL_PER_SOURCE_CAP:-1000000}"
 
 # launchd starts with a bare PATH; add tool locations.
 export PATH="/opt/homebrew/bin:/usr/local/bin:/Library/Frameworks/Python.framework/Versions/3.11/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
@@ -70,7 +81,7 @@ fi
 DONE_BEFORE="$(python3 -c "import json;print(len(json.load(open('$STATE_DIR/backfill_state.json')).get('done',[])))" 2>/dev/null || echo 0)"
 RECORDS_BEFORE="$(find "$HISTORY_ROOT" -name '*.json' -not -path '*_state*' -not -path '*_runlog*' 2>/dev/null | wc -l | tr -d ' ')"
 
-log "=== Concepts backfill starting | sources complete=${DONE_BEFORE} | records=${RECORDS_BEFORE} | session-cap=${SESSION_CAP} ==="
+log "=== Concepts backfill starting | sources complete=${DONE_BEFORE} | records=${RECORDS_BEFORE} | UNCAPPED (session=${SESSION_CAP} per-source=${PER_SOURCE_CAP}) ==="
 log "repo:    $REPO_DIR"
 log "history: $HISTORY_ROOT (OUTSIDE git)"
 
@@ -79,7 +90,7 @@ cd "$REPO_DIR" || { log "FATAL: cannot cd $REPO_DIR"; exit 1; }
 
 TMPOUT="$(mktemp)"
 python3 scripts/backfill_concepts_history.py --signal-tier --start 2025-01-01 \
-        --session-cap "$SESSION_CAP" 2>&1 \
+        --session-cap "$SESSION_CAP" --per-source-cap "$PER_SOURCE_CAP" 2>&1 \
     | tee "$TMPOUT" | tee -a "$LOG"
 EXIT_CODE="${PIPESTATUS[0]}"
 

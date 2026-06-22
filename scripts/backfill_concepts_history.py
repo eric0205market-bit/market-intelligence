@@ -34,10 +34,14 @@ ENUMERATION METHODS (3 signal source-types)
               with Playwright (scroll) and harvest /insights/memo links.
 
 THROTTLE (polite, sequential; web scraping, not an API)
-  - Sequential only, no concurrency.
-  - 4-10 s random sleep after every article fetch.
-  - 20-60 s pause between sources.
-  - Per-source fetch cap (--per-source-cap) + overall session cap (--session-cap).
+  - Sequential only, no concurrency. Each source is drained fully before moving
+    on, so consecutive same-DOMAIN fetches are the only ones spaced apart.
+  - 4-10 s random sleep after every article fetch == PER-SITE politeness (kept).
+  - Brief 1-3 s gap between sources only — moving to a DIFFERENT site, so the old
+    long 20-60 s inter-source pause is unnecessary and was dropped (the local job
+    runs UNCAPPED to drain the whole signal tier in one multi-hour sitting).
+  - Caps (--per-source-cap / --session-cap) exist for canary/testing; the launchd
+    runner passes them effectively unlimited.
 HARD STOP (save state, exit 10) on 429 / bot-check / consent signals or 3
   consecutive fetch failures. Do NOT retry in a loop.
 
@@ -96,8 +100,8 @@ DAILY_PROCESSED = REPO_ROOT / "processed" / "concepts"
 BACKFILL_START_DEFAULT = "2025-01-01"
 SESSION_CAP_DEFAULT = 40
 PER_SOURCE_CAP_DEFAULT = 12
-SLEEP_FETCH = (4.0, 10.0)
-SLEEP_SOURCE = (20.0, 60.0)
+SLEEP_FETCH = (4.0, 10.0)     # per-SITE politeness (same-domain, sequential) — KEEP
+SLEEP_SOURCE = (1.0, 3.0)     # different site next — brief courtesy gap, not a throttle
 CONSECUTIVE_FAIL_ABORT = 3
 HTTP_TIMEOUT = 20
 
