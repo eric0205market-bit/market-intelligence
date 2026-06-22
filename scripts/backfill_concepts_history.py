@@ -42,8 +42,12 @@ THROTTLE (polite, sequential; web scraping, not an API)
     runs UNCAPPED to drain the whole signal tier in one multi-hour sitting).
   - Caps (--per-source-cap / --session-cap) exist for canary/testing; the launchd
     runner passes them effectively unlimited.
-HARD STOP (save state, exit 10) on 429 / bot-check / consent signals or 3
-  consecutive fetch failures. Do NOT retry in a loop.
+PER-SITE QUARANTINE (NOT a global halt) on 429 / bot-check / consent signals or
+  3 consecutive fetch failures: record the offending SOURCE in _state (blocked +
+  timestamp), skip the rest of its URLs, and CONTINUE to the next source. The
+  blocked site cools down for SITE_COOLDOWN_S (24h) — auto-retried after, or
+  cleared manually for Stage-3-style rework. One stubborn site never pauses the
+  other ~30. Do NOT retry a blocked site in a loop within the same run.
 
 KNOWN LIMITATIONS (the runner only fetches SIGNAL_TIER_ORDER, which avoids these):
   - Generic-sitemap enumeration follows up to 40 index sub-maps: enough to reach
@@ -102,7 +106,8 @@ SESSION_CAP_DEFAULT = 40
 PER_SOURCE_CAP_DEFAULT = 12
 SLEEP_FETCH = (4.0, 10.0)     # per-SITE politeness (same-domain, sequential) — KEEP
 SLEEP_SOURCE = (1.0, 3.0)     # different site next — brief courtesy gap, not a throttle
-CONSECUTIVE_FAIL_ABORT = 3
+CONSECUTIVE_FAIL_ABORT = 3    # per-SOURCE: this many in a row quarantines that site, not the run
+SITE_COOLDOWN_S = 24 * 3600   # per-SITE quarantine window after a 429/bot block; others keep running
 HTTP_TIMEOUT = 20
 
 _BOT_RE = re.compile(r"429|too many requests|unusual traffic|are you a human|"
@@ -484,16 +489,41 @@ def main():
     cfg_all = {cc.slugify(s["name"]): s for s in
                json.loads((REPO_ROOT / "config" / "concepts_sources.json").read_text())["sources"]}
 
-    # Per-source completion state (skip fully-collected sources -> true overnight no-op).
+    # Per-source state:
+    #   done    — fully-collected sources -> skip (true overnight no-op).
+    #   blocked — sources that served a 429/bot/consent page or failed repeatedly.
+    #             Quarantined per-SITE (slug -> {at, reason}); the run CONTINUES
+    #             through every other source. A blocked site is skipped only while
+    #             it is still cooling down (SITE_COOLDOWN_S); after that it auto-
+    #             retries, and a clean pass clears the flag. Manually editable for
+    #             Stage-3-style rework. NO global halt.
     done_path = HIST_ROOT / "_state" / "backfill_state.json"
     try:
-        done = set(json.loads(done_path.read_text()).get("done", []))
+        _state = json.loads(done_path.read_text())
     except Exception:
-        done = set()
-    def mark_done(s):
-        done.add(s)
+        _state = {}
+    done = set(_state.get("done", []))
+    blocked = dict(_state.get("blocked", {}))   # slug -> {"at": iso8601, "reason": str}
+    def _save_state():
         done_path.parent.mkdir(parents=True, exist_ok=True)
-        done_path.write_text(json.dumps({"done": sorted(done)}, indent=2), encoding="utf-8")
+        done_path.write_text(json.dumps({"done": sorted(done), "blocked": blocked}, indent=2),
+                             encoding="utf-8")
+    def mark_done(s):
+        done.add(s); _save_state()
+    def mark_blocked(s, reason):
+        blocked[s] = {"at": datetime.datetime.now(datetime.timezone.utc)
+                              .isoformat(timespec="seconds"), "reason": reason}
+        _save_state()
+    def cooling(s):
+        b = blocked.get(s)
+        if not b:
+            return False
+        try:
+            at = datetime.datetime.fromisoformat(b["at"])
+            age = (datetime.datetime.now(datetime.timezone.utc) - at).total_seconds()
+            return age < SITE_COOLDOWN_S
+        except Exception:
+            return True   # malformed timestamp -> stay quarantined until cleared
 
     log(f"Concepts backfill — RAW ONLY | start={args.start} | history={HIST_ROOT}")
     log(f"sources: {slugs} | per-source-cap={args.per_source_cap} session-cap={args.session_cap}"
@@ -513,6 +543,11 @@ def main():
                 log(f"[{slug}] not in config — skip"); continue
             if slug in done and not args.enumerate_only:
                 log(f"=== [{slug}] already complete — skip ==="); continue
+            if not args.enumerate_only and cooling(slug):
+                b = blocked[slug]
+                log(f"=== [{slug}] quarantined (per-site block @ {b['at']}: {b.get('reason','')}) "
+                    f"— skip, cooling down ===")
+                summary.append((slug, 0, 0, 0, 0, "quarantined")); continue
             log(f"\n=== [{slug}] ===")
             # enumerate via the generic detector (sitemap / PG byline / etc.)
             try:
@@ -544,7 +579,7 @@ def main():
                 summary.append((slug, len(cand), ded, 0, 0, "complete")); continue
 
             # fetch raw text (throttled, session-capped, resumable via file dedup)
-            kept = 0; consec_fail = 0; dates = []
+            kept = 0; consec_fail = 0; dates = []; blocked_reason = None
             for url, enum_date, rid in fresh[:args.per_source_cap]:
                 if session_fetched >= args.session_cap:
                     log("  session cap reached — stopping (resumable: re-run to continue)"); break
@@ -554,13 +589,15 @@ def main():
                     consec_fail += 1
                     log(f"  WARN fetch {url[:55]} — {type(e).__name__} ({consec_fail}/{CONSECUTIVE_FAIL_ABORT})")
                     if consec_fail >= CONSECUTIVE_FAIL_ABORT:
-                        log("HARD STOP: 3 consecutive fetch failures — exit 10")
-                        _write_runlog(summary, args, hard_stop=True); sys.exit(10)
+                        blocked_reason = f"{CONSECUTIVE_FAIL_ABORT} consecutive fetch failures (last: {type(e).__name__})"
+                        log(f"  PER-SITE BLOCK [{slug}]: {blocked_reason} — quarantine, continue to next source")
+                        break
                     sleep(SLEEP_FETCH); continue
                 session_fetched += 1
                 if _BOT_RE.search((rec.get("text") or "")[:400]) or _BOT_RE.search(rec.get("title") or ""):
-                    log("HARD STOP: bot/consent/429 signal in fetched page — exit 10")
-                    _write_runlog(summary, args, hard_stop=True); sys.exit(10)
+                    blocked_reason = "429 / bot-check / consent page served"
+                    log(f"  PER-SITE BLOCK [{slug}]: {blocked_reason} — quarantine, continue to next source")
+                    break
                 # prefer the article's own date; fall back to the enumeration date (sitemap lastmod / PG byline)
                 pub = rec["published_date"] or (enum_date or "")
                 if rec["published_date"] and rec["published_date"] < args.start:
@@ -588,8 +625,13 @@ def main():
                 kept += 1; dates.append(pub)
                 log(f"  +kept [{pub}] {rec['word_count']:>5}w  {rec['title'][:48]}")
                 sleep(SLEEP_FETCH)
+            if blocked_reason:
+                mark_blocked(slug, blocked_reason)
+            elif slug in blocked:
+                blocked.pop(slug, None); _save_state()   # clean pass -> clear stale quarantine
             drange = f"{min(dates)}..{max(dates)}" if dates else "n/a"
-            summary.append((slug, len(cand), ded, len(fresh), kept, drange))
+            status = f"BLOCKED@{kept}kept" if blocked_reason else drange
+            summary.append((slug, len(cand), ded, len(fresh), kept, status))
             if si < len(slugs) - 1 and not args.enumerate_only:
                 sleep(SLEEP_SOURCE, "inter-source")
         browser.close()

@@ -17,12 +17,18 @@
 # Resumable via file-dedup + the _state/backfill_state.json done-set — the 21:45
 # firing / next day continues any tail (e.g. the slow fetch-to-date sources), then
 # NO-OPs once complete. Per-SITE politeness (spaced same-domain fetches inside the
-# collector) and the exit-10 hard-stop / 24h BACKOFF are retained.
+# collector) is retained.
+#
+# PER-SITE QUARANTINE (no global halt): a 429/bot block or repeated failures on one
+# site no longer stops the run. The collector records that SOURCE in
+# _state/backfill_state.json ("blocked": {slug:{at,reason}}), cools it down 24h, and
+# CONTINUES through the other ~30 sites. This wrapper just surfaces the blocked list
+# at the end — it never writes a global BACKOFF.
 #
 # Safeguards:
 #   lockfile  — PID-based single-instance guard (no stacked runs)
-#   BACKOFF   — 24h skip after any exit-10 (429 / bot-check / consecutive fails)
-#   osascript — macOS notification on hard-stop or unexpected exit
+#   per-site  — collector quarantines a blocked site for 24h; the run continues
+#   osascript — macOS notification if a site got quarantined or on unexpected exit
 #
 # INSTALL (one time):
 #   cp config/com.marketintel.concepts-backfill.plist ~/Library/LaunchAgents/
@@ -39,13 +45,12 @@ HISTORY_ROOT="$(cd "$REPO_DIR/.." && pwd)/concepts-history"
 STATE_DIR="$HISTORY_ROOT/_state"
 RUNLOG_DIR="$HISTORY_ROOT/_runlog"
 LOCKFILE="$STATE_DIR/backfill.lock"
-BACKOFF_FILE="$STATE_DIR/BACKOFF"
 TODAY="$(date -u '+%Y-%m-%d')"
 LOG="$RUNLOG_DIR/launchd_${TODAY}.md"
 
 # UNCAPPED by default — one firing drains the entire signal-tier backlog (resumable
 # via file-dedup, so a tail just spills into the next firing). Overridable via env
-# for testing. Per-SITE politeness + exit-10 hard-stop still bound the run safely.
+# for testing. Per-SITE politeness + per-site quarantine keep the run safe.
 SESSION_CAP="${CONCEPTS_BACKFILL_SESSION_CAP:-1000000}"
 PER_SOURCE_CAP="${CONCEPTS_BACKFILL_PER_SOURCE_CAP:-1000000}"
 
@@ -69,14 +74,8 @@ if [ -f "$LOCKFILE" ]; then
 fi
 echo "$$" > "$LOCKFILE"
 
-# --- 24h BACKOFF after any exit-10 (block/429 signal) ---
-if [ -f "$BACKOFF_FILE" ]; then
-    AGE=$(( $(date +%s) - $(stat -f %m "$BACKOFF_FILE") ))
-    if [ "$AGE" -lt 86400 ]; then
-        log "BACKOFF active (${AGE}s/86400s) — skipping run"; exit 0
-    fi
-    log "BACKOFF expired — clearing"; rm -f "$BACKOFF_FILE"
-fi
+# NOTE: no global BACKOFF gate. A blocked SITE is quarantined per-source inside the
+# collector (_state/backfill_state.json "blocked"); the run is never globally halted.
 
 DONE_BEFORE="$(python3 -c "import json;print(len(json.load(open('$STATE_DIR/backfill_state.json')).get('done',[])))" 2>/dev/null || echo 0)"
 RECORDS_BEFORE="$(find "$HISTORY_ROOT" -name '*.json' -not -path '*_state*' -not -path '*_runlog*' 2>/dev/null | wc -l | tr -d ' ')"
@@ -98,14 +97,17 @@ DONE_AFTER="$(python3 -c "import json;print(len(json.load(open('$STATE_DIR/backf
 RECORDS_AFTER="$(find "$HISTORY_ROOT" -name '*.json' -not -path '*_state*' -not -path '*_runlog*' 2>/dev/null | wc -l | tr -d ' ')"
 SESSION_LINE="$(grep 'session fetched:' "$TMPOUT" | tail -1)"
 
+# Per-site quarantined sources, surfaced from collector state (NOT a global halt).
+BLOCKED="$(python3 -c "import json;b=json.load(open('$STATE_DIR/backfill_state.json')).get('blocked',{});print(', '.join(sorted(b)) if b else 'none')" 2>/dev/null || echo '?')"
+
 if [ "$EXIT_CODE" -eq 0 ]; then
     log "=== DONE | exit 0 | sources complete ${DONE_BEFORE}→${DONE_AFTER}/31 | records ${RECORDS_BEFORE}→${RECORDS_AFTER} ==="
     [ -n "$SESSION_LINE" ] && log "  $SESSION_LINE"
-elif [ "$EXIT_CODE" -eq 10 ]; then
-    touch "$BACKOFF_FILE"
-    log "HARD STOP — exit 10 (429 / bot-check / consecutive fails). BACKOFF 24h. MANUAL REVIEW."
-    notify "Concepts backfill HARD-STOP — backing off 24h"
+    log "  per-site quarantined (24h cooldown, run continued past them): ${BLOCKED}"
+    if [ "$BLOCKED" != "none" ] && [ "$BLOCKED" != "?" ]; then
+        notify "Concepts backfill done — quarantined: ${BLOCKED}"
+    fi
 else
-    log "UNEXPECTED EXIT $EXIT_CODE — see session log above"
+    log "UNEXPECTED EXIT $EXIT_CODE — see session log above (quarantined: ${BLOCKED})"
     notify "Concepts backfill unexpected exit $EXIT_CODE"
 fi
