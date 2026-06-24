@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER BANK RESEARCH",
+  "collected_at": "2026-06-24T17:23:33Z",
+  "window_days": 4,
+  "date": "2026-06-24 — TWITTER BANK RESEARCH · 13 items · JPM 10 · Apollo/Slok 2 · BofA 1",
+  "input_stats": {
+    "total_tweets": 60,
+    "considered": 60,
+    "kept": 13,
+    "dropped": 47,
+    "deduped": 0
+  },
+  "summary": "JPM/Cembalest dominates with 10 items: semiconductor technicals breaching dot-com-era levels, massive hedge fund chip accumulation, AI hyperscalers risking negative FCF, SpaceX free-float timeline, gold share of central bank reserves driven by price not allocation, P/E discount trap for non-US allocators, and Aerospace & Defense multi-year strength.\n\nApollo/Slok (2): flags the inverted oil-price narrative — cheaper crude may amplify demand and raise inflation — and raises the risk of critical global distillate tank drawdowns.\n\nBofA (1): consumer housing sentiment flips net positive for the first time since 2023.\n\nCount: JPM 10 · Apollo/Slok 2 · BofA 1.",
+  "by_bank_counts": {
+    "JPM": 10,
+    "Apollo/Slok": 2,
+    "BofA": 1
+  },
+  "topics": [
+    {
+      "topic": "JPM (10) — Cembalest: AI capex, semiconductor technicals, equity concentration, global returns",
+      "bank": "JPM",
+      "theme": "Cembalest JPMAM — AI capex / FCF risk, semiconductor technicals at dot-com levels, equity concentration, long-run global return benchmarks",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069771524966396387",
+          "text": "Aerospace & Defense has consolidated (to put it nicely) since early March, but the group has been strong since the start of last year JPMAM https://t.co/frcJkevPOC",
+          "images": [
+            "https://pbs.twimg.com/media/HLlOO-TWsAALLK_.jpg"
+          ],
+          "created_at": "2026-06-24T13:16:00.000Z",
+          "relayers": [],
+          "data_points": [
+            "JPM · JPMAM"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069769957374583038",
+          "text": "Banks $KBE lit heading into mid-year... and earnings season... $JPM https://t.co/tajq6DSAi7",
+          "images": [
+            "https://pbs.twimg.com/media/HLlMzvNWAAAiTeE.png"
+          ],
+          "created_at": "2026-06-24T13:09:46.000Z",
+          "relayers": [],
+          "data_points": [
+            "JPM"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069767763971674147",
+          "text": "AI hyperscalers could turn free cash flow negative this year... but can they just turn the spigot on a whim? Chart from Cembalest JPMAM https://t.co/FVoxmRYEWc",
+          "images": [
+            "https://pbs.twimg.com/media/HLlK0D1XIAAwkuw.png"
+          ],
+          "created_at": "2026-06-24T13:01:04.000Z",
+          "relayers": [],
+          "data_points": [
+            "JPM · Cembalest"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069762716835656158",
+          "text": "Cembalest JPMAM: Equity market concentration: the US is actually at the lower end\n\nbut nobody actually allocated across 45 country ETFs.. more like US & International.. and international is far less top-heavy https://t.co/40BCgyjBaL",
+          "images": [
+            "https://pbs.twimg.com/media/HLlGORHXQAAWhDe.jpg"
+          ],
+          "created_at": "2026-06-24T12:41:00.000Z",
+          "relayers": [],
+          "data_points": [
+            "JPM · Cembalest"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069760199951282336",
+          "text": "Cembalest JPMAM: Massive jump in hedge fund chip exposure https://t.co/NlsHa3SFWA",
+          "images": [
+            "https://pbs.twimg.com/media/HLlD7xoWAAAX6g-.png"
+          ],
+          "created_at": "2026-06-24T12:31:00.000Z",
+          "relayers": [],
+          "data_points": [
+            "JPM · Cembalest"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069757729711743127",
+          "text": "Estimates of SpaceX free float timeline JPMAM $SPCX https://t.co/DgUSFa7xpK",
+          "images": [
+            "https://pbs.twimg.com/media/HLlBr_XXkAAszaV.png"
+          ],
+          "created_at": "2026-06-24T12:21:11.000Z",
+          "relayers": [],
+          "data_points": [
+            "JPM · JPMAM"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069757684627206326",
+          "text": "Cembalest JPMAM:  The semiconductor stock rally has generated technicals breaching levels last seen during the dot-com boom https://t.co/P2g0XdPS5W",
+          "images": [
+            "https://pbs.twimg.com/media/HLlBpUTWYAAVPKC.png"
+          ],
+          "created_at": "2026-06-24T12:21:00.000Z",
+          "relayers": [],
+          "data_points": [
+            "JPM · Cembalest"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069755100738806084",
+          "text": "Only South Africa and Australia have had better stock market returns than the US. JPMAM \n\nWeighted average long-run real CAGR near 5% for stocks (careful with those 10% assumed stock market returns in your personal financial planning) https://t.co/8Zkay7Batc",
+          "images": [
+            "https://pbs.twimg.com/media/HLk_S-JWkAA8qna.png"
+          ],
+          "created_at": "2026-06-24T12:10:44.000Z",
+          "relayers": [],
+          "data_points": [
+            "JPM · JPMAM"
+          ]
+        },
+        {
+          "author": "dailychartbook",
+          "tweet_url": "https://x.com/dailychartbook/status/2069752686048604286",
+          "text": "\"Almost the entire increase in the gold share of central bank reserves since 2009 is a function of rising gold prices rather than higher gold allocations.\"\n\n-JPM Cembalest https://t.co/mfhiw9Odbp",
+          "images": [
+            "https://pbs.twimg.com/media/HLk9GZCXgAARSXE.jpg"
+          ],
+          "created_at": "2026-06-24T12:01:09.000Z",
+          "relayers": [],
+          "data_points": [
+            "JPM · Cembalest"
+          ]
+        },
+        {
+          "author": "dailychartbook",
+          "tweet_url": "https://x.com/dailychartbook/status/2069729628118196560",
+          "text": "\"The P/E ratio discount for non-US stocks has been the equivalent of a bug zapper for many asset allocators.\"\n\n-JPM Cembalest https://t.co/5muyYNnGAv",
+          "images": [
+            "https://pbs.twimg.com/media/HLkoIQMXIAAWrnK.jpg"
+          ],
+          "created_at": "2026-06-24T10:29:31.000Z",
+          "relayers": [],
+          "data_points": [
+            "JPM · Cembalest"
+          ]
+        }
+      ]
+    },
+    {
+      "topic": "Apollo/Slok (2) — Oil price paradox and distillate inventory risk",
+      "bank": "Apollo/Slok",
+      "theme": "Slok on oil — lower crude prices as demand amplifier, risk of critical global distillate tank drawdowns",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069741638428094802",
+          "text": "The narrative in markets is changing from “lower oil prices mean lower inflation” to “lower oil prices mean more demand in an already overheating economy, which means higher inflation.”\n\nTorsten at Apollo https://t.co/mrRZxjsGTI",
+          "images": [
+            "https://pbs.twimg.com/media/HLkzDT4XsAACwCZ.jpg"
+          ],
+          "created_at": "2026-06-24T11:17:15.000Z",
+          "relayers": [],
+          "data_points": [
+            "Apollo/Slok"
+          ]
+        },
+        {
+          "author": "dailychartbook",
+          "tweet_url": "https://x.com/dailychartbook/status/2069737553763106899",
+          "text": "\"What are the implications if some tanks reach critical levels somewhere in the world, including distillate fuels in the US?\"\n\n-Apollo Slok https://t.co/yz8l4cN0U6",
+          "images": [
+            "https://pbs.twimg.com/media/HLkvVbWWcAAqDtQ.jpg"
+          ],
+          "created_at": "2026-06-24T11:01:01.000Z",
+          "relayers": [],
+          "data_points": [
+            "Apollo/Slok"
+          ]
+        }
+      ]
+    },
+    {
+      "topic": "BofA (1) — Consumer housing sentiment turns positive",
+      "bank": "BofA",
+      "theme": "BofA survey — buy-vs-rent sentiment net positive for first time since 2023",
+      "items": [
+        {
+          "author": "LanceRoberts",
+          "tweet_url": "https://x.com/LanceRoberts/status/2069732153844240541",
+          "text": "For the first time since 2023, more consumers say it's better to buy a home than to rent, according to Bank of America's latest survey. https://t.co/pJxkMW8Jg3",
+          "images": [
+            "https://pbs.twimg.com/media/HLkqSGLWwAEr2ii.jpg"
+          ],
+          "created_at": "2026-06-24T10:39:33.000Z",
+          "relayers": [],
+          "data_points": [
+            "BofA"
+          ]
+        }
+      ]
+    }
+  ],
+  "banks": [
+    {
+      "bank": "JPM",
+      "theme": "Cembalest JPMAM — AI capex / FCF risk, semiconductor technicals at dot-com levels, equity concentration, long-run global return benchmarks",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Aerospace & Defense has consolidated (to put it nicely) since early March, but the group has been strong since the start of last year JPMAM https://t.co/frcJkevPOC",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069771524966396387",
+          "images": [
+            "https://pbs.twimg.com/media/HLlOO-TWsAALLK_.jpg"
+          ],
+          "created_at": "2026-06-24T13:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Banks $KBE lit heading into mid-year... and earnings season... $JPM https://t.co/tajq6DSAi7",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069769957374583038",
+          "images": [
+            "https://pbs.twimg.com/media/HLlMzvNWAAAiTeE.png"
+          ],
+          "created_at": "2026-06-24T13:09:46.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "AI hyperscalers could turn free cash flow negative this year... but can they just turn the spigot on a whim? Chart from Cembalest JPMAM https://t.co/FVoxmRYEWc",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069767763971674147",
+          "images": [
+            "https://pbs.twimg.com/media/HLlK0D1XIAAwkuw.png"
+          ],
+          "created_at": "2026-06-24T13:01:04.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Cembalest JPMAM: Equity market concentration: the US is actually at the lower end\n\nbut nobody actually allocated across 45 country ETFs.. more like US & International.. and international is far less top-heavy https://t.co/40BCgyjBaL",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069762716835656158",
+          "images": [
+            "https://pbs.twimg.com/media/HLlGORHXQAAWhDe.jpg"
+          ],
+          "created_at": "2026-06-24T12:41:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Cembalest JPMAM: Massive jump in hedge fund chip exposure https://t.co/NlsHa3SFWA",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069760199951282336",
+          "images": [
+            "https://pbs.twimg.com/media/HLlD7xoWAAAX6g-.png"
+          ],
+          "created_at": "2026-06-24T12:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Estimates of SpaceX free float timeline JPMAM $SPCX https://t.co/DgUSFa7xpK",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069757729711743127",
+          "images": [
+            "https://pbs.twimg.com/media/HLlBr_XXkAAszaV.png"
+          ],
+          "created_at": "2026-06-24T12:21:11.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Cembalest JPMAM:  The semiconductor stock rally has generated technicals breaching levels last seen during the dot-com boom https://t.co/P2g0XdPS5W",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069757684627206326",
+          "images": [
+            "https://pbs.twimg.com/media/HLlBpUTWYAAVPKC.png"
+          ],
+          "created_at": "2026-06-24T12:21:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Only South Africa and Australia have had better stock market returns than the US. JPMAM \n\nWeighted average long-run real CAGR near 5% for stocks (careful with those 10% assumed stock market returns in your personal financial planning) https://t.co/8Zkay7Batc",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069755100738806084",
+          "images": [
+            "https://pbs.twimg.com/media/HLk_S-JWkAA8qna.png"
+          ],
+          "created_at": "2026-06-24T12:10:44.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "\"Almost the entire increase in the gold share of central bank reserves since 2009 is a function of rising gold prices rather than higher gold allocations.\"\n\n-JPM Cembalest https://t.co/mfhiw9Odbp",
+          "tweet_url": "https://x.com/dailychartbook/status/2069752686048604286",
+          "images": [
+            "https://pbs.twimg.com/media/HLk9GZCXgAARSXE.jpg"
+          ],
+          "created_at": "2026-06-24T12:01:09.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "\"The P/E ratio discount for non-US stocks has been the equivalent of a bug zapper for many asset allocators.\"\n\n-JPM Cembalest https://t.co/5muyYNnGAv",
+          "tweet_url": "https://x.com/dailychartbook/status/2069729628118196560",
+          "images": [
+            "https://pbs.twimg.com/media/HLkoIQMXIAAWrnK.jpg"
+          ],
+          "created_at": "2026-06-24T10:29:31.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Apollo/Slok",
+      "theme": "Slok on oil — lower crude prices as demand amplifier, risk of critical global distillate tank drawdowns",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "The narrative in markets is changing from “lower oil prices mean lower inflation” to “lower oil prices mean more demand in an already overheating economy, which means higher inflation.”\n\nTorsten at Apollo https://t.co/mrRZxjsGTI",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2069741638428094802",
+          "images": [
+            "https://pbs.twimg.com/media/HLkzDT4XsAACwCZ.jpg"
+          ],
+          "created_at": "2026-06-24T11:17:15.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "\"What are the implications if some tanks reach critical levels somewhere in the world, including distillate fuels in the US?\"\n\n-Apollo Slok https://t.co/yz8l4cN0U6",
+          "tweet_url": "https://x.com/dailychartbook/status/2069737553763106899",
+          "images": [
+            "https://pbs.twimg.com/media/HLkvVbWWcAAqDtQ.jpg"
+          ],
+          "created_at": "2026-06-24T11:01:01.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "BofA",
+      "theme": "BofA survey — buy-vs-rent sentiment net positive for first time since 2023",
+      "items": [
+        {
+          "author": "LanceRoberts",
+          "text": "For the first time since 2023, more consumers say it's better to buy a home than to rent, according to Bank of America's latest survey. https://t.co/pJxkMW8Jg3",
+          "tweet_url": "https://x.com/LanceRoberts/status/2069732153844240541",
+          "images": [
+            "https://pbs.twimg.com/media/HLkqSGLWwAEr2ii.jpg"
+          ],
+          "created_at": "2026-06-24T10:39:33.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
