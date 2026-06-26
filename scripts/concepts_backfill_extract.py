@@ -82,6 +82,11 @@ WORKLIST_DROP_PATHS = {
     # 1-2 thin insights) — keep /goldhub/research/ + /goldhub/gold-focus/ articles.
     "world_gold_council": ("/goldhub/data/", "/goldhub/tools"),
 }
+# GLOBAL word floor for EVERY source — below this a record is a paywalled/masthead/
+# teaser/author-bio/video stub, not a substantive article (real Concepts articles run
+# 300w+; stubs cluster <50w with a junk tail to ~150w). Per-source overrides below
+# take precedence (e.g. WGC/byrne need a higher floor). Theme-agnostic. Tune here.
+GLOBAL_MIN_WORDS = 200
 WORKLIST_MIN_WORDS = {
     "world_gold_council": 600,      # drops short chart/teaser pages; reports run 600-7000w
     "byrne_hobart_the_diff": 600,   # paywalled title/masthead stubs are ~18-28w; essays 600w+
@@ -90,18 +95,18 @@ WORKLIST_MIN_WORDS = {
 
 def _worklist_drop(rec):
     """Return a structural drop-reason ('genre:<frag>' | 'length:<Nw>') if this raw
-    record is junk for its source, else None. URL-path + word-floor only — theme-
-    agnostic, so any topic passes as long as it's a substantive article."""
+    record is junk, else None. URL-path + word-floor only — theme-agnostic, so any
+    topic passes as long as it's a substantive article. A GLOBAL word floor applies
+    to every source; per-source WORKLIST_MIN_WORDS / WORKLIST_DROP_PATHS override it."""
     slug = rec.get("_slug") or rec.get("source_slug", "")
     path = urlparse(rec.get("source_url", "")).path.lower()
     for frag in WORKLIST_DROP_PATHS.get(slug, ()):
         if frag in path:
             return f"genre:{frag}"
-    floor = WORKLIST_MIN_WORDS.get(slug)
-    if floor is not None:
-        w = rec.get("word_count") or len((rec.get("text") or "").split())
-        if w < floor:
-            return f"length:<{floor}w"
+    floor = WORKLIST_MIN_WORDS.get(slug, GLOBAL_MIN_WORDS)
+    w = rec.get("word_count") or len((rec.get("text") or "").split())
+    if w < floor:
+        return f"length:<{floor}w"
     return None
 
 PROCESSOR = "claude-code-sub-opus"   # subscription Opus, never the paid API
