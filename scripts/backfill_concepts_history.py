@@ -108,10 +108,13 @@ SLEEP_FETCH = (4.0, 10.0)     # per-SITE politeness (same-domain, sequential) �
 SLEEP_SOURCE = (1.0, 3.0)     # different site next — brief courtesy gap, not a throttle
 CONSECUTIVE_FAIL_ABORT = 3    # per-SOURCE: this many in a row quarantines that site, not the run
 SITE_COOLDOWN_S = 24 * 3600   # per-SITE quarantine window after a 429/bot block; others keep running
+SHORT_RETRY_WORDS = 150       # heavy: a fetch under this -> render-retry (JS settle/scroll) before
+                              # the length gate, so under-rendered analysis isn't lost to recall
 HTTP_TIMEOUT = 20
 
 _BOT_RE = re.compile(r"429|too many requests|unusual traffic|are you a human|"
-                     r"captcha|access denied|bot detection|cloudflare", re.I)
+                     r"captcha|access denied|bot detection|cloudflare|"
+                     r"403 forbidden|403 error|error 403|http 403", re.I)
 
 # --- per-source backfill METHOD (default for any source not listed = generic
 #     sitemap with reliable <lastmod> dates). One unified taxonomy:
@@ -194,6 +197,17 @@ STAGE3_ORDER = [
 # agnostic: any topic passes if it's substantive long-form analysis). Canary = the
 # first two only; the rest stay PAUSED until the thresholds are tuned.
 HEAVY_CANARY = ["brookings_institution", "carnegie_endowment"]
+
+# Full heavy-tier drain order (canaried pair first — mostly dedup on re-run — then
+# the rest; nber/ssrn last as likely-problematic repositories). Sources with no
+# usable sitemap are FLAGGED at runtime for rework, never guessed.
+HEAVY_ORDER = [
+    "brookings_institution",
+    "council_on_foreign_relations", "peterson_institute_piie", "csis", "atlantic_council",
+    "chatham_house", "german_marshall_fund", "hudson_institute", "iiss", "imf_blog",
+    "world_economic_forum", "rand_corporation", "nber_working_papers", "ssrn",
+    "carnegie_endowment",   # currently 403-rate-limited by our canary runs; retried last / next firing
+]
 
 
 def _passes_filter(url, rule):
@@ -342,9 +356,18 @@ def already_known(slug, record_id):
 
 
 # --- fetch one article (reuse daily extract_article + extract_date) ---------
-def fetch_article(page, url):
+def fetch_article(page, url, render=False):
     cc.navigate(page, url)            # cc.navigate already dismisses cookie banners…
     cc.dismiss_cookie_banner(page)    # …BONUS: a second pass for late-injected consent
+    if render:                        # RENDER-RETRY: let JS-heavy pages inject body text
+        cc.settle_index(page)         # networkidle + scroll + wait
+        for _ in range(2):
+            try:
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                page.wait_for_timeout(800)
+            except Exception:
+                break
+        cc.dismiss_cookie_banner(page)
     data = cc.extract_article(page)   # walls (ECB / Oxford-style), so we extract real
                                       # body text, not a consent interstitial. (Genuine
                                       # 429/bot pages still trip the per-site quarantine.)
@@ -650,63 +673,144 @@ def enum_heavy(index_url, start, budget=150):
     return None
 
 
-def run_heavy_canary(page, slugs, cfg_all, start, min_words, cap, dry_run):
-    """Sitemap-enumerate >= start -> GENRE filter (URL) -> fetch -> LENGTH filter
-    (word floor) -> write keepers, printing a per-source funnel + drop/keep SAMPLES.
-    Theme-agnostic structural filter only — NO watchlist."""
+class StateStore:
+    """done/blocked state for a backfill mode, kept in its OWN _state/<file> so heavy
+    / manual runs never race the signal-tier launchd job. Mirrors the inline
+    signal-tier logic: per-SITE quarantine, 24h cooldown, no global halt."""
+    def __init__(self, path):
+        self.path = path
+        try:
+            s = json.loads(path.read_text())
+        except Exception:
+            s = {}
+        self.done = set(s.get("done", []))
+        self.blocked = dict(s.get("blocked", {}))
+
+    def save(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps({"done": sorted(self.done), "blocked": self.blocked},
+                                        indent=2), encoding="utf-8")
+
+    def mark_done(self, slug):
+        self.done.add(slug); self.save()
+
+    def mark_blocked(self, slug, reason):
+        self.blocked[slug] = {"at": datetime.datetime.now(datetime.timezone.utc)
+                                      .isoformat(timespec="seconds"), "reason": reason}
+        self.save()
+
+    def recover(self, slug):
+        if slug in self.blocked:
+            self.blocked.pop(slug, None); self.save()
+
+    def cooling(self, slug):
+        b = self.blocked.get(slug)
+        if not b:
+            return False
+        try:
+            at = datetime.datetime.fromisoformat(b["at"])
+            return (datetime.datetime.now(datetime.timezone.utc) - at).total_seconds() < SITE_COOLDOWN_S
+        except Exception:
+            return True
+
+
+def run_heavy_tier(page, slugs, cfg_all, start, min_words, per_source_cap, session_cap,
+                   state=None, dry_run=False, sample=False):
+    """Drain heavy think-tank sources through the THEME-AGNOSTIC structural filter:
+    enum_heavy (newest-first sitemap walk) -> GENRE drop (URL path) -> fetch
+    (+RENDER-RETRY for under-rendered analysis) -> LENGTH floor -> write raw keepers.
+    Per-source FUNNEL. dedup-aware. With `state` (StateStore): skip done/cooling
+    sources, per-SITE quarantine on 429/bot or repeated fails (NO global halt), and
+    mark a source done once fully drained — resumable across nightly firings. Any
+    source with no usable sitemap is FLAGGED for rework (never guessed). NO watchlist.
+    Returns (summary, session_fetched, flags)."""
     from collections import Counter
-    for slug in slugs:
+    summary = []; flags = []; session_fetched = 0
+    for si, slug in enumerate(slugs):
         meta = cfg_all.get(slug)
         if not meta:
-            log(f"\n===== HEAVY CANARY [{slug}] — not in config, skip ====="); continue
-        log(f"\n===== HEAVY CANARY [{slug}]  (min_words={min_words}, fetch_cap={cap}) =====")
-        # Broad enumeration (NO theme/path scoping) so the GENRE filter does — and
-        # SHOWS — the structural cutting; newest-first walker reaches 2025+ fast.
-        rows = enum_heavy(meta["index_url"], start)
+            log(f"\n===== HEAVY [{slug}] — not in config, skip ====="); continue
+        if state and slug in state.done:
+            log(f"\n===== HEAVY [{slug}] — already complete, skip =====")
+            summary.append((slug, 0, 0, 0, 0, "complete")); continue
+        if state and state.cooling(slug):
+            b = state.blocked[slug]
+            log(f"\n===== HEAVY [{slug}] — quarantined @ {b['at']} ({b.get('reason','')}) — cooling, skip =====")
+            summary.append((slug, 0, 0, 0, 0, "quarantined")); continue
+        log(f"\n===== HEAVY [{slug}]  (min_words={min_words}, cap={per_source_cap}) =====")
+        try:
+            rows = enum_heavy(meta["index_url"], start)
+        except Exception as e:
+            log(f"  enumerate ERROR {type(e).__name__}: {e} — FLAG for rework")
+            flags.append((slug, f"enum-error {type(e).__name__}"))
+            summary.append((slug, 0, 0, 0, 0, "FLAG-error")); continue
         if rows is None:
-            log(f"  no sitemap discovered for {meta['index_url']} — needs index_render; skip"); continue
-        enumerated = len(rows)
-        undated = sum(1 for _, d in rows if not d)
+            log(f"  NO SITEMAP discovered for {meta['index_url']} — FLAG for rework (like ecb); skip")
+            flags.append((slug, "no sitemap"))
+            summary.append((slug, 0, 0, 0, 0, "FLAG-no-sitemap")); continue
+        enumerated = len(rows); undated = sum(1 for _, d in rows if not d)
         inwin = [(u, d) for u, d in rows if d and d >= start]
+        if enumerated and not inwin:
+            log(f"  enumerated={enumerated} but 0 in-window(>= {start}) — FLAG "
+                f"(bulk-stamped / unusable lastmods); skip")
+            flags.append((slug, "0 in-window (dates unusable)"))
+            summary.append((slug, enumerated, 0, 0, 0, "FLAG-no-window")); continue
 
-        # --- GENRE filter (URL path, pre-fetch) ---
         genre_kept, drop_counts, drop_samples = [], Counter(), []
         for u, d in inwin:
             frag = heavy_genre_drop(u)
             if frag:
                 drop_counts[frag] += 1
-                if len(drop_samples) < 18:
+                if len(drop_samples) < 12:
                     drop_samples.append((frag, u))
             else:
                 genre_kept.append((u, d))
-        log(f"  FUNNEL so far: enumerated={enumerated} (undated={undated}) -> "
-            f"in-window(>= {start})={len(inwin)} -> genre-kept={len(genre_kept)} "
-            f"(genre-dropped={sum(drop_counts.values())})")
-        log(f"  GENRE-DROP path taxonomy (fragment: count):")
-        for frag, n in drop_counts.most_common():
-            log(f"      {frag:22} {n}")
-        if drop_samples:
-            log(f"  GENRE-DROP samples (what got cut):")
-            for frag, u in drop_samples:
-                log(f"      [{frag}] {u}")
-
-        # --- dedup vs daily+history, then fetch a sample for the LENGTH gate ---
         fresh = [(u, d) for u, d in genre_kept if not already_known(slug, cc.url_hash(u))]
-        n_fetch = min(cap, len(fresh))
-        log(f"  LENGTH gate: fetching {n_fetch} of {len(fresh)} genre-kept new URLs "
-            f"(cap={cap}); word floor = {min_words}")
-        written = 0; length_drops = []; kept_samples = []; consec_fail = 0
-        for u, d in fresh[:cap]:
+        log(f"  FUNNEL: enumerated={enumerated} (undated={undated}) -> in-window={len(inwin)} -> "
+            f"genre-kept={len(genre_kept)} (genre-dropped {sum(drop_counts.values())}) -> fresh/new={len(fresh)}")
+        if drop_counts:
+            log("  genre-drop top: " + ", ".join(f"{f}:{n}" for f, n in drop_counts.most_common(10)))
+        if sample and drop_samples:
+            for frag, u in drop_samples[:10]:
+                log(f"      [drop {frag}] {u}")
+        if not fresh:
+            if state:
+                state.mark_done(slug)
+            log(f"  nothing new -> COMPLETE")
+            summary.append((slug, enumerated, len(inwin), len(genre_kept), 0, "complete")); continue
+
+        written = 0; length_dropped = 0; rendered = 0; fetched = 0
+        consec_fail = 0; blocked_reason = None; capped = False
+        kept_samples = []
+        for u, d in fresh[:per_source_cap]:
+            if session_fetched >= session_cap:
+                log("  session cap reached — stop (resumable)"); capped = True; break
             try:
                 rec = fetch_article(page, u); consec_fail = 0
             except (PlaywrightTimeout, PlaywrightError) as e:
                 consec_fail += 1
                 log(f"    WARN fetch {u[:55]} — {type(e).__name__} ({consec_fail}/{CONSECUTIVE_FAIL_ABORT})")
                 if consec_fail >= CONSECUTIVE_FAIL_ABORT:
-                    log(f"    3 consecutive fails on {slug} — stop this source (canary)"); break
+                    blocked_reason = f"{CONSECUTIVE_FAIL_ABORT} consecutive fetch failures (last: {type(e).__name__})"
+                    log(f"    PER-SITE BLOCK [{slug}]: {blocked_reason} — quarantine, continue to next source")
+                    break
                 sleep(SLEEP_FETCH); continue
+            fetched += 1; session_fetched += 1
             if _BOT_RE.search((rec.get("text") or "")[:400]) or _BOT_RE.search(rec.get("title") or ""):
-                log(f"    429/bot page on {slug} — stop this source (canary)"); break
+                blocked_reason = "429 / bot-check / consent page served"
+                log(f"    PER-SITE BLOCK [{slug}]: {blocked_reason} — quarantine, continue to next source")
+                break
+            # RENDER-RETRY: an under-rendered analytical page (it cleared the genre
+            # gate) re-fetched with JS settle/scroll before the length floor judges it.
+            if rec["word_count"] < SHORT_RETRY_WORDS:
+                try:
+                    rec2 = fetch_article(page, u, render=True)
+                    if rec2["word_count"] > rec["word_count"]:
+                        log(f"    render-retry {rec['word_count']}w -> {rec2['word_count']}w  "
+                            f"{(rec2['title'] or '')[:40]}")
+                        rec = rec2; rendered += 1
+                except (PlaywrightTimeout, PlaywrightError):
+                    pass
             words = rec["word_count"]; title = rec["title"]
             pub = rec["published_date"] or (d or "")
             if rec["published_date"] and rec["published_date"] < start:
@@ -714,7 +818,7 @@ def run_heavy_canary(page, slugs, cfg_all, start, min_words, cap, dry_run):
             if not pub:
                 sleep(SLEEP_FETCH); continue
             if words < min_words:
-                length_drops.append((words, pub, title))
+                length_dropped += 1
                 log(f"    -len  [{pub}] {words:>5}w  {title[:52]}")
                 sleep(SLEEP_FETCH); continue
             rid = cc.url_hash(u)
@@ -735,17 +839,32 @@ def run_heavy_canary(page, slugs, cfg_all, start, min_words, cap, dry_run):
                 dd = HIST_ROOT / slug; dd.mkdir(parents=True, exist_ok=True)
                 (dd / f"{rid}.json").write_text(json.dumps(record, ensure_ascii=False, indent=2),
                                                 encoding="utf-8")
-            written += 1; kept_samples.append((words, pub, title))
+            written += 1
+            if len(kept_samples) < 8:
+                kept_samples.append((words, pub, title))
             log(f"    +kept [{pub}] {words:>5}w  {title[:52]}")
             sleep(SLEEP_FETCH)
 
+        # per-site state transitions (mirrors the signal-tier loop)
+        if state:
+            if blocked_reason:
+                state.mark_blocked(slug, blocked_reason)
+            else:
+                state.recover(slug)
+                if not capped and len(fresh) <= per_source_cap:
+                    state.mark_done(slug)   # fully drained this source
+        status = (f"BLOCKED@{written}" if blocked_reason
+                  else ("capped" if capped else "drained"))
         log(f"  HEAVY FUNNEL [{slug}]: enumerated={enumerated} -> in-window={len(inwin)} -> "
-            f"genre-kept={len(genre_kept)} -> fetched={n_fetch} -> "
-            f"length-kept/WRITTEN={written} (length-dropped={len(length_drops)})")
-        if kept_samples:
-            log(f"  KEPT sample (genre+length survivors, any topic):")
-            for w, p, t in kept_samples[:10]:
-                log(f"      [{p}] {w:>5}w  {t[:60]}")
+            f"genre-kept={len(genre_kept)} -> fetched={fetched} -> WRITTEN={written} "
+            f"(len-dropped={length_dropped}, render-fixed={rendered}) [{status}]")
+        if sample and kept_samples:
+            for w, p, t in kept_samples:
+                log(f"      +keep [{p}] {w:>5}w  {t[:58]}")
+        summary.append((slug, enumerated, len(inwin), len(genre_kept), written, status))
+        if si < len(slugs) - 1:
+            sleep(SLEEP_SOURCE, "inter-source")
+    return summary, session_fetched, flags
 
 
 def main():
@@ -764,6 +883,8 @@ def main():
                     help="fetch the Stage-3 render-harvest sources (no filter; Deep/signal)")
     ap.add_argument("--heavy-canary", action="store_true",
                     help="heavy think-tank CANARY (Brookings+Carnegie) with the structural genre+length filter")
+    ap.add_argument("--heavy-tier", action="store_true",
+                    help="drain the FULL heavy think-tank tier (15 sources) with genre+length+render-retry; resumable")
     ap.add_argument("--min-words", type=int, default=800,
                     help="heavy-tier LENGTH floor in words (genre+length filter; default 800)")
     ap.add_argument("--state-file", default="backfill_state.json",
@@ -783,21 +904,39 @@ def main():
     cfg_all = {cc.slugify(s["name"]): s for s in
                json.loads((REPO_ROOT / "config" / "concepts_sources.json").read_text())["sources"]}
 
-    # Heavy-tier CANARY: separate path (structural genre+length filter + funnel),
-    # leaves the signal-tier loop untouched. Writes raw to concepts-history/.
-    if args.heavy_canary:
-        slugs = ([s.strip() for s in args.sources.split(",")] if args.sources else HEAVY_CANARY)
+    # Heavy-tier paths: structural genre+length+render-retry filter, separate from
+    # the signal-tier loop. Writes raw to concepts-history/. CANARY = sampled, no
+    # state; TIER = full drain over HEAVY_ORDER with an ISOLATED resumable state file.
+    if args.heavy_canary or args.heavy_tier:
+        if args.sources:
+            slugs = [s.strip() for s in args.sources.split(",")]
+        else:
+            slugs = HEAVY_ORDER if args.heavy_tier else HEAVY_CANARY
         HIST_ROOT.mkdir(parents=True, exist_ok=True)
-        log(f"HEAVY CANARY — RAW ONLY | start={args.start} | sources={slugs} | history={HIST_ROOT}")
+        # never share the signal-tier launchd state file
+        sf = args.state_file if args.state_file != "backfill_state.json" else "heavy_state.json"
+        state = StateStore(HIST_ROOT / "_state" / sf) if args.heavy_tier else None
+        mode = "TIER (full drain, resumable)" if args.heavy_tier else "CANARY (sample)"
+        log(f"HEAVY {mode} — RAW ONLY | start={args.start} | min_words={args.min_words} | "
+            f"sources={len(slugs)} | state={sf if state else 'none'} | history={HIST_ROOT}")
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
             ctx = browser.new_context(user_agent=cc.USER_AGENT, viewport=cc.DEFAULT_VIEWPORT,
                                       ignore_https_errors=True)
             page = ctx.new_page(); page.set_default_timeout(cc.PAGE_TIMEOUT_MS)
-            run_heavy_canary(page, slugs, cfg_all, args.start, args.min_words,
-                             args.per_source_cap, args.dry_run)
+            summary, fetched, flags = run_heavy_tier(
+                page, slugs, cfg_all, args.start, args.min_words, args.per_source_cap,
+                args.session_cap, state=state, dry_run=args.dry_run, sample=args.heavy_canary)
             browser.close()
-        log("\nHEAVY CANARY complete — PAUSED before scaling to the other heavy sources.")
+        log("\n" + "=" * 64)
+        log(f"{'source':<30}{'enum':>7}{'inwin':>7}{'genre':>7}{'writ':>6}  status")
+        for slug, enm, iw, gk, wr, st in summary:
+            log(f"  {slug:<28}{enm:>7}{iw:>7}{gk:>7}{wr:>6}  {st}")
+        total_written = sum(wr for *_x, wr, _s in summary)
+        log(f"HEAVY {mode}: written this run = {total_written} | session fetched = {fetched}")
+        if flags:
+            log(f"FLAGGED for rework ({len(flags)}): " + "; ".join(f"{s} ({w})" for s, w in flags))
+        log("PAUSED with the numbers." if args.heavy_canary else "Heavy tier run ended (resumable).")
         return
 
     canary = ["paul_graham_essays", "howard_marks_memos", "a16z_blog"]
