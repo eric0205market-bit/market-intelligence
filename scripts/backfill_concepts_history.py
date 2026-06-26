@@ -121,6 +121,12 @@ _BOT_RE = re.compile(r"429|too many requests|unusual traffic|are you a human|"
 #                       date each at FETCH time via the daily extract_date
 #       flat_html_byline  Paul Graham — fetch each essay, parse "Month Year" byline
 #       js_listing      render a JS listing, harvest links (date at fetch)
+#       index_render    GENERAL render-harvest (reuses collect_concepts' navigate ->
+#                       settle/scroll -> dismiss_cookie_banner -> collect_anchors ->
+#                       looks_like_article + per-source url_must/article_path_re).
+#                       Optional light pagination via "paginate" (a {n} URL template);
+#                       without it the listing is RECENT-ONLY (flagged). Date @ fetch.
+#                       This is the Stage-3 fallback for JS-walled / sitemap-less sites.
 BACKFILL_METHODS = {
     "paul_graham_essays": {"method": "flat_html_byline"},
     "howard_marks_memos": {"method": "js_listing",
@@ -142,6 +148,20 @@ BACKFILL_METHODS = {
     "oxford_economics": {"method": "fetch_to_date", "path_re": re.compile(r"^/resource/[^/]+/?$"),
                          "exclude": ["/resource/tag", "/zh-hans/", "/ja/", "/de/", "/fr/",
                                      "/es/", "/it/", "/pt/", "/ko/", "/nl/", "/zh-hant/"]},
+    # --- Stage-3 (no-method) sources: render-harvest the JS-walled / sitemap-less
+    #     listings. capital_economics is NOT here -> it has a sitemap, so it falls
+    #     through to the default sitemap+date-gate path. ---
+    "oaktree_capital_insights": {"method": "index_render", "url_must": "/insights/"},
+    "ark_invest_research": {"method": "index_render", "url_must": "/articles/",
+                            "paginate": {"template": "https://ark-invest.com/articles/page/{n}/", "max": 6}},
+    "aqr_perspectives": {"method": "index_render", "url_must": "/insights"},
+    "palladium_magazine": {"method": "index_render",
+                           "paginate": {"template": "https://www.palladiummag.com/page/{n}/", "max": 6}},
+    "sf_fed_economic_letters": {"method": "index_render", "url_must": "/economic-letter/"},
+    "the_gradient_stanford": {"method": "index_render",
+                              "paginate": {"template": "https://thegradient.pub/page/{n}/", "max": 8}},
+    "openai_blog": {"method": "index_render"},
+    "ecb_blog": {"method": "index_render", "url_must": "/press/blog/"},
 }
 
 
@@ -160,6 +180,20 @@ SIGNAL_TIER_ORDER = [
     "world_gold_council", "howard_marks_memos", "deepmind_blog", "byrne_hobart_the_diff",
     "dimensional_fund_advisors", "research_affiliates", "oxford_economics",
 ]
+
+# Stage-3 (previously no-method) Deep/signal sources — render-harvest fallback
+# (capital_economics uses the default sitemap path). NO relevance filter: these are
+# curated signal sources, collect-all like the rest of the signal tier.
+STAGE3_ORDER = [
+    "the_gradient_stanford", "openai_blog", "palladium_magazine", "ark_invest_research",
+    "aqr_perspectives", "oaktree_capital_insights", "sf_fed_economic_letters",
+    "ecb_blog", "capital_economics",
+]
+
+# Heavy think-tank tier — collected with a STRUCTURAL genre+length filter (theme-
+# agnostic: any topic passes if it's substantive long-form analysis). Canary = the
+# first two only; the rest stay PAUSED until the thresholds are tuned.
+HEAVY_CANARY = ["brookings_institution", "carnegie_endowment"]
 
 
 def _passes_filter(url, rule):
@@ -235,6 +269,67 @@ def enum_js_listing_render(page, listing, url_must):
     return out
 
 
+def enum_index_render(page, source, rule):
+    """GENERAL render-harvest enumerator (Stage-3 fallback). Reuses the shared
+    collect_concepts machinery — cc.navigate (which itself dismisses cookie/consent
+    banners) -> cc.settle_index (+ scroll) -> cc.collect_anchors — then keeps
+    on-apex links that pass cc.looks_like_article (or a per-source article_path_re),
+    optionally restricted to url_must. Light pagination via rule['paginate'] = a
+    {n} URL template; without it the listing is RECENT-ONLY (flagged in the note).
+    Returns ([(url, None)], note) — dates are determined later at FETCH time."""
+    if page is None:
+        return None, "render needed"
+    listing = rule.get("listing") or source["index_url"]
+    url_must = (rule.get("url_must") or "").lower()
+    apath = rule.get("article_path_re")
+    apex = cc.apex_domain(urlparse(listing).netloc)
+    pag = rule.get("paginate")
+    pages = [listing]
+    if pag:
+        pages += [pag["template"].format(n=n) for n in range(2, int(pag.get("max", 6)) + 1)]
+
+    out, seen = [], {cc.norm_url(listing)}
+    empties = 0
+    for pg_url in pages:
+        try:
+            cc.navigate(page, pg_url)
+        except (PlaywrightTimeout, PlaywrightError):
+            empties += 1
+            if empties >= 2:
+                break
+            continue
+        cc.settle_index(page)
+        for _ in range(4):   # nudge infinite-scroll / lazy listings
+            try:
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                page.wait_for_timeout(1000)
+            except Exception:
+                break
+        before = len(out)
+        for a in cc.collect_anchors(page, page.url):
+            if cc.apex_domain(urlparse(a).netloc) != apex:
+                continue
+            if url_must and url_must not in a.lower():
+                continue
+            is_art = cc.looks_like_article(a, apex)
+            if not is_art and apath is not None and apath.search(urlparse(a).path):
+                is_art = True
+            if not is_art:
+                continue
+            key = cc.norm_url(a)
+            if key in seen:
+                continue
+            seen.add(key); out.append((a, None))
+        if pag and len(out) == before:   # paginated page added nothing new
+            empties += 1
+            if empties >= 2:
+                break
+        else:
+            empties = 0
+    note = "date@fetch; " + ("paginated" if pag else "RECENT-ONLY (no pagination configured)")
+    return out, note
+
+
 # --- dedup ------------------------------------------------------------------
 def already_known(slug, record_id):
     if (DAILY_PROCESSED / f"{record_id}.json").exists():
@@ -248,8 +343,11 @@ def already_known(slug, record_id):
 
 # --- fetch one article (reuse daily extract_article + extract_date) ---------
 def fetch_article(page, url):
-    cc.navigate(page, url)
-    data = cc.extract_article(page)
+    cc.navigate(page, url)            # cc.navigate already dismisses cookie banners…
+    cc.dismiss_cookie_banner(page)    # …BONUS: a second pass for late-injected consent
+    data = cc.extract_article(page)   # walls (ECB / Oxford-style), so we extract real
+                                      # body text, not a consent interstitial. (Genuine
+                                      # 429/bot pages still trip the per-site quarantine.)
     text = data.get("text", "")
     pub = (cc.extract_date(data.get("html", ""), url)
            or cc.parse_date(data.get("date_raw"))
@@ -405,6 +503,11 @@ def detect_and_enumerate(slug, source, start, page=None):
         if rows is None:
             return method, "FLAG:js_listing — render needed to enumerate (run with a fetch page)", None
         return method, rows, "date at fetch"
+    if method == "index_render":
+        rows, note = enum_index_render(page, source, m)
+        if rows is None:
+            return method, "FLAG:index_render — render page needed to enumerate", None
+        return method, rows, note
     if method == "fetch_to_date":
         res, note = enum_sitemap(source["index_url"], start, rule=m, use_dates=False)
         return (method, res, note) if res is not None else (method, "FLAG:" + (note or "no sitemap"), None)
@@ -455,6 +558,196 @@ def run_enumerate_final(start, page=None):
     return rows, flags
 
 
+# ===========================================================================
+# HEAVY TIER — structural GENRE + LENGTH filter (theme-agnostic). NO watchlist:
+# any topic passes as long as it's substantive long-form analysis. The filter is
+# purely structural so it never caps discovery of the unknown.
+# ===========================================================================
+# GENRE drop = non-analytical FORMATS, identified by URL path fragment (pre-fetch,
+# cheap). Theme-agnostic: events, press/news, multimedia, people/bio, section/
+# landing/taxonomy pages. KEEPS research / analysis / commentary / working papers /
+# long-form (those live at article paths that hit none of these).
+HEAVY_GENRE_DROP = (
+    "/event", "/events/", "/press-release", "/press-releases/", "/press/",
+    "/news/", "/newsroom", "/in-the-news", "/in-the-media", "/media/", "/media-mention", "/media-call",
+    "/podcast", "/podcasts/", "/video", "/videos/", "/audio", "/multimedia", "/gallery",
+    "/webinar", "/webcast", "/livestream", "/event-recap",
+    "/expert", "/experts/", "/people/", "/staff/", "/scholars/", "/person/", "/author/",
+    "/about", "/about-us", "/contact", "/careers", "/jobs",
+    "/program/", "/programs/", "/project/", "/projects/", "/initiative",
+    "/collection/", "/collections/",
+    "/topic/", "/topics/", "/tag/", "/tags/", "/category/", "/categories/", "/series/",
+    "/region/", "/regions/", "/country/", "/sector/", "/issue-areas/",
+    "/newsletter", "/subscribe", "/donate", "/support", "/membership",
+    "/statement", "/announcement", "/award", "/fellowship", "/grant",
+)
+
+
+def heavy_genre_drop(url):
+    """Return the matched non-analytical path fragment, or None if the URL looks
+    like a genuine article path. Structural / theme-agnostic."""
+    path = urlparse(url).path.lower()
+    for frag in HEAVY_GENRE_DROP:
+        if frag in path:
+            return frag
+    return None
+
+
+def _is_sitemap_loc(u):
+    """A <loc> that points at another sitemap (recurse) vs a content URL (keep)."""
+    u = u.lower().split("?")[0].rstrip("/")
+    return u.endswith(".xml") or "/sitemap" in u
+
+
+def walk_sitemap_recent(url, start, apex, budget, depth=0):
+    """Recursive sitemap walker that descends NEWEST-first and PRUNES any sub-map
+    whose <lastmod> predates `start`, so giant date-partitioned think-tank sitemaps
+    reach 2025+ content fast. Handles arbitrarily nested indexes AND the quirk where
+    a <urlset> lists *.xml sub-sitemaps as <url> entries (Carnegie). Returns
+    in-window-ish [(content_url, lastmod)] on `apex`; `budget` is a 1-elem mutable
+    doc-fetch cap. SEPARATE from the signal-tier sitemap_entries (left untouched)."""
+    if budget[0] <= 0 or depth > 5:
+        return []
+    budget[0] -= 1
+    s, b = http_get(url)
+    if s != 200 or "<" not in (b or ""):
+        return []
+    pairs = []
+    for blk in re.findall(r"<(?:sitemap|url)>(.*?)</(?:sitemap|url)>", b, re.S):
+        loc = re.search(r"<loc>([^<]+)</loc>", blk)
+        lm = re.search(r"<lastmod>([^<]+)</lastmod>", blk)
+        if loc:
+            pairs.append((loc.group(1).strip(), (lm.group(1)[:10] if lm else None)))
+    content = [(l, d) for l, d in pairs
+               if not _is_sitemap_loc(l) and cc.apex_domain(urlparse(l).netloc) == apex]
+    subs = [(l, d) for l, d in pairs if _is_sitemap_loc(l)]
+    subs.sort(key=lambda p: (p[1] or "9999"), reverse=True)   # newest sub-maps first
+    out = list(content)
+    for loc, lm in subs:
+        if budget[0] <= 0:
+            break
+        if lm is not None and lm < start:   # whole sub-map predates the window
+            continue
+        out += walk_sitemap_recent(loc, start, apex, budget, depth + 1)
+    return out
+
+
+def enum_heavy(index_url, start, budget=150):
+    """Heavy-tier enumeration: newest-first recursive sitemap walk back to `start`.
+    Returns de-duped [(url, lastmod)] (None if no sitemap found)."""
+    parsed = urlparse(index_url)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    apex = cc.apex_domain(parsed.netloc)
+    for sm in discover_sitemaps(base):
+        rows = walk_sitemap_recent(sm, start, apex, [budget])
+        if rows:
+            seen, uniq = set(), []
+            for u, d in rows:
+                k = cc.norm_url(u)
+                if k not in seen:
+                    seen.add(k); uniq.append((u, d))
+            return uniq
+    return None
+
+
+def run_heavy_canary(page, slugs, cfg_all, start, min_words, cap, dry_run):
+    """Sitemap-enumerate >= start -> GENRE filter (URL) -> fetch -> LENGTH filter
+    (word floor) -> write keepers, printing a per-source funnel + drop/keep SAMPLES.
+    Theme-agnostic structural filter only — NO watchlist."""
+    from collections import Counter
+    for slug in slugs:
+        meta = cfg_all.get(slug)
+        if not meta:
+            log(f"\n===== HEAVY CANARY [{slug}] — not in config, skip ====="); continue
+        log(f"\n===== HEAVY CANARY [{slug}]  (min_words={min_words}, fetch_cap={cap}) =====")
+        # Broad enumeration (NO theme/path scoping) so the GENRE filter does — and
+        # SHOWS — the structural cutting; newest-first walker reaches 2025+ fast.
+        rows = enum_heavy(meta["index_url"], start)
+        if rows is None:
+            log(f"  no sitemap discovered for {meta['index_url']} — needs index_render; skip"); continue
+        enumerated = len(rows)
+        undated = sum(1 for _, d in rows if not d)
+        inwin = [(u, d) for u, d in rows if d and d >= start]
+
+        # --- GENRE filter (URL path, pre-fetch) ---
+        genre_kept, drop_counts, drop_samples = [], Counter(), []
+        for u, d in inwin:
+            frag = heavy_genre_drop(u)
+            if frag:
+                drop_counts[frag] += 1
+                if len(drop_samples) < 18:
+                    drop_samples.append((frag, u))
+            else:
+                genre_kept.append((u, d))
+        log(f"  FUNNEL so far: enumerated={enumerated} (undated={undated}) -> "
+            f"in-window(>= {start})={len(inwin)} -> genre-kept={len(genre_kept)} "
+            f"(genre-dropped={sum(drop_counts.values())})")
+        log(f"  GENRE-DROP path taxonomy (fragment: count):")
+        for frag, n in drop_counts.most_common():
+            log(f"      {frag:22} {n}")
+        if drop_samples:
+            log(f"  GENRE-DROP samples (what got cut):")
+            for frag, u in drop_samples:
+                log(f"      [{frag}] {u}")
+
+        # --- dedup vs daily+history, then fetch a sample for the LENGTH gate ---
+        fresh = [(u, d) for u, d in genre_kept if not already_known(slug, cc.url_hash(u))]
+        n_fetch = min(cap, len(fresh))
+        log(f"  LENGTH gate: fetching {n_fetch} of {len(fresh)} genre-kept new URLs "
+            f"(cap={cap}); word floor = {min_words}")
+        written = 0; length_drops = []; kept_samples = []; consec_fail = 0
+        for u, d in fresh[:cap]:
+            try:
+                rec = fetch_article(page, u); consec_fail = 0
+            except (PlaywrightTimeout, PlaywrightError) as e:
+                consec_fail += 1
+                log(f"    WARN fetch {u[:55]} — {type(e).__name__} ({consec_fail}/{CONSECUTIVE_FAIL_ABORT})")
+                if consec_fail >= CONSECUTIVE_FAIL_ABORT:
+                    log(f"    3 consecutive fails on {slug} — stop this source (canary)"); break
+                sleep(SLEEP_FETCH); continue
+            if _BOT_RE.search((rec.get("text") or "")[:400]) or _BOT_RE.search(rec.get("title") or ""):
+                log(f"    429/bot page on {slug} — stop this source (canary)"); break
+            words = rec["word_count"]; title = rec["title"]
+            pub = rec["published_date"] or (d or "")
+            if rec["published_date"] and rec["published_date"] < start:
+                sleep(SLEEP_FETCH); continue
+            if not pub:
+                sleep(SLEEP_FETCH); continue
+            if words < min_words:
+                length_drops.append((words, pub, title))
+                log(f"    -len  [{pub}] {words:>5}w  {title[:52]}")
+                sleep(SLEEP_FETCH); continue
+            rid = cc.url_hash(u)
+            record = {
+                "record_id": rid, "source_slug": slug,
+                "source_name": meta.get("name", slug), "source_url": u,
+                "category": meta.get("category", ""), "type": meta.get("type", ""),
+                "paywalled": bool(meta.get("paywalled", False)),
+                "title": title, "published_date": pub, "language": "en",
+                "author": rec["author"], "word_count": words,
+                "text": rec["text"], "image_urls": rec["image_urls"],
+                "collected_at": datetime.datetime.now(datetime.timezone.utc)
+                                 .strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "backfill": True, "enumerated_via": "heavy_sitemap+genre+length",
+                "lastmod": d,
+            }
+            if not dry_run:
+                dd = HIST_ROOT / slug; dd.mkdir(parents=True, exist_ok=True)
+                (dd / f"{rid}.json").write_text(json.dumps(record, ensure_ascii=False, indent=2),
+                                                encoding="utf-8")
+            written += 1; kept_samples.append((words, pub, title))
+            log(f"    +kept [{pub}] {words:>5}w  {title[:52]}")
+            sleep(SLEEP_FETCH)
+
+        log(f"  HEAVY FUNNEL [{slug}]: enumerated={enumerated} -> in-window={len(inwin)} -> "
+            f"genre-kept={len(genre_kept)} -> fetched={n_fetch} -> "
+            f"length-kept/WRITTEN={written} (length-dropped={len(length_drops)})")
+        if kept_samples:
+            log(f"  KEPT sample (genre+length survivors, any topic):")
+            for w, p, t in kept_samples[:10]:
+                log(f"      [{p}] {w:>5}w  {t[:60]}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--canary", action="store_true", help="signal-tier canary: PG, Howard Marks, a16z")
@@ -467,6 +760,14 @@ def main():
                     help="FINAL signal-tier enumeration with finalized per-source methods (renders js_listing)")
     ap.add_argument("--signal-tier", action="store_true",
                     help="fetch the full Stage-1+2 signal tier (small-first; flagged Stage-3 sources excluded)")
+    ap.add_argument("--stage3", action="store_true",
+                    help="fetch the Stage-3 render-harvest sources (no filter; Deep/signal)")
+    ap.add_argument("--heavy-canary", action="store_true",
+                    help="heavy think-tank CANARY (Brookings+Carnegie) with the structural genre+length filter")
+    ap.add_argument("--min-words", type=int, default=800,
+                    help="heavy-tier LENGTH floor in words (genre+length filter; default 800)")
+    ap.add_argument("--state-file", default="backfill_state.json",
+                    help="filename under _state/ for done/blocked (isolate manual runs from the launchd job)")
     ap.add_argument("--dry-run", action="store_true", help="fetch but don't write to history")
     args = ap.parse_args()
 
@@ -479,15 +780,35 @@ def main():
             b.close()
         return
 
+    cfg_all = {cc.slugify(s["name"]): s for s in
+               json.loads((REPO_ROOT / "config" / "concepts_sources.json").read_text())["sources"]}
+
+    # Heavy-tier CANARY: separate path (structural genre+length filter + funnel),
+    # leaves the signal-tier loop untouched. Writes raw to concepts-history/.
+    if args.heavy_canary:
+        slugs = ([s.strip() for s in args.sources.split(",")] if args.sources else HEAVY_CANARY)
+        HIST_ROOT.mkdir(parents=True, exist_ok=True)
+        log(f"HEAVY CANARY — RAW ONLY | start={args.start} | sources={slugs} | history={HIST_ROOT}")
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            ctx = browser.new_context(user_agent=cc.USER_AGENT, viewport=cc.DEFAULT_VIEWPORT,
+                                      ignore_https_errors=True)
+            page = ctx.new_page(); page.set_default_timeout(cc.PAGE_TIMEOUT_MS)
+            run_heavy_canary(page, slugs, cfg_all, args.start, args.min_words,
+                             args.per_source_cap, args.dry_run)
+            browser.close()
+        log("\nHEAVY CANARY complete — PAUSED before scaling to the other heavy sources.")
+        return
+
     canary = ["paul_graham_essays", "howard_marks_memos", "a16z_blog"]
     if args.sources:
         slugs = [s.strip() for s in args.sources.split(",")]
     elif args.signal_tier:
         slugs = SIGNAL_TIER_ORDER
+    elif args.stage3:
+        slugs = STAGE3_ORDER
     else:
         slugs = canary
-    cfg_all = {cc.slugify(s["name"]): s for s in
-               json.loads((REPO_ROOT / "config" / "concepts_sources.json").read_text())["sources"]}
 
     # Per-source state:
     #   done    — fully-collected sources -> skip (true overnight no-op).
@@ -497,7 +818,7 @@ def main():
     #             it is still cooling down (SITE_COOLDOWN_S); after that it auto-
     #             retries, and a clean pass clears the flag. Manually editable for
     #             Stage-3-style rework. NO global halt.
-    done_path = HIST_ROOT / "_state" / "backfill_state.json"
+    done_path = HIST_ROOT / "_state" / args.state_file
     try:
         _state = json.loads(done_path.read_text())
     except Exception:
