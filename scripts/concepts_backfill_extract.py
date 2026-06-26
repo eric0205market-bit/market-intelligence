@@ -44,6 +44,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Reuse the DAILY Concepts quality logic — do NOT fork it.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -70,6 +71,38 @@ _RESERVED = {"_processed", "_quarantine", "_runlog", "_state"}
 # Heavy think-tanks deferred pending the Society/Science taxonomy decision — never
 # worklisted/extracted here (their raw stays in concepts-history, untouched).
 HEAVY_EXCLUDE = {"brookings_institution", "carnegie_endowment"}
+
+# STRUCTURAL pre-filter for the extraction worklist (theme-agnostic — URL path +
+# word floor, the same idea as the heavy-tier genre+length filter). Junk/non-article
+# raw records for the listed sources are SKIPPED so the marathon never spends Opus on
+# them. Records are only SKIPPED — never deleted; their raw stays in concepts-history.
+# Scoped per-source (only the sources with a known junk pattern); extend as needed.
+WORKLIST_DROP_PATHS = {
+    # World Gold Council "Goldhub" chart/data tool pages (sign-in-walled charts,
+    # 1-2 thin insights) — keep /goldhub/research/ + /goldhub/gold-focus/ articles.
+    "world_gold_council": ("/goldhub/data/", "/goldhub/tools"),
+}
+WORKLIST_MIN_WORDS = {
+    "world_gold_council": 600,      # drops short chart/teaser pages; reports run 600-7000w
+    "byrne_hobart_the_diff": 600,   # paywalled title/masthead stubs are ~18-28w; essays 600w+
+}
+
+
+def _worklist_drop(rec):
+    """Return a structural drop-reason ('genre:<frag>' | 'length:<Nw>') if this raw
+    record is junk for its source, else None. URL-path + word-floor only — theme-
+    agnostic, so any topic passes as long as it's a substantive article."""
+    slug = rec.get("_slug") or rec.get("source_slug", "")
+    path = urlparse(rec.get("source_url", "")).path.lower()
+    for frag in WORKLIST_DROP_PATHS.get(slug, ()):
+        if frag in path:
+            return f"genre:{frag}"
+    floor = WORKLIST_MIN_WORDS.get(slug)
+    if floor is not None:
+        w = rec.get("word_count") or len((rec.get("text") or "").split())
+        if w < floor:
+            return f"length:<{floor}w"
+    return None
 
 PROCESSOR = "claude-code-sub-opus"   # subscription Opus, never the paid API
 
@@ -189,6 +222,8 @@ def worklist(order="newest", limit=None):
         if not (d.get("text") or "").strip():   # routine: skip records with no text
             continue
         if d.get("record_id") in done:
+            continue
+        if _worklist_drop(d):                    # structural junk-page skip (not deleted)
             continue
         elig.append(d)
     if order == "oldest":
