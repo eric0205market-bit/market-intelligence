@@ -3,6 +3,7 @@
 ## Revised: Jun 07, 2026 — added KNOWLEDGE EXECUTION MODEL (YouTube built; local collection + subscription-Opus extraction; deep history outside repo)
 ## Revised: Jun 17, 2026 — KNOWLEDGE collection decided per IP-risk (Concepts live, cloud Playwright; Technology building); track-wide Flow triage decided
 ## Revised: Jun 27, 2026 — Technology live (cloud cron 10:00 UTC + manual Remote, as Concepts); Flow re-cut (22 G3 → Newsletters, Technology watchlist OFF); Newsletters live on interim
+## Revised: Jun 27, 2026 — Concepts reconcile: 61 active/17 parked (78 curated); Data sources collected as normal articles (no Data-module routing); backfill extraction ongoing.
 
 > **Design doc — slow-changing.** Holds the model, principles, tiers, knowledge
 > architecture, build order. Does NOT hold live status — that's in
@@ -190,11 +191,11 @@ The KNOWLEDGE track diverges from the FLOW execution model. FLOW = cloud (GitHub
 
 **Resolved (Jun-17) — collection mechanism is chosen per IP-risk, not local-by-default:** transcript sources (YouTube) collect **locally** (transcript IP-risk); Playwright-over-public-sites (Concepts, confirmed live; Technology building; Society to follow) collect in the **cloud** (GitHub Actions), same as Institutional. Extraction-on-subscription + routine + guard + history-outside-repo carry over either way. The local path stays reserved for any future source with IP-risk.
 
-**Flow triage — track-wide (decided Jun-17).** KNOWLEDGE sources carry a depth type (Deep / Flow / Data) from curation. Triage applies only to **Flow** (high-volume news); **Deep** = extract-all; **Data** publishers are routed out of the reading stream (to the Data module). Flow is triaged **deterministically in the collector, before the worklist** (not inside extraction, no LLM):
+**Flow triage — track-wide (decided Jun-17).** KNOWLEDGE sources carry a depth type (Deep / Flow / Data) from curation. Triage applies only to **Flow** (high-volume news); **Deep** = extract-all; **Data** module not built — Concepts collects Data-typed sources as normal articles (no routing). Flow is triaged **deterministically in the collector, before the worklist** (not inside extraction, no LLM):
 - items whose title+body match `config/knowledge_watchlist.json` (tickers / companies / sectors / themes, owner-maintained) → worklisted up to a generous per-source cap;
 - a small recency-capped **discovery sample** of the freshest *non-matching* items per source per run is also kept, so cross-domain novelty is not blind-spotted (the owner's edge);
 - **firehose** sources (e.g. ArXiv cs.AI / cs.LG, Hacker News; flagged in source config) require a watchlist match (no discovery sample) + a tight cap.
-Caps are tunable knobs. No LLM in triage — semantic triage is deferred to the future embeddings layer. The watchlist is **shared across KNOWLEDGE Flow streams** (Technology, Society); seed from portfolio holdings + `config/twitter_watchlist.json` + the 8 light tags; it may later merge with the Discovery Loop WATCH_AGENDA. Concepts has no Flow sources, so it runs extract-all and exercises none of this.
+Caps are tunable knobs. No LLM in triage — semantic triage is deferred to the future embeddings layer. The watchlist is **shared across KNOWLEDGE Flow streams** (Technology, Society); seed from portfolio holdings + `config/twitter_watchlist.json` + the 8 light tags; it may later merge with the Discovery Loop WATCH_AGENDA. Concepts has no Flow; 61 active / 17 parked (78 curated), collector honors collect:false — so it exercises none of this triage.
 
 **Update (Jun-27) — Technology re-cut does NOT engage track-wide triage.** After the re-cut, Technology runs with `WATCHLIST_GATE=False`: its Deep sources extract-all with a recency window, and only its 5 Flow-capped sources (MIT TR, Ars, Wired, NVIDIA Dev, InfoQ) take a recency cap (N=25) — no watchlist-gate, no discovery-sample. Perishable G3 news was re-routed out to Newsletters rather than triaged. The track-wide mechanism above (watchlist-gate + recency-cap + discovery-sample, `config/knowledge_watchlist.json`) is **retained as the spec for Society and future Flow streams** — Society enables it by flipping the flag.
 
