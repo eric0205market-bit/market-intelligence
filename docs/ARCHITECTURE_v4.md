@@ -2,6 +2,7 @@
 ## Date: May 31, 2026 (supersedes v3, May 24)
 ## Revised: Jun 07, 2026 — added KNOWLEDGE EXECUTION MODEL (YouTube built; local collection + subscription-Opus extraction; deep history outside repo)
 ## Revised: Jun 17, 2026 — KNOWLEDGE collection decided per IP-risk (Concepts live, cloud Playwright; Technology building); track-wide Flow triage decided
+## Revised: Jun 27, 2026 — Technology live (cloud cron 10:00 UTC + manual Remote, as Concepts); Flow re-cut (22 G3 → Newsletters, Technology watchlist OFF); Newsletters live on interim
 
 > **Design doc — slow-changing.** Holds the model, principles, tiers, knowledge
 > architecture, build order. Does NOT hold live status — that's in
