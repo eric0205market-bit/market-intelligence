@@ -4,6 +4,7 @@
 ## Revised: Jun 17, 2026 — KNOWLEDGE collection decided per IP-risk (Concepts live, cloud Playwright; Technology building); track-wide Flow triage decided
 ## Revised: Jun 27, 2026 — Technology live (cloud cron 10:00 UTC + manual Remote, as Concepts); Flow re-cut (22 G3 → Newsletters, Technology watchlist OFF); Newsletters live on interim
 ## Revised: Jun 27, 2026 — Concepts reconcile: 61 active/17 parked (78 curated); Data sources collected as normal articles (no Data-module routing); backfill extraction ongoing.
+## Revised: Jun 27, 2026 — YouTube reconcile: backfill quantified (~1116 processed, cursor 32/77, Hour-16 agent); tails closed (clone removed, plist template fixed, .DS_Store); DOAC handle open; YouTube confirmed emitting own per-video schema (not shared card).
 
 > **Design doc — slow-changing.** Holds the model, principles, tiers, knowledge
 > architecture, build order. Does NOT hold live status — that's in
@@ -187,7 +188,7 @@ The KNOWLEDGE track diverges from the FLOW execution model. FLOW = cloud (GitHub
 
 **Storage — split by recency:**
 - **Daily stream** → GitHub as usual: `raw/`, `processed/`, dated `reports/*.html`, dashboard. Same bus as FLOW.
-- **Deep history** (backfill, pre-current): separate local code path, separate folder **OUTSIDE the git repo, never committed/pushed**. Backup = Dropbox; raw is re-collectable, processed re-extractable. Destined for the future Supabase load. JSON-only — no reports, no dashboard — except a one-time dated-HTML render for the slice with upload-date ≥ Apr 1 2026 (so the visible archive is continuous from April).
+- **Deep history** (backfill, pre-current): separate local code path, separate folder **OUTSIDE the git repo, never committed/pushed**. Backup = Dropbox; raw is re-collectable, processed re-extractable. Destined for the future Supabase load. JSON-only — no reports, no dashboard — except a one-time dated-HTML render for the slice with upload-date ≥ Apr 1 2026 (so the visible archive is continuous from April). **YouTube backfill status (Jun-27):** active via a dedicated launchd agent `com.marketintel.youtube-backfill` (Hour 16, local) — ~1116 processed episodes in `youtube-history/`, roster_cursor 32/77, oldest episode 2025-02-03 (a channel is marked complete when its playlist is exhausted, not at a fixed date floor).
 
 **Resolved (Jun-17) — collection mechanism is chosen per IP-risk, not local-by-default:** transcript sources (YouTube) collect **locally** (transcript IP-risk); Playwright-over-public-sites (Concepts, confirmed live; Technology building; Society to follow) collect in the **cloud** (GitHub Actions), same as Institutional. Extraction-on-subscription + routine + guard + history-outside-repo carry over either way. The local path stays reserved for any future source with IP-risk.
 
