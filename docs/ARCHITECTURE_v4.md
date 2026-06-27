@@ -36,7 +36,7 @@ Content splits into two fundamentally different types, processed differently.
 
 ### KNOWLEDGE — deep, lasting, accumulative
 "How does the world work?" — builds over months.
-- **YouTube / Podcasts — built / live** (77 channels). **Concepts — built / live** (Jun-17). **Technology — building.** Society — not started. (See KNOWLEDGE EXECUTION MODEL below.)
+- **YouTube / Podcasts — built / live** (77 channels). **Concepts — built / live** (Jun-17). **Technology — built / live** (Jun-27; cloud cron 10:00 UTC + manual Remote extraction, as Concepts; Flow re-cut: 22 G3 → Newsletters; watchlist OFF for Technology). Society — not started. (See KNOWLEDGE EXECUTION MODEL below.)
 
 **Classification is by content depth, not by source.** A channel can post a daily recap (flow) and a 2-hour interview (knowledge). But most flow-source content stays flow.
 
@@ -128,7 +128,7 @@ Three tiers, all cloud API (works when Mac is off):
 - Deterministic, **no LLM**. Weekly. Discovers public full research PDFs via deep paths. Sibling to Institutional. Surfaced on dashboard as "Bank PDF".
 
 **Newsletters & News** (Substack)
-- Still on **Gmail Cloud Routine (interim)**; Playwright collector **not built** (Gmail strips images). Currently has no owner chat — flagged.
+- **Live on Gmail Cloud Routine (interim), ~2 months** (only downside: Gmail strips charts/images). **Full non-email version (direct/Playwright) pending** — intake: 23 from Technology (22 G3 + The Information) + crypto pool (Decrypt etc.) + possibly paid (Bloomberg/Barron's via owner subscription, volume per source ToS). Needs owner chat.
 
 **Earnings calls** (quarterly, bulk — Haiku) — **not started.** ~500–1000 companies; deterministic beat/miss + Haiku commentary → embeddings.
 
@@ -195,6 +195,8 @@ The KNOWLEDGE track diverges from the FLOW execution model. FLOW = cloud (GitHub
 - **firehose** sources (e.g. ArXiv cs.AI / cs.LG, Hacker News; flagged in source config) require a watchlist match (no discovery sample) + a tight cap.
 Caps are tunable knobs. No LLM in triage — semantic triage is deferred to the future embeddings layer. The watchlist is **shared across KNOWLEDGE Flow streams** (Technology, Society); seed from portfolio holdings + `config/twitter_watchlist.json` + the 8 light tags; it may later merge with the Discovery Loop WATCH_AGENDA. Concepts has no Flow sources, so it runs extract-all and exercises none of this.
 
+**Update (Jun-27) — Technology re-cut does NOT engage track-wide triage.** After the re-cut, Technology runs with `WATCHLIST_GATE=False`: its Deep sources extract-all with a recency window, and only its 5 Flow-capped sources (MIT TR, Ars, Wired, NVIDIA Dev, InfoQ) take a recency cap (N=25) — no watchlist-gate, no discovery-sample. Perishable G3 news was re-routed out to Newsletters rather than triaged. The track-wide mechanism above (watchlist-gate + recency-cap + discovery-sample, `config/knowledge_watchlist.json`) is **retained as the spec for Society and future Flow streams** — Society enables it by flipping the flag.
+
 ---
 
 ## CHART / IMAGE UNDERSTANDING (design)
@@ -226,10 +228,10 @@ Collection saves image CDN URLs (no files) → vision model (Sonnet) returns des
 
 Status per item lives in **MODULE_REGISTRY.md** — this is the sequence only.
 
-1. **FLOW track** — Twitter (3 routes), Twitter Banks, Institutional, Bank PDF live; Newsletters on interim; Earnings pending. ← largely done
+1. **FLOW track** — Twitter (3 routes), Twitter Banks, Institutional, Bank PDF live; Newsletters live on interim (full rebuild pending); Earnings pending. ← largely done
 2. **Storage migration** — Supabase project, schema, collectors → Supabase API (keep Pages for reports).
 3. **Knowledge infrastructure** — ontology rules, pgvector, embedding pipeline.
-4. **Knowledge track + Earnings** — YouTube **(built / live, Jun-07)**, Concepts **(built / live, Jun-17)**; Technology **(building)**, Society, Earnings pending.
+4. **Knowledge track + Earnings** — YouTube **(built / live, Jun-07)**, Concepts **(built / live, Jun-17)**, Technology **(built / live, Jun-27)**; Society, Earnings pending.
 5. **Synthesis** — SHIFTS, queryable knowledge base, promote, "interesting detector".
 6. **Investment Committee** — multi-frontier integration, rules, decision journal.
 
