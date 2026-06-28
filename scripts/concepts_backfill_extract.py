@@ -78,9 +78,14 @@ HEAVY_EXCLUDE = {"brookings_institution", "carnegie_endowment"}
 # them. Records are only SKIPPED — never deleted; their raw stays in concepts-history.
 # Scoped per-source (only the sources with a known junk pattern); extend as needed.
 WORKLIST_DROP_PATHS = {
-    # World Gold Council "Goldhub" chart/data tool pages (sign-in-walled charts,
-    # 1-2 thin insights) — keep /goldhub/research/ + /goldhub/gold-focus/ articles.
-    "world_gold_council": ("/goldhub/data/", "/goldhub/tools"),
+    # World Gold Council "Goldhub" junk by URL path (theme-agnostic):
+    #   /goldhub/data/ + /goldhub/tools : sign-in-walled chart/data tool pages.
+    #   /unearthed-                     : the "Unearthed" PODCAST series — promo +
+    #     disclaimer pages whose transcript is NOT in the raw text (2-6 thin insights);
+    #     clears the 600w floor on boilerplate. The slug is unique to the podcast, so
+    #     it never hits the real reports (research, India/China market updates, Central
+    #     Bank Gold Statistics, Weekly Markets Monitor commentary), which are KEPT.
+    "world_gold_council": ("/goldhub/data/", "/goldhub/tools", "/unearthed-"),
 }
 # GLOBAL word floor for EVERY source — below this a record is a paywalled/masthead/
 # teaser/author-bio/video stub, not a substantive article (real Concepts articles run
