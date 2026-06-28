@@ -5,6 +5,7 @@
 ## Revised: Jun 27, 2026 — Technology live (cloud cron 10:00 UTC + manual Remote, as Concepts); Flow re-cut (22 G3 → Newsletters, Technology watchlist OFF); Newsletters live on interim
 ## Revised: Jun 27, 2026 — Concepts reconcile: 61 active/17 parked (78 curated); Data sources collected as normal articles (no Data-module routing); backfill extraction ongoing.
 ## Revised: Jun 27, 2026 — YouTube reconcile: backfill quantified (~1116 processed, cursor 32/77, Hour-16 agent); tails closed (clone removed, plist template fixed, .DS_Store); DOAC handle open; YouTube confirmed emitting own per-video schema (not shared card).
+## Revised: Jun 27, 2026 — Concepts→Society relocation: 11 IR think-tanks moved to Society; Concepts now 52 active / 26 parked (78 curated).
 
 > **Design doc — slow-changing.** Holds the model, principles, tiers, knowledge
 > architecture, build order. Does NOT hold live status — that's in
@@ -196,7 +197,7 @@ The KNOWLEDGE track diverges from the FLOW execution model. FLOW = cloud (GitHub
 - items whose title+body match `config/knowledge_watchlist.json` (tickers / companies / sectors / themes, owner-maintained) → worklisted up to a generous per-source cap;
 - a small recency-capped **discovery sample** of the freshest *non-matching* items per source per run is also kept, so cross-domain novelty is not blind-spotted (the owner's edge);
 - **firehose** sources (e.g. ArXiv cs.AI / cs.LG, Hacker News; flagged in source config) require a watchlist match (no discovery sample) + a tight cap.
-Caps are tunable knobs. No LLM in triage — semantic triage is deferred to the future embeddings layer. The watchlist is **shared across KNOWLEDGE Flow streams** (Technology, Society); seed from portfolio holdings + `config/twitter_watchlist.json` + the 8 light tags; it may later merge with the Discovery Loop WATCH_AGENDA. Concepts has no Flow; 61 active / 17 parked (78 curated), collector honors collect:false — so it exercises none of this triage.
+Caps are tunable knobs. No LLM in triage — semantic triage is deferred to the future embeddings layer. The watchlist is **shared across KNOWLEDGE Flow streams** (Technology, Society); seed from portfolio holdings + `config/twitter_watchlist.json` + the 8 light tags; it may later merge with the Discovery Loop WATCH_AGENDA. Concepts has no Flow; 52 active / 26 parked (78 curated), collector honors collect:false — so it exercises none of this triage.
 
 **Update (Jun-27) — Technology re-cut does NOT engage track-wide triage.** After the re-cut, Technology runs with `WATCHLIST_GATE=False`: its Deep sources extract-all with a recency window, and only its 5 Flow-capped sources (MIT TR, Ars, Wired, NVIDIA Dev, InfoQ) take a recency cap (N=25) — no watchlist-gate, no discovery-sample. Perishable G3 news was re-routed out to Newsletters rather than triaged. The track-wide mechanism above (watchlist-gate + recency-cap + discovery-sample, `config/knowledge_watchlist.json`) is **retained as the spec for Society and future Flow streams** — Society enables it by flipping the flag.
 
