@@ -13,6 +13,13 @@ These are SHARED across the KNOWLEDGE track (Concepts/Technology/Society hit the
 - **RSS / newsletter ingestion route** for bot-blocked sites (block headless at ANY IP). Concepts dropped, HIGH-VALUE, `revisit_route: rss_or_newsletter`: **McKinsey Global Institute, McKinsey Insights, Citi GPS**.
 - **JS-render (headed/interaction) collection path** for client-rendered SPAs (static anchor harvest can't reach article links, any IP). Concepts dropped: HIGH-VALUE `revisit_route: rss_or_js_render` — **Bain Insights, Sequoia Arc, Lux Capital**; lower-priority `js_render` — **Stimson Center**.
 
+### Added 2026-06-29 (Society canary + first cloud dispatch) — all Architecture/shared; do NOT build per-source fixes inside any stream
+- **Residential / RSS / JS-render path for cloud-IP-blocked sources healthy locally** (extends the three routes above). 7 sources parked, `revisit_route: residential-or-rss`: Society — **aeon, american_enterprise_institute, bruegel, iea_commentaries, african_arguments**; Concepts — **chatham_house, stimson**.
+- **Paywalled headline/listing-signal collector** (CONTEXT §4 intent): 8 paywalled Society sources parked — capture title/listing as **agenda signal, NOT body**.
+- **Deep-fetch + paywall-detection for truncated bodies:** The Diplomat (~150-word teasers); **FA features, Project Syndicate, Slow Boring, Noahpinion** flagged `paywalled:false` but yield lede-only.
+- **Collector article-filter triage:** non-article pages slip through `looks_like_article` (topic-hub / landing / author-archive / product).
+- **Collector author-field defects:** Atlantic Council (one author on all UkraineAlert), The Wire China (one author for all), IFS (author = Facebook URL).
+
 ## Conventions
 
 - **Local-Dropbox sync — first AND last action of every session that touches this repo.** Whenever a session touches this repo (read or write), the FIRST action AND the LAST action is to sync the user's working clone at `~/Dropbox (Personal)/Business/InvestTool/market-intelligence/market-intelligence` to `origin/main` — regardless of whether THIS session pushed anything. CI collection commits (collect-twitter, bank-research, merge-to-main, …) advance `origin/main` continuously, so the Dropbox folder can drift behind even when Claude Code did nothing. The sequence (run via `git -C "<that path>"`): `git stash push --include-untracked` → `git fetch origin main` → `git checkout main` → `git pull --rebase origin main` → `git stash pop`. The Dropbox folder and `origin/main` must never be left divergent. If `stash pop` conflicts, STOP and report — do not force, do not discard.

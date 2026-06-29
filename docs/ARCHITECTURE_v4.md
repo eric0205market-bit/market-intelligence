@@ -6,6 +6,7 @@
 ## Revised: Jun 27, 2026 — Concepts reconcile: 61 active/17 parked (78 curated); Data sources collected as normal articles (no Data-module routing); backfill extraction ongoing.
 ## Revised: Jun 27, 2026 — YouTube reconcile: backfill quantified (~1116 processed, cursor 32/77, Hour-16 agent); tails closed (clone removed, plist template fixed, .DS_Store); DOAC handle open; YouTube confirmed emitting own per-video schema (not shared card).
 ## Revised: Jun 27, 2026 — Concepts→Society relocation: 11 IR think-tanks moved to Society; Concepts now 52 active / 26 parked (78 curated).
+## Revised: Jun 29, 2026 — Society built/live (weekly cron Sun 10:00 UTC, first auto-collect Jul-05) → ALL FOUR KNOWLEDGE streams live (YouTube, Concepts, Technology, Society). AS-BUILT correction: track-wide Flow triage NOT engaged by Technology/Society (WATCHLIST_GATE=False; watchlist/discovery-sample OFF). Taxonomy move (11 IR think-tanks Concepts→Society, Jun-27) finalized: Concepts companion edit collect:false done, no double-collection.
 
 > **Design doc — slow-changing.** Holds the model, principles, tiers, knowledge
 > architecture, build order. Does NOT hold live status — that's in
@@ -40,7 +41,7 @@ Content splits into two fundamentally different types, processed differently.
 
 ### KNOWLEDGE — deep, lasting, accumulative
 "How does the world work?" — builds over months.
-- **YouTube / Podcasts — built / live** (77 channels). **Concepts — built / live** (Jun-17). **Technology — built / live** (Jun-27; cloud cron 10:00 UTC + manual Remote extraction, as Concepts; Flow re-cut: 22 G3 → Newsletters; watchlist OFF for Technology). Society — not started. (See KNOWLEDGE EXECUTION MODEL below.)
+- **YouTube / Podcasts — built / live** (77 channels). **Concepts — built / live** (Jun-17). **Technology — built / live** (Jun-27; cloud cron 10:00 UTC + manual Remote extraction, as Concepts; Flow re-cut: 22 G3 → Newsletters; watchlist OFF for Technology). **Society — built / live** (Jun-29; weekly cron Sun 10:00 UTC, first auto-collect Jul-05; manual Remote extraction, as Technology). **All four KNOWLEDGE streams are now live.** (See KNOWLEDGE EXECUTION MODEL below.)
 
 **Classification is by content depth, not by source.** A channel can post a daily recap (flow) and a 2-hour interview (knowledge). But most flow-source content stays flow.
 
@@ -199,7 +200,7 @@ The KNOWLEDGE track diverges from the FLOW execution model. FLOW = cloud (GitHub
 - **firehose** sources (e.g. ArXiv cs.AI / cs.LG, Hacker News; flagged in source config) require a watchlist match (no discovery sample) + a tight cap.
 Caps are tunable knobs. No LLM in triage — semantic triage is deferred to the future embeddings layer. The watchlist is **shared across KNOWLEDGE Flow streams** (Technology, Society); seed from portfolio holdings + `config/twitter_watchlist.json` + the 8 light tags; it may later merge with the Discovery Loop WATCH_AGENDA. Concepts has no Flow; 52 active / 26 parked (78 curated), collector honors collect:false — so it exercises none of this triage.
 
-**Update (Jun-27) — Technology re-cut does NOT engage track-wide triage.** After the re-cut, Technology runs with `WATCHLIST_GATE=False`: its Deep sources extract-all with a recency window, and only its 5 Flow-capped sources (MIT TR, Ars, Wired, NVIDIA Dev, InfoQ) take a recency cap (N=25) — no watchlist-gate, no discovery-sample. Perishable G3 news was re-routed out to Newsletters rather than triaged. The track-wide mechanism above (watchlist-gate + recency-cap + discovery-sample, `config/knowledge_watchlist.json`) is **retained as the spec for Society and future Flow streams** — Society enables it by flipping the flag.
+**AS-BUILT CORRECTION (Jun-27 / Jun-29) — neither Technology NOR Society engages the track-wide triage above.** The watchlist-gate + recency-cap + discovery-sample mechanism described above was the Jun-17 *design decision*, but it is **NOT what got built.** Both shipped Flow streams run with `WATCHLIST_GATE=False` (durable extract-all): Deep sources extract-all with a recency window; perishable news Flow is parked → Newsletters (`collect:false`); the remaining Flow sources take a small per-source recency cap (N=25). No watchlist-gate, no discovery-sample. The watchlist + discovery-sample code **exists in the collector but is OFF** for both streams — retained as a future option, not the as-built behaviour. (Technology Flow-capped sources: MIT TR, Ars, Wired, NVIDIA Dev, InfoQ.) This supersedes "Society enables it by flipping the flag."
 
 ---
 
@@ -235,7 +236,7 @@ Status per item lives in **MODULE_REGISTRY.md** — this is the sequence only.
 1. **FLOW track** — Twitter (3 routes), Twitter Banks, Institutional, Bank PDF live; Newsletters live on interim (full rebuild pending); Earnings pending. ← largely done
 2. **Storage migration** — Supabase project, schema, collectors → Supabase API (keep Pages for reports).
 3. **Knowledge infrastructure** — ontology rules, pgvector, embedding pipeline.
-4. **Knowledge track + Earnings** — YouTube **(built / live, Jun-07)**, Concepts **(built / live, Jun-17)**, Technology **(built / live, Jun-27)**; Society, Earnings pending.
+4. **Knowledge track + Earnings** — YouTube **(built / live, Jun-07)**, Concepts **(built / live, Jun-17)**, Technology **(built / live, Jun-27)**, Society **(built / live, Jun-29; first auto-collect Jul-05)** — all four KNOWLEDGE streams live; Earnings pending.
 5. **Synthesis** — SHIFTS, queryable knowledge base, promote, "interesting detector".
 6. **Investment Committee** — multi-frontier integration, rules, decision journal.
 
@@ -279,7 +280,7 @@ Carried from v3: two-track architecture; deterministic-first; three model tiers;
 
 **Updated Jun-17 (KNOWLEDGE collection + triage):**
 13. **KNOWLEDGE collection is decided per IP-risk, not local-by-default** — transcript sources local (YouTube); Playwright-over-public-sites cloud (Concepts live, Technology building, Society to follow), like Institutional.
-14. **Track-wide Flow triage** — deterministic in the collector: watchlist-gate (shared `config/knowledge_watchlist.json`) + recency-cap + a small discovery-sample of non-matching items (preserves novelty); firehose sources gated harder. No LLM in triage.
+14. **Track-wide Flow triage** — deterministic in the collector: watchlist-gate (shared `config/knowledge_watchlist.json`) + recency-cap + a small discovery-sample of non-matching items (preserves novelty); firehose sources gated harder. No LLM in triage. **⚠️ As-built deviation (Jun-27/29): this is NOT what shipped.** Technology AND Society run `WATCHLIST_GATE=False` (durable extract-all + recency, perishable Flow parked → Newsletters, cap N=25); the watchlist/discovery-sample code is present but OFF. See "AS-BUILT CORRECTION" in KNOWLEDGE EXECUTION MODEL.
 
 ---
 
