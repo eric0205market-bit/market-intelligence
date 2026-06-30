@@ -1,5 +1,9 @@
 # ROUTINE — CONCEPTS **HISTORICAL BACKFILL** EXTRACTION (JSON-only)
-# Model: Opus (subscription) — one ARTICLE per subagent, same as the daily run. NEVER the paid API.
+# Model: SONNET subagents (subscription; fallback Haiku) — one ARTICLE per subagent. NOT Opus,
+#        NEVER the paid API. Extraction is a rubric-bound, quote-copying task; quality is held by
+#        the deterministic postprocess/quote-verify + entity-presence guard at finalize, not by
+#        model size. Opus burned the subscription limit fast for no quality gain — see the cost
+#        lesson in memory. Spawn each subagent with model="sonnet".
 # Input:  concepts-history/<slug>/<record_id>.json            (backfill-collected raw articles)
 # Output: concepts-history/_processed/<slug>/<record_id>.json (knowledge cards)
 #         concepts-history/_quarantine/<slug>/<record_id>.json (entity-guard failures)
@@ -46,13 +50,13 @@ feed `--no-heal` rows to extraction.)
 TSV columns (stdout only): `slug  record_id  words  source_name  title`.
 If it prints nothing: STOP — nothing to do. Otherwise process ONLY the listed rows.
 
-## STEP 1 — EXTRACT (one article per subagent, Opus)
+## STEP 1 — EXTRACT (one article per subagent, SONNET)
 For EACH worklisted row, emit the per-article prompt and hand it to its OWN subagent:
 
     python3 scripts/concepts_backfill_extract.py prompt <slug> <record_id>
 
 This prompt is the daily STEP 2 rubric + the raw record + the exact output path. Spawn one
-Opus subagent per article. Each subagent:
+SONNET subagent per article (model="sonnet"; fallback Haiku — NOT Opus). Each subagent:
 - works EXCLUSIVELY from the single article in its prompt (never another article, a sibling
   task, the title alone, or prior knowledge — same one-source rule as daily);
 - outputs ONLY the JSON knowledge card (no fences, no prose);
@@ -82,9 +86,13 @@ processed, total insights, quarantined count, quotes verified/total. **No git.**
 
 ## HARD RULES
 - NEVER render HTML, rebuild the dashboard, or run any `git` command in this routine.
-- NEVER use the paid API — Opus on the subscription only. On a usage limit, STOP CLEANLY:
-  finalize whatever cards were already written, report what finished, and end. The next run
-  resumes — the worklist re-lists only the still-unprocessed articles.
+- Subagents run on SONNET (subscription; fallback Haiku), NOT Opus, and NEVER the paid API. On a
+  usage limit, STOP CLEANLY: finalize whatever cards were already written, report what finished,
+  and end. The next run resumes — the worklist re-lists only the still-unprocessed articles.
+- WAITING IS FREE-OF-MODEL-TURNS. Do NOT "wait" by emitting model turns (no `echo waiting`
+  loops, no per-agent/per-wave narration) — that re-runs the orchestrator over a ballooning
+  context and is pure spend. Wait for the harness completion notifications passively; if a check
+  is unavoidable, ONE cheap shell/disk `ls`/count is far cheaper than repeated model turns.
 - `concepts-history/` (deep history) stays OUT of the repo — do not `git add` it.
 - Heavy think-tanks (brookings/carnegie) are OUT of scope here (auto-excluded) until the
   Society/Science taxonomy is decided.

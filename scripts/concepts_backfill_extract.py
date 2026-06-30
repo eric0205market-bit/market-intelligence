@@ -3,8 +3,8 @@
 
 Mirrors scripts/youtube_backfill.py EXACTLY for the Concepts KNOWLEDGE track, and
 mirrors the DAILY Concepts quality (routine_concepts.md STEP 2 rubric, per-article
-Opus extraction, entity-presence guard + quarantine, deterministic quote_verified
-postprocess) — differing ONLY in I/O paths and the publish step:
+extraction on SONNET subagents, entity-presence guard + quarantine, deterministic
+quote_verified postprocess) — differing ONLY in I/O paths and the publish step:
 
   * reads backfill articles from   concepts-history/<slug>/<record_id>.json
   * writes knowledge cards to        concepts-history/_processed/<slug>/<record_id>.json
@@ -74,8 +74,8 @@ HEAVY_EXCLUDE = {"brookings_institution", "carnegie_endowment"}
 
 # STRUCTURAL pre-filter for the extraction worklist (theme-agnostic — URL path +
 # word floor, the same idea as the heavy-tier genre+length filter). Junk/non-article
-# raw records for the listed sources are SKIPPED so the marathon never spends Opus on
-# them. Records are only SKIPPED — never deleted; their raw stays in concepts-history.
+# raw records for the listed sources are SKIPPED so the marathon never spends model
+# budget on them. Records are only SKIPPED — never deleted; their raw stays in concepts-history.
 # Scoped per-source (only the sources with a known junk pattern); extend as needed.
 WORKLIST_DROP_PATHS = {
     # World Gold Council "Goldhub" junk by URL path (theme-agnostic):
@@ -114,7 +114,11 @@ def _worklist_drop(rec):
         return f"length:<{floor}w"
     return None
 
-PROCESSOR = "claude-code-sub-opus"   # subscription Opus, never the paid API
+PROCESSOR = "claude-code-sub-sonnet"   # subscription SONNET (fallback Haiku) — NOT Opus.
+# Extraction is a rubric-bound, quote-copying task; quality is enforced by the
+# deterministic postprocess/quote-verify + entity-presence guard at finalize, NOT by
+# model size. Opus drained the subscription limit fast for no quality gain — see the
+# cost lesson in memory (concepts-backfill-cost-lesson). Never the paid API.
 
 
 def _set_history_root(root):
@@ -285,7 +289,7 @@ def build_prompt(record, slug):
         "language": record.get("language", "en"), "author": record.get("author", ""),
         "word_count": record.get("word_count", 0), "paywalled": bool(record.get("paywalled", False)),
     }
-    out_path = PROC_DIR / slug / f"{rid}.json"
+    out_path = (PROC_DIR / slug / f"{rid}.json").resolve()
     return "\n".join([
         "Extract ONE Concepts article into the common KNOWLEDGE card. Follow the rubric",
         f'below EXACTLY. Output ONLY the JSON card (no fences, no prose). Set processor="{PROCESSOR}".',
@@ -299,7 +303,10 @@ def build_prompt(record, slug):
         (record.get("text") or ""),
         "",
         "=== DELIVERY (BACKFILL, JSON-ONLY — overrides the routine's processed/concepts path) ===",
-        f"Write the JSON card to this exact path (create parent dirs):\n  {out_path}",
+        f"Write the JSON card to this EXACT ABSOLUTE path (create parent dirs):\n  {out_path}",
+        "Use this absolute path VERBATIM. Do NOT use a relative path, do NOT prepend your cwd, and",
+        "do NOT create a concepts-history/ directory anywhere else — the path above is the ONE and",
+        "ONLY correct location (a relative write lands in a stray tree the finalizer can't see).",
         "One article -> one file. Leave every quote_verified=false (finalize sets it).",
         "Touch NOTHING else: no other files, no HTML, no dashboard, no git.",
     ])
