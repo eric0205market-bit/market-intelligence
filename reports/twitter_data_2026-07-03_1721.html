@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER DATA INTELLIGENCE",
+  "collected_at": "2026-07-03T17:21:08Z",
+  "date": "2026-07-03 17:21 UTC",
+  "input_stats": {
+    "total_tweets": 73,
+    "unique_authors": 20,
+    "tweets_with_images": 28,
+    "after_filter": 41
+  },
+  "summary": "41 data items across 8 topics covering US labor market divergence, record foreign equity inflows, extreme Korean leverage, global breadth, China macro, central bank signals, crypto volatility, and geopolitical probabilities.\n\nKey numbers: June NFP +57K but household survey -507K (564K gap); total payroll revisions -710K since 2025 (14/17 months down); foreign fund inflows to US equities 2.5% of AUM YTD (doubled since May, unprecedented); South Korea leveraged ETF AUM +800% to $45B; 67.6% of S&P 500 above 200-day MA; BTC -31% and Gold -7% worst H1 2026 assets; Japan wages 5%+ for third consecutive year; PBOC cut bond purchases; Iran Hormuz fee 52% probability.",
+  "topics": [
+    {
+      "topic": "US Labor Market",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "US jobs revisions: 14 out of 17 months since start of 2025 revised down, totaling -710,000 jobs. May revised -43K to +129K, April revised -31K to +148K. Average monthly revision: -41,765. If applied to June's +57K NFP, implies only ~15K real jobs added.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2073080074375413864",
+          "images": ["https://pbs.twimg.com/media/HMTwmkkXcAATt1A.jpg"],
+          "data_points": ["14/17 months revised down since 2025", "Total revisions: -710K", "May revised: -43K → +129K", "April revised: -31K → +148K", "Avg revision: -41,765/month", "June NFP: +57K (implies ~15K real)"],
+          "created_at": "2026-07-03T16:23:00.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "NFP vs household survey gap blows out in June: +57K nonfarm payrolls vs -507K household survey (3rd-largest household drop since Jan 2024). YTD household employment -1.73M to 162.26M (lowest since Dec 2024), while NFP rose +552K to record 158.98M.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2073045447011160440",
+          "images": ["https://pbs.twimg.com/media/HMTvuL7XwAASvO4.jpg"],
+          "data_points": ["June NFP: +57K", "Household survey: -507K", "Divergence gap: 564K", "YTD household employment: -1.728M (to 162.26M)", "YTD NFP: +552K (record 158.98M)"],
+          "created_at": "2026-07-03T14:05:24.000Z"
+        },
+        {
+          "author": "EPBResearch",
+          "description": "Labor force data: over the last 6 months, total employment level fell 1.728M and total labor force declined 2.137M — yet unemployment rate declined 0.2% (people left the labor force). Employment-population ratio declined 0.7%.",
+          "tweet_url": "https://x.com/EPBResearch/status/2073020880901275661",
+          "images": [],
+          "data_points": ["Employment level: -1.728M (last 6 months)", "Labor force: -2.137M", "Unemployment rate: -0.2%", "Emp-pop ratio: -0.7%"],
+          "created_at": "2026-07-03T12:27:47.000Z"
+        },
+        {
+          "author": "ARKInvest",
+          "description": "ARK Cathie Wood weekly recap: weak jobs report, inflation running cooler than headline CPI suggests, dollar could strengthen from here, not worried about credit markets currently.",
+          "tweet_url": "https://x.com/ARKInvest/status/2073070519335997939",
+          "images": [],
+          "data_points": ["Jobs: weak", "Inflation: cooler than headline CPI", "Dollar: potential strengthening", "Credit: not a concern currently"],
+          "created_at": "2026-07-03T15:45:02.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Fund Flows & Positioning",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "Foreign investors piling into US equities at record pace: YTD inflows from global funds at ~2.5% of AUM — more than doubled since May alone. Far above the 2002-2025 average of -0.3% (outflows). YTD pace already exceeded full-year total of the middle 50% of years since 2002.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2073062710305013771",
+          "images": ["https://pbs.twimg.com/media/HMTwF7TXkAAD2Gd.jpg"],
+          "data_points": ["YTD global fund inflows to US equities: ~2.5% AUM", "Doubled since May", "2002-2025 average: -0.3% (outflows)", "Historical middle 50%: ~1.5% full-year", "Current demand: unprecedented"],
+          "created_at": "2026-07-03T15:14:00.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "South Korean leveraged ETF AUM surged to ~$45B (+800% since start of 2026). Leveraged exposure as % of free float market cap: ~2.9% (tripled since January, new record). HK-listed 2x SK Hynix ETF peaked at ~$15B — largest single-stock leveraged product in the world, eclipsing MU/NVDA/TSLA 2x ETFs which never exceeded $10B.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2073028282287603755",
+          "images": ["https://pbs.twimg.com/media/HMTf7PQWsAA6aqv.jpg"],
+          "data_points": ["Korea leveraged ETF AUM: ~$45B", "+800% since start of 2026", "Leveraged exposure: ~2.9% of free float (tripled since Jan)", "SK Hynix 2x ETF: ~$15B AUM (global record)", "US 2x ETFs (NVDA/TSLA etc): never exceeded $10B"],
+          "created_at": "2026-07-03T12:57:12.000Z"
+        },
+        {
+          "author": "EricBalchunas",
+          "description": "Commentary on wealth gap and monetary policy: monetary supply doubled in the past 12 years, providing extra lift to older asset-holders — described as an invisible regressive tax. Trump Accounts may help address long-term.",
+          "tweet_url": "https://x.com/EricBalchunas/status/2073027362812272699",
+          "images": [],
+          "data_points": ["Monetary supply: doubled in last 12 years", "Effect: amplifies wealth gap (older asset-holders benefit disproportionately)"],
+          "created_at": "2026-07-03T12:53:32.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Market Data — Indices, Breadth & Commodities",
+      "items": [
+        {
+          "author": "kurtsaltrichter",
+          "description": "S&P 500 breadth ripping: 67.6% of the index now trades above its 200-day moving average. Broadening participation under a flat tape signals rotation.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2073073358254592243",
+          "images": ["https://pbs.twimg.com/media/HMUFqSsXAAA-BBJ.jpg"],
+          "data_points": ["S&P 500: 67.6% above 200-day MA", "Signal: broadening rotation under flat tape"],
+          "created_at": "2026-07-03T15:56:19.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "Bitcoin (-31%) and Gold (-7%) were the worst performing major assets in H1 2026 — unprecedented combination for any calendar year on record.",
+          "tweet_url": "https://x.com/charliebilello/status/2073048149313126401",
+          "images": ["https://pbs.twimg.com/media/HMTyOuYXYAAKrdl.png"],
+          "data_points": ["Bitcoin H1 2026: -31%", "Gold H1 2026: -7%", "Both worst major assets H1 — historically unprecedented"],
+          "created_at": "2026-07-03T14:16:08.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Global stock market cap chart: $167 trillion total, with the US accounting for approximately half (~$83T).",
+          "tweet_url": "https://x.com/zerohedge/status/2073086874151772583",
+          "images": ["https://pbs.twimg.com/media/HMUVfkfXcAAq-Ok.png"],
+          "data_points": ["Global stock market cap: $167T", "US share: ~50% (~$83T)"],
+          "created_at": "2026-07-03T16:50:01.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Gold and Bitcoin correlation has normalized — they are trading as one again after a period of divergence.",
+          "tweet_url": "https://x.com/zerohedge/status/2073071166193824199",
+          "images": ["https://pbs.twimg.com/media/HMUHKQDWYAA_BzO.jpg"],
+          "data_points": ["Gold-Bitcoin correlation: normalized / trading together again"],
+          "created_at": "2026-07-03T15:47:36.000Z"
+        },
+        {
+          "author": "TaviCosta",
+          "description": "Gold rising again. Tavi Costa flags this as one of the rare windows that comes a few times per decade — high risk-reward in his view, with expected volatility.",
+          "tweet_url": "https://x.com/TaviCosta/status/2073039541716570422",
+          "images": ["https://pbs.twimg.com/media/HMTqeg7b0AAbBJV.jpg"],
+          "data_points": ["Gold: rising", "Risk-reward: exceptionally compelling per TaviCosta"],
+          "created_at": "2026-07-03T13:41:56.000Z"
+        },
+        {
+          "author": "themarketear",
+          "description": "AI Volatility Monster growing: VIX says markets are calm but semiconductors, Korea, and AI options are telling a very different story — divergence between headline and under-the-surface volatility.",
+          "tweet_url": "https://x.com/themarketear/status/2073044511614189976",
+          "images": [],
+          "data_points": ["VIX: calm", "SOX/Korea/AI options: elevated volatility vs VIX divergence"],
+          "created_at": "2026-07-03T14:01:41.000Z"
+        },
+        {
+          "author": "themarketear",
+          "description": "SOX (semiconductor index) reversal timing aligns with moves in silver, gold, and Bitcoin — raises question of whether semis have been sucking capital out of other risk assets.",
+          "tweet_url": "https://x.com/themarketear/status/2072991495037071763",
+          "images": [],
+          "data_points": ["SOX reversal: correlated with silver, gold, BTC moves", "Potential capital rotation: semis vs other risk assets"],
+          "created_at": "2026-07-03T10:31:01.000Z"
+        },
+        {
+          "author": "crossbordercap",
+          "description": "CrossBorder Capital latest 'Capital Wars' Substack published — global capital flow analysis.",
+          "tweet_url": "https://x.com/crossbordercap/status/2073065440922726650",
+          "images": ["https://pbs.twimg.com/media/HMUB9p-XUAAtBez.jpg"],
+          "data_points": ["Capital Wars: latest edition published"],
+          "created_at": "2026-07-03T15:24:51.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Central Banks & Monetary Policy",
+      "items": [
+        {
+          "author": "C_Barraud",
+          "description": "ECB Bank of France Chief Moulin (Bloomberg TV): June hike was the right decision, inflation reading will make job easier, good news on oil, balance of risk in right place, no commitment for next meetings, no signal of new hiking cycle, new forecasts in September. Notes 'really soft growth'.",
+          "tweet_url": "https://x.com/C_Barraud/status/2072980312276037751",
+          "images": [],
+          "data_points": ["ECB: June hike confirmed as correct", "Next forecasts: September", "Inflation easing (oil positive)", "No hiking cycle signal", "Growth: 'really soft'"],
+          "created_at": "2026-07-03T09:46:35.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "PBOC to conduct 3-month 1 trillion yuan outright reverse repo operation — significant liquidity injection.",
+          "tweet_url": "https://x.com/C_Barraud/status/2072969868530352514",
+          "images": [],
+          "data_points": ["PBOC: 1T yuan outright reverse repo", "Tenor: 3-month"],
+          "created_at": "2026-07-03T09:05:05.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "PBOC cuts bond purchases — signal of wariness over declining yields in China's bond market.",
+          "tweet_url": "https://x.com/C_Barraud/status/2072979180627579372",
+          "images": ["https://pbs.twimg.com/media/HMSzgIXWAAANgWk.png"],
+          "data_points": ["PBOC: reducing bond purchases", "Rationale: wariness over yield declines"],
+          "created_at": "2026-07-03T09:42:05.000Z"
+        },
+        {
+          "author": "RealVision",
+          "description": "Quoting NowcastIQ/Steno Research: Fed turned hawkish in June as inflation was falling apart — policy mistake, not deteriorating economy. NowcastIQ shows inflation rolling over decisively across core goods and services (not just energy). Implication: when June CPI drops mid-July, Fed pivots.",
+          "tweet_url": "https://x.com/RealVision/status/2073088134133285033",
+          "images": [],
+          "data_points": ["Inflation rolling over: core goods + services", "June CPI release: mid-July", "Fed pivot: expected when June CPI prints", "June Fed move: described as policy mistake vs economy"],
+          "created_at": "2026-07-03T16:55:01.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "China Macro",
+      "items": [
+        {
+          "author": "C_Barraud",
+          "description": "China June preliminary retail car sales (PCA): +9% month-over-month but -21% year-over-year.",
+          "tweet_url": "https://x.com/C_Barraud/status/2072965373259846093",
+          "images": [],
+          "data_points": ["China June retail car sales: +9% M/M", "China June retail car sales: -21% Y/Y"],
+          "created_at": "2026-07-03T08:47:13.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "China June Services PMI: fared better than forecast despite a slight slip — services sector held up more than expected.",
+          "tweet_url": "https://x.com/C_Barraud/status/2072919311056859583",
+          "images": [],
+          "data_points": ["China June Services PMI: better than forecast despite dip"],
+          "created_at": "2026-07-03T05:44:11.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "China faces policy test: subsidy pullback is hitting auto and appliance sales — government stimulus withdrawal causing demand contraction in key consumer sectors.",
+          "tweet_url": "https://x.com/C_Barraud/status/2072978869305450497",
+          "images": [],
+          "data_points": ["China subsidy pullback: hitting auto + appliance sectors", "Policy test: sustaining demand without stimulus"],
+          "created_at": "2026-07-03T09:40:51.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "China to scrap vehicle and vessel tax incentives for EVs and NEVs, effective January 1, 2027 (Ministry of Finance).",
+          "tweet_url": "https://x.com/C_Barraud/status/2072972411721408775",
+          "images": [],
+          "data_points": ["China EV/NEV vehicle & vessel tax breaks: eliminated from Jan 1, 2027"],
+          "created_at": "2026-07-03T09:15:11.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "China A-share tech selloff: analysts call it a technical reset from overcrowded H1 trades, not a structural break. AI long-term value intact. Capital inflows expected to continue. Recommended strategy: barbell (AI computing hardware / smart manufacturing + defensive high-dividend banks/utilities).",
+          "tweet_url": "https://x.com/C_Barraud/status/2072918942125859041",
+          "images": [],
+          "data_points": ["A-share tech selloff: technical reset (overcrowded H1)", "AI structural value: intact", "Barbell: AI computing + high-dividend banks/utilities"],
+          "created_at": "2026-07-03T05:42:43.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "AI productivity analysis: US is almost the only major developed economy with a clearly positive total factor productivity (TFP) trend. Europe is weak, sometimes negative. China is the only real systemic AI challenger but constrained by chip access restrictions. AI macro impact will take time — companies need to reorganize, retrain, and integrate.",
+          "tweet_url": "https://x.com/C_Barraud/status/2072964213987820012",
+          "images": [],
+          "data_points": ["US TFP: positive trend (leader among DMs)", "EU TFP: weak to negative", "China: systemic AI challenger, constrained by chip restrictions", "AI productivity lag: reorganization + integration time needed"],
+          "created_at": "2026-07-03T08:42:37.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "China and US targeting tariff reductions on agricultural products — part of broader trade negotiation.",
+          "tweet_url": "https://x.com/C_Barraud/status/2072977559495602575",
+          "images": [],
+          "data_points": ["China-US: targeting ag tariff reductions"],
+          "created_at": "2026-07-03T09:35:38.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Goldman Sachs: Europe's growth is being hit more by competition from Chinese exports than by the bilateral trade gap itself — China's export surge affecting EU competitiveness beyond direct trade flows.",
+          "tweet_url": "https://x.com/C_Barraud/status/2072967055498747920",
+          "images": [],
+          "data_points": ["Goldman: EU growth hurt more by China export competition than trade gap", "Channel: competitive displacement, not just bilateral flows"],
+          "created_at": "2026-07-03T08:53:54.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Global Economic Indicators",
+      "items": [
+        {
+          "author": "C_Barraud",
+          "description": "Japan 2026 wage talks concluded with gains above 5% for the third consecutive year — sustained wage growth supporting BoJ normalization narrative.",
+          "tweet_url": "https://x.com/C_Barraud/status/2072966314059022845",
+          "images": ["https://pbs.twimg.com/media/HMSn3-mWUAIjsQI.png"],
+          "data_points": ["Japan 2026 wage talks: 5%+ raises", "Third consecutive year above 5%"],
+          "created_at": "2026-07-03T08:50:57.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Euro-Zone business activity (PMI) revised up for June — but only to stagnation level, not expansion.",
+          "tweet_url": "https://x.com/C_Barraud/status/2072965962467246319",
+          "images": [],
+          "data_points": ["Euro-Zone June PMI: revised up", "Level: stagnation (not expansion)"],
+          "created_at": "2026-07-03T08:49:33.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Global food prices eased in June as market focus shifted from geopolitical disruption (war) to crop conditions. Chart included.",
+          "tweet_url": "https://x.com/C_Barraud/status/2072965820775292985",
+          "images": ["https://pbs.twimg.com/media/HMSnYkTXUAAFFAp.png"],
+          "data_points": ["Global food prices: eased in June", "Driver: focus shifting from war disruption to crop harvest conditions"],
+          "created_at": "2026-07-03T08:49:00.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "EU agrees to cut ESG reporting requirements for asset managers — regulatory rollback in line with broader EU deregulation push.",
+          "tweet_url": "https://x.com/C_Barraud/status/2073026698342257125",
+          "images": [],
+          "data_points": ["EU ESG reporting: requirements cut for asset managers"],
+          "created_at": "2026-07-03T12:50:54.000Z"
+        },
+        {
+          "author": "Schuldensuehner",
+          "description": "Germany: 30% of 25-year-olds still lived with their parents in 2025, up from 28% in 2022-24. Sons stay longer (36%) than daughters (23%). Of 25-34s living at home, 77% are employed — housing affordability, not unemployment, is driving the trend.",
+          "tweet_url": "https://x.com/Schuldensuehner/status/2073019926596448749",
+          "images": ["https://pbs.twimg.com/media/HMTYolyWsAAAqrI.png"],
+          "data_points": ["Germany: 30% of 25-year-olds with parents (2025)", "Up from 28% (2022-24)", "By gender: sons 36%, daughters 23%", "77% of 25-34s at home are employed"],
+          "created_at": "2026-07-03T12:24:00.000Z"
+        },
+        {
+          "author": "EPBResearch",
+          "description": "Housing affordability analysis: America builds less while paying more. The issue has less to do with housing supply than commonly believed — a bigger macro picture is at work.",
+          "tweet_url": "https://x.com/EPBResearch/status/2073039369984733609",
+          "images": [],
+          "data_points": ["US housing: fewer builds, higher prices", "Root cause: broader macro factors beyond just supply"],
+          "created_at": "2026-07-03T13:41:15.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Crypto & Digital Assets",
+      "items": [
+        {
+          "author": "glassnode",
+          "description": "BTC options deep dive thread: DVOL trending higher as Bitcoin sell-off extends — gradual repricing of future volatility. IV remains well below extremes of major dislocations. Despite BTC rebound from $58K, skew remains firmly positive (puts command premium over calls). BTC in negative gamma territory — dealer hedging may amplify price swings. Defensive options positioning beginning to ease but persists.",
+          "tweet_url": "https://x.com/glassnode/status/2072984153079808502",
+          "images": [
+            "https://pbs.twimg.com/media/HMS14j4XQAAVL_0.jpg",
+            "https://pbs.twimg.com/media/HMS0dGTWgAAVAaN.jpg",
+            "https://pbs.twimg.com/media/HMS2nniX0AAbdw_.jpg",
+            "https://pbs.twimg.com/media/HMS3S-5XYAAvecA.jpg"
+          ],
+          "data_points": ["BTC DVOL: trending higher", "BTC rebounded from $58K", "Options skew: positive (puts > calls)", "Gamma: negative territory", "IV: below major dislocation extremes"],
+          "created_at": "2026-07-03T10:01:50.000Z"
+        },
+        {
+          "author": "_Checkmatey_",
+          "description": "On-chain BTC chart shared (original watermarked by _Checkmatey_, was circulating without credit).",
+          "tweet_url": "https://x.com/_Checkmatey_/status/2072972870536630519",
+          "images": ["https://pbs.twimg.com/media/HMSt0-XacAAlGQu.jpg"],
+          "data_points": [],
+          "created_at": "2026-07-03T09:17:00.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Geopolitical & Event Probabilities",
+      "items": [
+        {
+          "author": "Polymarket",
+          "description": "Iran projected to charge fees in the Strait of Hormuz by end of next month as MOU nears expiration. Polymarket probability: 52%.",
+          "tweet_url": "https://x.com/Polymarket/status/2073071103916839087",
+          "images": ["https://pbs.twimg.com/media/HMUHLq4WsAEWPWO.jpg"],
+          "data_points": ["Iran Hormuz fee probability: 52%", "Timeline: end of next month", "MOU: nearing expiration"],
+          "created_at": "2026-07-03T15:47:21.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "EU-US trade reportedly hit a record high last year despite tariff tensions. Polymarket prices 9% probability of a US-EU trade deal this year.",
+          "tweet_url": "https://x.com/Polymarket/status/2073080345864318997",
+          "images": [],
+          "data_points": ["EU-US trade: record high (2025)", "US-EU trade deal probability: 9%"],
+          "created_at": "2026-07-03T16:24:05.000Z"
+        },
+        {
+          "author": "a16z",
+          "description": "a16z/Anne Neuberger (former NSC): technology has moved from tool of national power to the arena itself. Chip supply chain = foundational economic + national security issue. Software vulnerabilities now levers on power/water systems. Deterrence no longer just military size — AI, autonomous, and cyber systems now built by private sector.",
+          "tweet_url": "https://x.com/a16z/status/2073070648218566807",
+          "images": [],
+          "data_points": ["Chip supply chain: national security issue", "AI/autonomous/cyber: private sector built", "Deterrence: no longer purely military"],
+          "created_at": "2026-07-03T15:45:32.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Goldman H2 2026 outlook from top trader: 'setup for selective broadening trades' — link to full piece.",
+          "tweet_url": "https://x.com/zerohedge/status/2073074321921093883",
+          "images": [],
+          "data_points": ["Goldman H2 2026: selective broadening trade setup"],
+          "created_at": "2026-07-03T16:00:08.000Z"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "author": "C_Barraud",
+      "url": "https://www.christophe-barraud.com/morning-brief-global-food-prices-ease-japan-wage-talks-end-with-5-raises-for-third-year-euro-zone-business-activity-revised-up/",
+      "description": "Friday Brief: Food prices, Japan wages, Euro-Zone PMI"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-07-03/japan-s-2026-wage-talks-result-in-third-year-of-gains-above-5",
+      "description": "Japan 2026 wage talks — third year above 5%"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-07-03/pboc-cuts-bond-purchases-in-sign-of-wariness-over-yield-declines",
+      "description": "PBOC cuts bond purchases"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-07-03/food-prices-fell-in-june-as-focus-switches-from-war-to-harvests",
+      "description": "Global food prices ease June 2026"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://asia.nikkei.com/economy/china-faces-policy-test-as-subsidy-pullback-hits-auto-appliance-sales",
+      "description": "China subsidy pullback hits auto/appliance"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-07-02/china-and-us-target-tariff-reductions-on-agricultural-products",
+      "description": "China-US targeting ag tariff reductions"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.reuters.com/business/retail-consumer/europe-growth-hit-more-by-china-exports-than-bigger-trade-gap-goldman-says-2026-07-02/",
+      "description": "Goldman: Europe hit more by China exports than trade gap"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-07-03/euro-zone-business-activity-revised-up-to-stagnation-for-june",
+      "description": "Euro-Zone June PMI revised to stagnation"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-07-03/china-s-services-gauge-expands-faster-than-forecast-despite-dip",
+      "description": "China June Services PMI better than forecast"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-07-03/eu-agrees-to-cut-esg-reporting-requirements-for-asset-managers",
+      "description": "EU cuts ESG reporting requirements for asset managers"
+    },
+    {
+      "author": "themarketear",
+      "url": "https://www.zerohedge.com/the-market-ear/ai-volatility-monster",
+      "description": "AI Volatility Monster: VIX vs semis/Korea/AI options"
+    },
+    {
+      "author": "themarketear",
+      "url": "https://www.zerohedge.com/the-market-ear/forgotten-metal-waking",
+      "description": "SOX reversal vs silver, gold, Bitcoin — capital flows"
+    },
+    {
+      "author": "glassnode",
+      "url": "https://studio.glassnode.com/charts/derivatives.DvolOhlc?a=BTC",
+      "description": "BTC DVOL chart — Glassnode"
+    },
+    {
+      "author": "glassnode",
+      "url": "https://studio.glassnode.com/dashboards/options-implied-volatility?a=BTC",
+      "description": "BTC options implied volatility dashboard"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/markets/what-matters-h226-top-goldman-trader-sees-setup-selective-broadening-trades",
+      "description": "Goldman H2 2026: selective broadening trades"
+    }
+  ],
+  "coverage": {
+    "authors_covered": 17,
+    "authors_total": 20
+  }
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
