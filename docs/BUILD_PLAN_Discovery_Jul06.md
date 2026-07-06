@@ -2,16 +2,16 @@
 ## 2026-07-06 · дизайн: CONTEXT_Discovery_Layer_Jul06.md
 
 ## Ветки (отправная точка)
-KNOWLEDGE — пишут/будут писать card schema v1: YouTube (live, grandfathered),
-Concepts (стартует), Technology, Society (not started).
+KNOWLEDGE — пишут card schema v1: YouTube (live, grandfathered), Concepts (live),
+Technology (live), Society (live).
 FLOW — общей схемы НЕТ (HTML): Twitter Alpha/Data (live), Twitter Banks (trial),
 Institutional (live), Bank PDF (live), Newsletters (interim), Earnings (not started).
 Решение по FLOW→база: класть ИЗВЛЕЧЁННЫЕ УТВЕРЖДЕНИЯ (claim+source+date+entities),
 не сырые твиты; сырьё остаётся в архиве.
 
 ## ФАЗА 0 — ветки и схема (идёт)
-0.1 Concepts по card schema v1 (Concepts-чат)
-0.2 Technology, Society (их чаты)
+0.1 Concepts по card schema v1 (Concepts-чат) — ГОТОВО (live)
+0.2 Technology, Society (их чаты) — ГОТОВО (оба live)
 0.3 Earnings, Haiku (свой чат)
 0.4 Спека FLOW→record «утверждения, не твиты» (Discovery-чат) ← можно сейчас
 0.5 Адаптер FLOW→record в ветках (FLOW-чаты)
