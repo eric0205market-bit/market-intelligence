@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Discovery Layer — data flow</title>
+<style>
+  :root{
+    --bg:#0D1420; --surface:#16202E; --surface2:#1E2A3A; --hair:#2B3A4C;
+    --ink:#E6EDF5; --muted:#8A9AAD; --mono:#A9BDD2;
+    --pull:#2FD4BF;        /* task 1 — pull */
+    --push:#F3A53C;        /* task 2 — push */
+    --human:#A78BFA;       /* human in the loop */
+    --steel:#6E8BB0;       /* shared layer */
+    --now:#46C97E; --next:#F3A53C; --later:#647689;
+    --mono-stack:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:
+      radial-gradient(1100px 600px at 80% -10%,rgba(47,212,191,.05),transparent 60%),
+      radial-gradient(900px 600px at 10% 110%,rgba(243,165,60,.05),transparent 60%),
+      var(--bg);
+    color:var(--ink);font-family:var(--sans);line-height:1.45;
+    -webkit-font-smoothing:antialiased;padding:40px 22px 80px;
+  }
+  .wrap{max-width:1060px;margin:0 auto}
+
+  /* header */
+  .eyebrow{font-family:var(--mono-stack);font-size:11px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--muted)}
+  h1{font-size:clamp(22px,3.4vw,30px);font-weight:650;letter-spacing:-.01em;
+    margin:.35em 0 .2em}
+  .sub{color:var(--muted);max-width:66ch;font-size:14px;margin:0 0 22px}
+
+  /* legend */
+  .legend{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;
+    border:1px solid var(--hair);border-radius:12px;padding:12px 16px;
+    background:linear-gradient(var(--surface),var(--surface));margin-bottom:34px}
+  .lg{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted)}
+  .sw{width:13px;height:13px;border-radius:3px;flex:none}
+  .lg .key{color:var(--ink)}
+  .line-key{width:26px;height:0;border-top:2px solid var(--steel)}
+  .line-key.dash{border-top-style:dashed}
+  .mono-key{font-family:var(--mono-stack);color:var(--mono);font-size:12px;
+    border:1px dashed var(--hair);border-radius:5px;padding:1px 6px}
+
+  /* section band */
+  .band{display:flex;align-items:center;gap:12px;margin:0 0 14px}
+  .band .num{font-family:var(--mono-stack);font-size:11px;color:var(--later);
+    border:1px solid var(--hair);border-radius:999px;padding:2px 9px;white-space:nowrap}
+  .band h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    font-weight:600;color:var(--ink);margin:0}
+  .band .rule{flex:1;height:1px;background:var(--hair)}
+  .phase{font-family:var(--mono-stack);font-size:10.5px;padding:2px 8px;border-radius:999px;
+    border:1px solid currentColor;white-space:nowrap}
+  .p-now{color:var(--now)} .p-next{color:var(--next)} .p-later{color:var(--later)}
+
+  /* generic node */
+  .node{background:var(--surface);border:1px solid var(--hair);border-radius:12px;
+    padding:13px 15px}
+  .node .t{font-size:14.5px;font-weight:600;margin:0 0 4px}
+  .node .d{font-size:12.5px;color:var(--muted);margin:0}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .chip{font-family:var(--mono-stack);font-size:11px;color:var(--mono);
+    background:var(--surface2);border:1px solid var(--hair);border-radius:6px;padding:2px 7px}
+
+  /* connector carrying algo + output */
+  .conn{display:flex;flex-direction:column;align-items:center;gap:0;
+    padding:4px 0;position:relative}
+  .conn .stem{width:2px;height:14px;background:var(--hair)}
+  .conn .ann{width:100%;border-left:2px solid var(--hair);
+    margin-left:2px;padding:7px 0 7px 13px}
+  .conn .ann .row{font-family:var(--mono-stack);font-size:11.5px;line-height:1.4;color:var(--mono)}
+  .conn .ann .row b{color:var(--muted);font-weight:600;letter-spacing:.04em}
+  .conn .chev{width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
+    border-top:7px solid var(--hair);margin-top:-1px}
+
+  /* substrate (store + ontology) */
+  .substrate{display:grid;grid-template-columns:1.3fr 1fr;gap:14px}
+  .substrate .node{border-color:rgba(110,139,176,.45)}
+  .schema{font-family:var(--mono-stack);font-size:11.5px;color:var(--mono);
+    background:var(--surface2);border:1px solid var(--hair);border-radius:8px;
+    padding:9px 11px;margin-top:9px;white-space:pre-wrap}
+
+  /* engine band */
+  .engine{margin:18px 0 6px;border:1px solid var(--steel);border-radius:12px;
+    background:linear-gradient(180deg,rgba(110,139,176,.12),rgba(110,139,176,.04));
+    padding:13px 16px;text-align:center}
+  .engine .t{font-weight:650;font-size:14.5px}
+  .engine .d{color:var(--muted);font-size:12.5px;margin-top:2px}
+
+  /* agenda rail */
+  .agenda{border:1px solid var(--hair);border-left:3px solid var(--steel);
+    border-radius:10px;background:var(--surface);padding:12px 15px;margin:16px 0 6px}
+  .agenda .t{font-weight:600;font-size:13.5px}
+  .agenda .d{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .agenda .routes{display:flex;flex-wrap:wrap;gap:18px;margin-top:10px;font-size:12px}
+  .agenda .routes span{display:flex;align-items:center;gap:8px;color:var(--ink)}
+  .r-solid{width:30px;border-top:2px solid var(--pull)}
+  .r-dash{width:30px;border-top:2px dashed var(--push)}
+
+  /* fork into two columns */
+  .fork{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:8px;align-items:start}
+  .col-head{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+  .col-head .dot{width:11px;height:11px;border-radius:3px;flex:none}
+  .col-head .name{font-weight:650;font-size:14px}
+  .col-head .tag{font-family:var(--mono-stack);font-size:11px;color:var(--muted)}
+  .pull .node{border-color:rgba(47,212,191,.4)}
+  .pull .col-head .dot,.pull-bd{background:var(--pull)}
+  .push .node{border-color:rgba(243,165,60,.4)}
+  .push .col-head .dot{background:var(--push)}
+  .trig{border-style:dashed!important}
+
+  /* parallel filters in push */
+  .filters{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .filters .node{padding:10px 11px}
+  .filters .t{font-size:12.5px}
+  .filters .fo{font-family:var(--mono-stack);font-size:10.8px;color:var(--mono);margin-top:6px;line-height:1.35}
+  .filters .fo b{color:var(--muted);font-weight:600}
+
+  /* human gate + promote */
+  .gate{border-color:rgba(167,139,250,.5)!important}
+  .gate .t{color:#C9BBFB}
+  .feedback{border:1px dashed rgba(47,212,191,.5);border-radius:10px;padding:11px 14px;
+    margin-top:6px;display:flex;gap:10px;align-items:flex-start;background:rgba(47,212,191,.04)}
+  .feedback .up{font-family:var(--mono-stack);color:var(--pull);font-weight:700;font-size:15px;line-height:1.1}
+  .feedback .ft{font-size:12.5px;color:var(--muted)}
+  .feedback .ft b{color:var(--ink);font-weight:600}
+
+  /* boundary note */
+  .boundary{margin-top:34px;border:1px solid var(--hair);border-radius:12px;
+    padding:14px 17px;background:var(--surface);display:flex;gap:13px;align-items:flex-start}
+  .boundary .mk{font-family:var(--mono-stack);font-size:11px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--push);border:1px solid var(--push);
+    border-radius:6px;padding:3px 8px;white-space:nowrap}
+  .boundary p{margin:0;font-size:13px;color:var(--muted)}
+  .boundary b{color:var(--ink);font-weight:600}
+
+  footer{margin-top:28px;font-size:11.5px;color:var(--later);font-family:var(--mono-stack)}
+
+  /* reveal */
+  @media (prefers-reduced-motion:no-preference){
+    .reveal{opacity:0;transform:translateY(8px);animation:rise .5s ease forwards}
+    @keyframes rise{to{opacity:1;transform:none}}
+  }
+
+  @media (max-width:720px){
+    .substrate,.fork,.filters{grid-template-columns:1fr}
+    .fork{gap:30px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">Invest Platform · Market Intelligence</div>
+  <h1>Discovery Layer — data flow</h1>
+  <p class="sub">A layer on top of RAG and the ontology. One search engine, two triggers: the owner pulls (task 1), the data pushes (task 2). Each edge shows the algorithm applied and the intermediate output.</p>
+
+  <div class="legend reveal">
+    <div class="lg"><span class="sw" style="background:var(--steel)"></span><span class="key">shared layer</span></div>
+    <div class="lg"><span class="sw" style="background:var(--pull)"></span><span class="key">task 1 · pull</span></div>
+    <div class="lg"><span class="sw" style="background:var(--push)"></span><span class="key">task 2 · push</span></div>
+    <div class="lg"><span class="sw" style="background:var(--human)"></span><span class="key">human</span></div>
+    <div class="lg"><span class="mono-key">algo / output</span></div>
+    <div class="lg"><span class="line-key"></span><span>query</span></div>
+    <div class="lg"><span class="line-key dash"></span><span>re-rank (not a filter)</span></div>
+  </div>
+
+  <!-- SOURCES -->
+  <div class="band reveal">
+    <span class="num">A</span><h2>Sources &amp; collection</h2><span class="rule"></span>
+    <span class="phase p-now">Phase 0 · now</span>
+  </div>
+  <div class="node reveal">
+    <p class="t">Collection branches</p>
+    <p class="d">FLOW and KNOWLEDGE. Discovery adds nothing here — build like YouTube. No “candidate” fields / agenda in branches.</p>
+    <div class="chips">
+      <span class="chip">Twitter Alpha/Data/Banks</span><span class="chip">Institutional</span>
+      <span class="chip">Bank PDF</span><span class="chip">Newsletters</span><span class="chip">Earnings</span>
+      <span class="chip">YouTube</span><span class="chip">Concepts</span><span class="chip">Technology</span><span class="chip">Society</span>
+    </div>
+  </div>
+  <div class="conn reveal">
+    <div class="stem"></div>
+    <div class="ann">
+      <div class="row"><b>algo:</b> deterministic collection (scripts) + LLM extraction by tier (Opus / Sonnet / Haiku)</div>
+      <div class="row"><b>output:</b> normalized record { source, date, entities, raw_text }</div>
+    </div>
+    <div class="chev"></div>
+  </div>
+
+  <!-- SUBSTRATE -->
+  <div class="band reveal">
+    <span class="num">B</span><h2>Shared layer: store + ontology</h2><span class="rule"></span>
+    <span class="phase p-next">Phase 1 / 3</span>
+  </div>
+  <div class="substrate reveal">
+    <div class="node">
+      <p class="t">Store — Supabase</p>
+      <p class="d">Postgres + pgvector. Always keep source/date/entities/raw — similarity and recurrence are computed from them.</p>
+      <div class="schema">record = {
+  raw_text, source, date,
+  entities[], type, so_what,
+  vector  ← embedding model
+}</div>
+    </div>
+    <div class="node">
+      <p class="t">Ontology</p>
+      <p class="d">If → then rules as a graph (oil↑→inflation↑→rates↑; AI capex↑→semis↑ …).</p>
+      <div class="schema">rule = { trigger → effects[],
+         lead/coincident/lag }
++ channel to propose new rules
+  (so the graph grows, not ossifies)</div>
+    </div>
+  </div>
+
+  <!-- ENGINE -->
+  <div class="engine reveal">
+    <div class="t">One engine — search over the store</div>
+    <div class="d">one pipe, two triggers ↓</div>
+  </div>
+
+  <!-- AGENDA -->
+  <div class="agenda reveal">
+    <p class="t">Watch-agenda · top layer (in MI repo)</p>
+    <p class="d">Open model questions · active theses · portfolio exposures · known weaknesses.</p>
+    <div class="routes">
+      <span><span class="r-solid"></span> into task 1 — it is the query itself</span>
+      <span><span class="r-dash"></span> into task 2 — re-ranks the result, NOT a filter</span>
+    </div>
+  </div>
+
+  <!-- FORK -->
+  <div class="fork">
+
+    <!-- PULL -->
+    <div class="col pull reveal">
+      <div class="col-head"><span class="dot"></span><span class="name">Task 1 — pull</span><span class="tag">RAG · on demand</span>
+        <span class="phase p-next" style="margin-left:auto">Phase 2</span></div>
+
+      <div class="node trig">
+        <p class="t">Owner’s question</p>
+        <p class="d">One-off, or a standing list of questions (from the agenda) run on every pass.</p>
+      </div>
+      <div class="conn"><div class="stem"></div><div class="ann">
+        <div class="row"><b>algo:</b> embed the query</div>
+        <div class="row"><b>output:</b> query vector</div>
+      </div><div class="chev"></div></div>
+
+      <div class="node">
+        <p class="t">Search the store</p>
+        <p class="d">Closest by meaning + filter.</p>
+      </div>
+      <div class="conn"><div class="stem"></div><div class="ann">
+        <div class="row"><b>algo:</b> ANN / cosine similarity · top-k + source/date/entities filter</div>
+        <div class="row"><b>output:</b> candidate set</div>
+      </div><div class="chev"></div></div>
+
+      <div class="node">
+        <p class="t">Ontology walk</p>
+        <p class="d">Pull in causally related items, not only word-similar.</p>
+      </div>
+      <div class="conn"><div class="stem"></div><div class="ann">
+        <div class="row"><b>algo:</b> traverse the causal graph from triggered rules</div>
+        <div class="row"><b>output:</b> + causally related items</div>
+      </div><div class="chev"></div></div>
+
+      <div class="node" style="border-color:rgba(47,212,191,.7)">
+        <p class="t">Synthesis answer</p>
+        <p class="d">A strong model reads the set and writes the analysis.</p>
+      </div>
+      <div class="conn"><div class="ann">
+        <div class="row"><b>algo:</b> frontier LLM (Opus)</div>
+        <div class="row"><b>output:</b> ANALYSIS — confirmations · refutations · connections · financial implications</div>
+      </div></div>
+    </div>
+
+    <!-- PUSH -->
+    <div class="col push reveal">
+      <div class="col-head"><span class="dot"></span><span class="name">Task 2 — push</span><span class="tag">pipeline · scheduled</span>
+        <span class="phase p-later" style="margin-left:auto">Phase 4</span></div>
+
+      <div class="node trig">
+        <p class="t">Scheduled scan</p>
+        <p class="d">Over a recent window (~2 weeks). Triggered by patterns in the data, not by a question.</p>
+      </div>
+      <div class="conn"><div class="stem"></div><div class="ann">
+        <div class="row"><b>algo:</b> three cheap mechanical filters in parallel</div>
+        <div class="row"><b>output:</b> raw signals (noisy on their own)</div>
+      </div><div class="chev"></div></div>
+
+      <div class="filters">
+        <div class="node">
+          <p class="t">Novelty</p>
+          <div class="fo"><b>algo:</b> distance to neighbors &gt; threshold<br><b>out:</b> outliers</div>
+        </div>
+        <div class="node" style="border-color:rgba(243,165,60,.7)">
+          <p class="t">Recurrence</p>
+          <div class="fo"><b>algo:</b> clusters + independent-source count, growing<br><b>out:</b> convergences</div>
+        </div>
+        <div class="node">
+          <p class="t">Contradiction</p>
+          <div class="fo"><b>algo:</b> check facts vs rules &amp; theses<br><b>out:</b> rule-breakers</div>
+        </div>
+      </div>
+      <div class="conn"><div class="stem"></div><div class="ann">
+        <div class="row"><b>narrowing:</b> union of the three streams</div>
+        <div class="row"><b>output:</b> narrowed set</div>
+      </div><div class="chev"></div></div>
+
+      <div class="node" style="border-color:rgba(243,165,60,.7)">
+        <p class="t">SHIFTS synthesis</p>
+        <p class="d">Model reasons over the narrowed set; agenda re-ranks (doesn’t cut).</p>
+      </div>
+      <div class="conn"><div class="stem"></div><div class="ann">
+        <div class="row"><b>algo:</b> frontier LLM (Opus) + re-rank by agenda</div>
+        <div class="row"><b>output:</b> REPORT — here’s what to look at and why</div>
+      </div><div class="chev"></div></div>
+
+      <div class="node gate">
+        <p class="t">Promotion gate · human</p>
+        <p class="d">5 questions: measurable · causal link · lead/coincident/lag · falsifiable · data available.</p>
+      </div>
+      <div class="conn"><div class="stem"></div><div class="ann">
+        <div class="row"><b>decision:</b> promote / hold</div>
+      </div><div class="chev"></div></div>
+
+      <div class="feedback">
+        <div class="up">↺</div>
+        <div class="ft"><b>Promotion</b> — a new indicator · rule · thesis flows back into the store and ontology. The loop closes: the next discovery sees more.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- BOUNDARY -->
+  <div class="boundary reveal">
+    <span class="mk">boundary</span>
+    <p>An indicator born of <b>lived experience</b> (like the 2025 compute insight) comes from the owner, not the system. But such an insight casts a textual shadow — <b>recurrence</b> catches it. The system amplifies, it doesn’t replace. That’s the right division of labor.</p>
+  </div>
+
+  <footer>Phases: 0 finish branches → 1 store + embeddings → 2 pull (RAG) + agenda → 3 ontology → 4 push + SHIFTS + gate → 5 loop and threshold calibration on live data.</footer>
+
+</div>
+<script>
+  // light staggered reveal
+  (function(){
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    document.querySelectorAll('.reveal').forEach(function(el,i){
+      el.style.animationDelay = (i*60)+'ms';
+    });
+  })();
+</script>
+</body>
+</html>

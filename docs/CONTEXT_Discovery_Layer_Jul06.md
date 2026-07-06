@@ -1,5 +1,5 @@
 # DISCOVERY LAYER — дизайн
-## 2026-07-06 · supersedes CONTEXT_Discovery_Loop_Jun10.md · план: BUILD_PLAN_Discovery_Jul06.md
+## 2026-07-06 · supersedes CONTEXT_Discovery_Loop_Jun10.md · план: BUILD_PLAN_Discovery_Jul06.md · диаграмма: discovery_layer_flow_en.html
 
 Исходник Jun-10 был гипотезой из двух сообщений. Этот документ — итог отдельного
 разбора в Discovery-чате. Слой сквозной: этот чат проектирует и пишет спеки; ветки
