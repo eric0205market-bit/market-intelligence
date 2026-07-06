@@ -46,6 +46,7 @@ Repo: github.com/eric0205market-bit/market-intelligence · Pages: eric0205market
 |---|---|---|---|---|
 | SHIFTS | designed | свой чат | каждые 2 нед · Opus | Нужно 2+ нед накопленных данных |
 | Investment Committee | designed | свой чат | on-demand · multi-frontier | Opus+o3+Gemini + детерминир. правила |
+| Discovery Layer | designed | Discovery-чат | — | Design fixed, build not started. Спека: CONTEXT_Discovery_Layer_Jul06 + BUILD_PLAN_Discovery_Jul06 (supersedes CONTEXT_Discovery_Loop_Jun10). Не модуль — слой поверх storage/embeddings/ontology/SHIFTS/Committee из build order |
 
 ## INFRA / сквозное
 
