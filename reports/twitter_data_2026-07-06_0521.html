@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER DATA INTELLIGENCE",
+  "date": "2026-07-06 05:21 UTC",
+  "collected_at": "2026-07-06T05:21:14Z",
+  "input_stats": {
+    "total_tweets": 73,
+    "unique_authors": 18,
+    "tweets_with_images": 20,
+    "after_filter": 28
+  },
+  "summary": "28 market-relevant items from 73 total tweets across 9 topics. Collection window overlapped with World Cup match night (England vs Mexico at Azteca, Norway vs Brazil) — many financial accounts posted predominantly soccer content, explaining lower coverage.\n\nKey numbers: US tech fund inflows **+$14.3B** week of July 1 (2nd biggest weekly inflow ever), while US equity funds saw **-$17.2B** outflows (largest since March) — aggressive rotation into tech. **0DTE options** at record **48% of retail volume** (3x in 5 years). US market cap at record **$81T** (48% of global). Goldman with massive PT hikes across **MLCC/capacitor supply chain** (Yageo +330%, SEMCO +440%). Bitcoin 4-year cycle remains on track. **FOMC minutes** due this week — Warsh debut. Waller speaks Tuesday 11AM ET.",
+  "topics": [
+    {
+      "topic": "Market Data & Indices",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "Nasdaq 100 futures surge over +1% as markets reopen after the Fourth of July long weekend.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2073891441357594930",
+          "images": ["https://pbs.twimg.com/media/HMfxRlKXwAAfj4j.jpg"],
+          "data_points": ["Nasdaq 100 futures +1%+", "Post-4th July market reopen"],
+          "created_at": "2026-07-05T22:07:05.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "US stock market cap at a record ~$81 trillion, accounting for ~48% of global market cap. Exceeds China ($17T) by 375%. US market now larger than next 18 stock markets combined. Magnificent 7 alone larger than China's entire market.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2073871287370535361",
+          "images": ["https://pbs.twimg.com/media/HMd8oX5XwAAyIBR.jpg"],
+          "data_points": ["US mkt cap $81T (record)", "US = 48% of global cap", "China mkt cap $17T", "US exceeds China by 375%", "Mag7 > China total mkt cap", "US > next 18 markets combined"],
+          "created_at": "2026-07-05T20:47:00.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "0DTE options now account for a record 48% of total retail options volume — more than tripled over 5 years. 0DTE also hit 30% of all US options volume in May. Average options contract now expires in under 3 days.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2073818187582382109",
+          "images": ["https://pbs.twimg.com/media/HMd8M4aWcAAENe-.jpg"],
+          "data_points": ["0DTE = 48% retail vol (record)", "0DTE = 30% total US vol (May)", "3x increase in 5 years", "2022 high was 18%", "5-yr avg 21%", "Avg contract expires <3 days"],
+          "created_at": "2026-07-05T17:16:00.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Fund Flows & Positioning",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "US tech funds +$14.3B inflows week ending July 1 (2nd biggest weekly inflow on record). Prior week -$9.3B outflow; 2 weeks prior record +$19.2B. 4-week avg at record +$9.0B/week. On pace for +$152B in 2026 (all-time high). Meanwhile US equity funds -$17.2B outflows (largest weekly withdrawal since March). Investors aggressively rotating into technology.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2073853671356391646",
+          "images": ["https://pbs.twimg.com/media/HMd8XQsWkAAcUao.jpg"],
+          "data_points": ["Tech funds +$14.3B (2nd ever)", "Prior wk: -$9.3B outflow", "Two wks prior: +$19.2B (record)", "4-wk avg +$9.0B (record)", "2026 pace: +$152B", "US equity -$17.2B (largest since March)"],
+          "created_at": "2026-07-05T19:37:00.000Z"
+        },
+        {
+          "author": "WarrenPies",
+          "description": "MarketWatch article covering WarrenPies' call for a momentum unwind in July — discussing how the trade has played out early in the month. Article link in queue.",
+          "tweet_url": "https://x.com/WarrenPies/status/2073823752467497389",
+          "images": [],
+          "data_points": ["Momentum unwind call validated early July"],
+          "created_at": "2026-07-05T17:38:07.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Economic Indicators & Fed",
+      "items": [
+        {
+          "author": "EPBResearch",
+          "description": "Residential building payrolls currently down only -2.5% from peak. At the start of the last 3 recessions they had already fallen -8% to -12%. This is described as the most critical variable in the economy — and the next recession domino has not yet fallen.",
+          "tweet_url": "https://x.com/EPBResearch/status/2073925096691896778",
+          "images": [],
+          "data_points": ["Residential building payrolls -2.5% from peak", "Recession signal threshold: -8% to -12%", "Key recession leading indicator not triggered"],
+          "created_at": "2026-07-06T00:20:49.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Calendar: Fed Governor Waller speaks in Rome on July 7 at 11:00 AM ET. Copart ($CPRT) investor meeting also on July 7.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2073882234294038918",
+          "images": ["https://pbs.twimg.com/media/HMOajtYXMAA4T34.png"],
+          "data_points": ["Waller speaks July 7, 11:00 AM ET (Rome)", "CPRT investor meeting July 7"],
+          "created_at": "2026-07-05T21:30:30.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "FT week-ahead: FOMC minutes due this week — what will they reveal about Kevin Warsh's debut as Fed chair? First look at Fed policy direction under new leadership.",
+          "tweet_url": "https://x.com/C_Barraud/status/2073987882985877845",
+          "images": [],
+          "data_points": ["FOMC minutes due this week", "Warsh debut at Fed (first minutes as chair)"],
+          "created_at": "2026-07-06T04:30:18.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Technology & Semiconductors",
+      "items": [
+        {
+          "author": "zerohedge",
+          "description": "Goldman Sachs with massive upgrades across the MLCC/capacitor supply chain. Yageo PT hiked from NT$346 to NT$1,490 (+330%); SEMCO PT from W480K to W2.6M (+440%); LGI from W550K to W1M (+82%). Context: memory sliding, capacitors going vertical — 'the next great fund rotation.'",
+          "tweet_url": "https://x.com/zerohedge/status/2073951678492021116",
+          "images": [
+            "https://pbs.twimg.com/media/HMgm1mDWgAENQHq.jpg",
+            "https://pbs.twimg.com/media/HMgm3EIXYAAlilR.jpg",
+            "https://pbs.twimg.com/media/HMgnwJ7W4AAeIKL.png",
+            "https://pbs.twimg.com/media/HMgn_ySWIAAstAV.png"
+          ],
+          "data_points": ["Yageo PT NT$346 → NT$1,490 (+330%)", "SEMCO PT W480K → W2.6M (+440%)", "LGI PT W550K → W1M (+82%)", "Memory ↓, Capacitors ↑"],
+          "created_at": "2026-07-06T02:06:26.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "China's CXMT testing production line for next-gen bonded DRAM, closing the tech gap with South Korean chipmakers 'far faster than expected.'",
+          "tweet_url": "https://x.com/zerohedge/status/2073945804931235940",
+          "images": [],
+          "data_points": ["China CXMT: bonded DRAM production line", "Gap vs Korea closing faster than expected"],
+          "created_at": "2026-07-06T01:43:06.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Bank of Korea warns that single-stock leveraged ETFs on Samsung Electronics and SK Hynix could deepen KOSPI market concentration and amplify volatility. Samsung + SK Hynix currently account for more than half of KOSPI market cap and trading volume.",
+          "tweet_url": "https://x.com/zerohedge/status/2073934776499572854",
+          "images": [],
+          "data_points": ["Samsung + SK Hynix = >50% KOSPI cap & volume", "BOK warns on single-stock leveraged ETF risk"],
+          "created_at": "2026-07-06T00:59:17.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "South Korea planning a dedicated investment fund sourced from semiconductor chip tax revenue.",
+          "tweet_url": "https://x.com/zerohedge/status/2073934732144894025",
+          "images": [],
+          "data_points": ["South Korea: chip investment fund from tax revenue"],
+          "created_at": "2026-07-06T00:59:06.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Bloomberg: AI job disruption has come for Ireland's tech sector. Meta and TikTok job cuts in Ireland signal a broader wave of AI-driven employment reductions in European tech hubs.",
+          "tweet_url": "https://x.com/C_Barraud/status/2073991325968453886",
+          "images": [
+            "https://pbs.twimg.com/media/HMhL-jnWoAA9BSs.png",
+            "https://pbs.twimg.com/media/HMhME6qWoAALLew.png"
+          ],
+          "data_points": ["Meta + TikTok cutting jobs in Ireland", "AI driving tech job cuts in EU hubs"],
+          "created_at": "2026-07-06T04:43:59.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Commodities & Macro Markets",
+      "items": [
+        {
+          "author": "mark_ungewitter",
+          "description": "Gold's multi-month drawdown resembles the corrective structure of 2006. Chart shows 2006 analog suggesting a bottoming process may be underway, with favorable July seasonals ahead.",
+          "tweet_url": "https://x.com/mark_ungewitter/status/2073853091712041111",
+          "images": ["https://pbs.twimg.com/media/HMfCcBzWIAAQWlK.jpg"],
+          "data_points": ["Gold: 2006 analog pattern", "July seasonals historically bullish for gold", "Bottoming process potentially underway"],
+          "created_at": "2026-07-05T19:34:42.000Z"
+        },
+        {
+          "author": "crossbordercap",
+          "description": "CrossBorderCapital publishes latest 'Capital Wars' Substack — ongoing macro global capital flow analysis.",
+          "tweet_url": "https://x.com/crossbordercap/status/2073896987192086900",
+          "images": ["https://pbs.twimg.com/media/HMf2TKzXcAAIlDR.jpg"],
+          "data_points": ["Capital Wars macro note: new edition published"],
+          "created_at": "2026-07-05T22:29:07.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Corporate & M&A",
+      "items": [
+        {
+          "author": "C_Barraud",
+          "description": "Thales to acquire Exail Technologies for €134 per share (Bloomberg). French defense/aerospace M&A deal.",
+          "tweet_url": "https://x.com/C_Barraud/status/2073997910480498723",
+          "images": [],
+          "data_points": ["Thales acquires Exail Technologies at €134/shr"],
+          "created_at": "2026-07-06T05:10:09.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Crypto",
+      "items": [
+        {
+          "author": "benjamincowen",
+          "description": "Bitcoin's current bear market has been more tame than the last 3 bear markets that began at the end of post-halving years. The reason it 'feels worse' is the absence of a euphoria phase — so the price at which the bear started was lower than many expected.",
+          "tweet_url": "https://x.com/benjamincowen/status/2073866757572362331",
+          "images": ["https://pbs.twimg.com/media/HMe_ORKWoAADOL2.jpg"],
+          "data_points": ["Current BTC bear more tame than last 3 post-halving bears", "No euphoria phase this cycle", "Bear start price lower than expected"],
+          "created_at": "2026-07-05T20:29:00.000Z"
+        },
+        {
+          "author": "benjamincowen",
+          "description": "Bitcoin 4-year cycle skeptics have been proven wrong for 8 consecutive months. New YouTube video: 'Bitcoin: The Four Year Cycle Strikes Again.' Cycle framework continues on track.",
+          "tweet_url": "https://x.com/benjamincowen/status/2073983566996803950",
+          "images": [],
+          "data_points": ["BTC 4-year cycle on track", "8 months of continuous cycle validation"],
+          "created_at": "2026-07-06T04:13:09.000Z"
+        },
+        {
+          "author": "Tyler_Did_It",
+          "description": "LIT token chart showing price at $2.50 and local highs during World Cup intermission bull post.",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2073899997922275685",
+          "images": ["https://pbs.twimg.com/media/HMf4_otXUAAZMyv.jpg"],
+          "data_points": ["LIT = $2.50", "LIT at local highs"],
+          "created_at": "2026-07-05T22:41:05.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Geopolitics & Macro Risk",
+      "items": [
+        {
+          "author": "Polymarket",
+          "description": "Federal judge grants Alibaba temporary relief from lobbying ban tied to Pentagon blacklist. Legal challenge to US-China tech restrictions.",
+          "tweet_url": "https://x.com/Polymarket/status/2073986295022678224",
+          "images": [],
+          "data_points": ["Alibaba: temporary Pentagon blacklist lobbying ban relief granted"],
+          "created_at": "2026-07-06T04:24:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Taiwan reveals it is seeing an 'upward trend' in Chinese naval activity, including joint drills with Russia. Elevated geopolitical risk in Taiwan Strait.",
+          "tweet_url": "https://x.com/Polymarket/status/2073974669166682428",
+          "images": [],
+          "data_points": ["Taiwan: upward trend in PLA naval activity", "China-Russia joint naval drills ongoing"],
+          "created_at": "2026-07-06T03:37:48.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Bloomberg: Trump heads to NATO summit this week to meet Zelenskyy and face wary allies. Key geopolitical event with potential market implications around Ukraine/NATO policy.",
+          "tweet_url": "https://x.com/C_Barraud/status/2073989471679156495",
+          "images": [],
+          "data_points": ["Trump at NATO summit (week of July 6)", "Trump meets Zelenskyy"],
+          "created_at": "2026-07-06T04:36:37.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Bloomberg: Germany plans to boost 2027 borrowing as tax revenue falls short of targets. Continued European fiscal expansion.",
+          "tweet_url": "https://x.com/C_Barraud/status/2073989190551834668",
+          "images": [],
+          "data_points": ["Germany: 2027 borrowing to increase", "German tax revenue below targets"],
+          "created_at": "2026-07-06T04:35:30.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Consumer & Social Trends",
+      "items": [
+        {
+          "author": "kurtsaltrichter",
+          "description": "Chart: Every physical place where Americans gather is thinning out. Bars, bowling alleys, marinas, and theaters have all been in decline for two decades straight. Potential long-term structural headwind for consumer/entertainment/hospitality sectors.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2073807374104551756",
+          "images": ["https://pbs.twimg.com/media/HMek0RdX0AA3bRZ.jpg"],
+          "data_points": ["US social gathering venues declining 20+ years", "Bars, bowling, marinas, theaters all falling"],
+          "created_at": "2026-07-05T16:33:02.000Z"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {"author": "WarrenPies", "url": "https://www.marketwatch.com/story/why-the-stock-markets-red-hot-momentum-trade-might-be-headed-for-a-violent-unwind-this-month-78a45397", "description": "Momentum unwind call — MarketWatch"},
+    {"author": "benjamincowen", "url": "https://www.youtube.com/watch?app=desktop&v=sy6AxBbgico&feature=youtu.be", "description": "Bitcoin: The Four Year Cycle Strikes Again (YouTube)"},
+    {"author": "C_Barraud", "url": "https://www.bloomberg.com/news/articles/2026-07-06/meta-tiktok-jobs-cuts-in-ireland-augur-further-ai-disruption", "description": "AI job disruption in Ireland's tech sector"},
+    {"author": "C_Barraud", "url": "https://www.bloomberg.com/news/articles/2026-07-05/trump-heads-to-nato-summit-to-meet-zelenskyy-face-wary-allies", "description": "Trump at NATO summit"},
+    {"author": "C_Barraud", "url": "https://www.bloomberg.com/news/articles/2026-07-05/germany-plans-to-boost-2027-borrowing-as-tax-revenue-falls-short", "description": "Germany 2027 borrowing boost"},
+    {"author": "C_Barraud", "url": "https://www.ft.com/content/5f184dec-dd7f-4bb9-acf2-b3e9765b4d99", "description": "FOMC minutes / Warsh debut — FT"},
+    {"author": "zerohedge", "url": "https://www.zerohedge.com/technology/china-cxmt-testing-production-line-next-gen-bonded-dram-closing-tech-gap-korea-far", "description": "China CXMT bonded DRAM progress"},
+    {"author": "zerohedge", "url": "https://www.zerohedge.com/markets/south-korea-plans-investment-fund-chip-tax-revenue", "description": "South Korea chip investment fund"},
+    {"author": "C_Barraud", "url": "https://www.politico.eu/article/jordan-bardella-frances-far-right-favorite-waiting-in-the-wings/", "description": "France Bardella presidential race — Politico"},
+    {"author": "KobeissiLetter", "url": "https://www.thekobeissiletter.com/members/products/newsletters", "description": "Kobeissi Letter — July 6 edition"}
+  ],
+  "coverage": {
+    "authors_covered": 12,
+    "authors_total": 18,
+    "note": "6 authors (JSeyff, EricBalchunas, LizAnnSonders, RealVision, _Checkmatey_, Geo_papic) posted only World Cup commentary or personal content during this collection window"
+  }
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
