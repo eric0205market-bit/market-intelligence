@@ -75,7 +75,11 @@ git config user.email "actions@github.com" >/dev/null 2>&1
 git fetch origin main --quiet || { log "FATAL: git fetch failed"; exit 1; }
 git checkout main --quiet 2>/dev/null || git checkout -b main --quiet
 
-python3 "$COLLECTOR" --ids "$SLUGS" --days "$DAYS" --residential 2>&1 | tee -a "$LOG"
+# --resume merges into today's existing raw/concepts/_runs/<date>/{run,funnel,
+# progress}.json instead of overwriting them (a no-op if no run happened yet
+# today) — avoids clobbering the cloud cron's or another local run's same-day
+# diagnostics with just this narrow --ids slice.
+python3 "$COLLECTOR" --ids "$SLUGS" --days "$DAYS" --residential --resume 2>&1 | tee -a "$LOG"
 
 git add -- "$RAW_DIR" 2>/dev/null || true
 if git diff --cached --quiet; then
