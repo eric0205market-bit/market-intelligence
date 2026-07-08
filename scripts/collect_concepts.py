@@ -265,7 +265,8 @@ def url_hash(url):
 # Boilerplate/legal/recruiting pages that slip through as "articles".
 JUNK_TITLE_TERMS = (
     "privacy", "cookie", "terms", "disclaimer", "contact us", "careers",
-    "our people", "leadership", "diversity", "inclusion", "legal information",
+    "our people", "leadership", "diversity and inclusion",
+    "diversity, equity", "legal information",
 )
 # Listing pages whose title ends with one of these.
 JUNK_TITLE_SUFFIXES = ("articles & insights", "articles and insights")
@@ -865,6 +866,149 @@ def collect_source(page, limiter, source, cutoff_date, errors,
     return records
 
 
+RSS_AUTHOR_PAREN_RE = re.compile(r"\(([^)]+)\)\s*$")
+
+
+def collect_source_rss(source, cutoff_date, collected_at, funnels=None,
+                       timeout_s=30):
+    """Return fresh-article RECORDS for a `fetch_mode: rss` source. Fetches the
+    feed URL once (no Playwright, no per-article navigation) and reads the FULL
+    article body straight out of each item's <description>/<content:encoded> —
+    used for sources whose article pages CAPTCHA/bot-block headless browsers on
+    a per-page-visit basis but whose RSS feed serves full text unblocked (e.g.
+    Blogger's `?alt=rss` feed). Never raises; same record shape as
+    collect_source() so it flows through write_source_records() unchanged."""
+    import ssl
+    import urllib.error
+    import urllib.request
+    import xml.etree.ElementTree as ET
+    from email.utils import parsedate_to_datetime
+
+    slug = source["source_slug"]
+    name = source.get("name", slug)
+    funnel = {k: 0 for k in FUNNEL_KEYS}
+    rss_url = source.get("rss_url")
+    if not rss_url:
+        log(f"  {slug}: fetch_mode=rss but no rss_url — skipping")
+        if funnels is not None:
+            funnels[slug] = funnel
+        return []
+
+    # Some local Python installs (esp. macOS python.org builds without the
+    # "Install Certificates" step) lack a populated default cert store; prefer
+    # certifi's bundle when available so this doesn't depend on machine setup.
+    try:
+        import certifi
+        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        ssl_ctx = ssl.create_default_context()
+
+    req = urllib.request.Request(rss_url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s, context=ssl_ctx) as resp:
+            raw = resp.read()
+    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        log(f"  WARN {slug}: rss fetch failed — {type(exc).__name__}: {exc}")
+        if funnels is not None:
+            funnels[slug] = funnel
+        return []
+
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError as exc:
+        log(f"  WARN {slug}: rss parse failed — {exc}")
+        if funnels is not None:
+            funnels[slug] = funnel
+        return []
+
+    items = root.findall(".//item")
+    funnel["anchors_found"] = len(items)
+    paywalled = bool(source.get("paywalled", False))
+    category = source.get("category", "")
+    stype = source.get("type", "")
+    records = []
+    skipped_old = junk = 0
+
+    for item in items:
+        link_el = item.find("link")
+        title_el = item.find("title")
+        desc_el = item.find("description")
+        pubdate_el = item.find("pubDate")
+        author_el = item.find("author")
+        link = (link_el.text or "").strip() if link_el is not None else ""
+        if not link:
+            continue
+        funnel["candidates"] += 1
+
+        pub_date = None
+        if pubdate_el is not None and pubdate_el.text:
+            try:
+                pub_date = parsedate_to_datetime(pubdate_el.text.strip()).date()
+            except (TypeError, ValueError):
+                pub_date = parse_date(pubdate_el.text)
+        if pub_date is None:
+            pub_date = date_from_url(link)
+
+        funnel["visited"] += 1   # no separate navigate step; the feed IS the fetch
+
+        if pub_date is not None and pub_date < cutoff_date:
+            skipped_old += 1
+            funnel["dropped_old"] += 1
+            continue
+
+        title = (title_el.text or "").strip() if title_el is not None else ""
+        text = _html_to_text(desc_el.text or "") if desc_el is not None else ""
+        author = ""
+        if author_el is not None and author_el.text:
+            m = RSS_AUTHOR_PAREN_RE.search(author_el.text.strip())
+            author = m.group(1) if m else author_el.text.strip()
+
+        if is_junk({"url": link, "title": title, "text": text}):
+            junk += 1
+            if too_short(text):
+                funnel["dropped_short"] += 1
+            else:
+                funnel["dropped_junk"] += 1
+            continue
+
+        records.append({
+            "record_id": url_hash(link),
+            "source_slug": slug,
+            "source_name": name,
+            "source_url": link,
+            "category": category,
+            "type": stype,
+            "paywalled": paywalled,
+            "title": title,
+            "published_date": pub_date.isoformat() if pub_date else "",
+            "language": "en",
+            "author": author,
+            "word_count": len(text.split()),
+            "text": text,
+            "image_urls": [],
+            "collected_at": collected_at,
+        })
+
+    total_undated = sum(1 for r in records if not r["published_date"])
+    if total_undated > 5:
+        capped, seen_undated = [], 0
+        for r in records:
+            if not r["published_date"]:
+                seen_undated += 1
+                if seen_undated > 5:
+                    funnel["dropped_undated"] += 1
+                    continue
+            capped.append(r)
+        records = capped
+
+    funnel["kept"] = len(records)
+    if funnels is not None:
+        funnels[slug] = funnel
+    log(f"  {slug}: {len(records)} new (rss: {len(items)} items, "
+        f"{skipped_old} old, {junk} junk)")
+    return records
+
+
 def skip_reason_for(source):
     """Why this source is not Playwright-collected, or None to collect it.
     `collect: false` defers a source entirely; `paywalled: true` sources can't be
@@ -1026,9 +1170,13 @@ def main():
             write_progress(current=slug)
             src_budget, src_index = budget_for(source)
             try:
-                found = collect_source(page, limiter, source, cutoff_date, errors,
-                                       collected_at, budget_s=src_budget,
-                                       index_phase_s=src_index, funnels=funnels)
+                if source.get("fetch_mode") == "rss":
+                    found = collect_source_rss(source, cutoff_date, collected_at,
+                                               funnels=funnels)
+                else:
+                    found = collect_source(page, limiter, source, cutoff_date, errors,
+                                           collected_at, budget_s=src_budget,
+                                           index_phase_s=src_index, funnels=funnels)
             except Exception as exc:  # last-resort guard: never crash the run
                 log(f"  WARN {slug}: unexpected error — {type(exc).__name__}: {exc}")
                 errors.append({"source_slug": slug, "error": f"{type(exc).__name__}: {exc}"})
