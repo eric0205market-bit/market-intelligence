@@ -347,6 +347,20 @@ MIN_TEXT_LEN = 100     # shorter than this (chars) = empty/nav page
 MIN_ARTICLE_WORDS = 120  # research articles run long; below this is a teaser /
                          # landing / announcement stub, not extraction-worthy.
 
+# Login-wall / member-profile pages (forum software like XenForo) tend to be
+# just over MIN_ARTICLE_WORDS thanks to boilerplate ("Guests have limited
+# access...", a PHP print_r()-style debug array dump of addon versions, etc.)
+# so the word floor alone doesn't catch them — confirmed on SemiWiki
+# (raw/technology/semiwiki/*.json member-profile records, title "Log in",
+# body opens with a literal "Array\n(\n[content] => ..." dump). These are
+# content-SHAPE signatures, not URL-shape, so they apply as a global backstop
+# regardless of which source's link-discovery let the URL through.
+LOGIN_WALL_TITLE_EXACT = ("log in", "sign in", "register")
+PHP_DEBUG_DUMP_RE = re.compile(r"Array\s*\(\s*\[\w+\]\s*=>")
+LOGIN_WALL_BODY_RE = re.compile(
+    r"guests have limited access|you must be logged-in|"
+    r"you must be logged in|register to (view|continue|reply)", re.I)
+
 
 def too_short(text):
     """True if text is too short to be a real article body (char OR word floor)."""
@@ -356,8 +370,14 @@ def too_short(text):
 
 def is_junk(article):
     """True if an article is boilerplate (legal/privacy/careers), a listing
-    page, an empty/nav page, or sits at a junk URL path."""
+    page, an empty/nav page, a login-wall/member-profile page, or sits at a
+    junk URL path."""
     title = (article.get("title") or "").strip().lower()
+    if title in LOGIN_WALL_TITLE_EXACT:
+        return True
+    text = article.get("text") or ""
+    if PHP_DEBUG_DUMP_RE.search(text) or LOGIN_WALL_BODY_RE.search(text):
+        return True
     if any(term in title for term in JUNK_TITLE_TERMS):
         return True
     if any(title.endswith(suffix) for suffix in JUNK_TITLE_SUFFIXES):
@@ -826,6 +846,13 @@ def collect_source(page, limiter, source, cutoff_date, errors, collected_at,
     # Optional PER-SOURCE scope: only keep article links whose URL contains this
     # substring (host-restriction for blog-on-subdomain cases).
     url_must = (source.get("url_must_contain") or "").lower()
+    # Optional PER-SOURCE exclusion: drop article links whose URL contains this
+    # substring, even though it otherwise looks_like_article(). Used when a
+    # source's real articles and its junk pages share the same URL SHAPE (e.g.
+    # SemiWiki: /forum/threads/<id> is a real article, /forum/members/<id> is
+    # a login-wall profile page — both have a 4+ digit numeric path segment,
+    # so looks_like_article() can't tell them apart by shape alone).
+    url_must_not = (source.get("url_must_not_contain") or "").lower()
     start = time.monotonic()
     seen = {norm_url(u) for u in urls}   # don't treat index pages as articles
     candidates = []
@@ -855,6 +882,8 @@ def collect_source(page, limiter, source, cutoff_date, errors, collected_at,
                     is_article = True
             if is_article and url_must and url_must not in link.lower():
                 continue   # per-source scope: outside the allowed host/path
+            if is_article and url_must_not and url_must_not in link.lower():
+                continue   # per-source exclusion: same URL shape, known-junk path
             if is_article:
                 seen.add(key)
                 candidates.append(link)
