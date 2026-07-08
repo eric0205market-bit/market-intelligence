@@ -267,6 +267,16 @@ JUNK_TITLE_TERMS = (
     "privacy", "cookie", "terms", "disclaimer", "contact us", "careers",
     "our people", "leadership", "diversity and inclusion",
     "diversity, equity", "legal information",
+    # Bot-block interstitials (Cloudflare/Akamai/Imperva-style). These have
+    # short, characteristic titles distinct from any real article title, and
+    # unlike the Cloudflare "checking your browser" interstitial in
+    # extract_article(), a HARD block page like this won't resolve with more
+    # wait time — it must be dropped as junk, not retried or "kept" as a
+    # 100+-word article (confirmed 2026-07-08: chatham_house residential test
+    # kept 5 "Sorry, you have been blocked" pages before this fix, each just
+    # over the MIN_ARTICLE_WORDS floor).
+    "sorry, you have been blocked", "you have been blocked",
+    "access denied", "just a moment",
 )
 # Listing pages whose title ends with one of these.
 JUNK_TITLE_SUFFIXES = ("articles & insights", "articles and insights")
@@ -685,14 +695,37 @@ def navigate(page, url):
     dismiss_cookie_banner(page)
 
 
+# Cloudflare's transient "checking your browser" / "performing security
+# verification" interstitial. It self-clears client-side after a few seconds
+# on most sites (ARK confirmed: resolves to the real article ~3s after
+# domcontentloaded) — the generic 400ms settle in extract_article() is too
+# short to see that resolution, so short interstitial text gets captured and
+# misread as "this article is a teaser stub". One bounded retry catches it.
+CLOUDFLARE_INTERSTITIAL_RE = re.compile(
+    r"performing security verification|checking your browser|"
+    r"just a moment|verification successful.{0,40}waiting", re.I)
+CLOUDFLARE_RETRY_WAIT_MS = 4_000
+
+
 def extract_article(page):
-    """Run EXTRACT_JS, giving images a moment to load for width measurement."""
+    """Run EXTRACT_JS, giving images a moment to load for width measurement.
+    Retries once with a longer settle if the page is still showing a
+    Cloudflare interstitial (see CLOUDFLARE_INTERSTITIAL_RE) — most such
+    challenges clear client-side within a few seconds; a hard block (e.g. a
+    "Just a moment..." page that never advances) just fails the same way
+    after the retry, at the cost of one extra wait."""
     try:
         page.wait_for_load_state("load", timeout=3_000)
     except Exception:
         pass
     page.wait_for_timeout(400)
     data = page.evaluate(EXTRACT_JS)
+    text = data.get("text") or ""
+    if len(text) < 500 and CLOUDFLARE_INTERSTITIAL_RE.search(text):
+        page.wait_for_timeout(CLOUDFLARE_RETRY_WAIT_MS)
+        retry = page.evaluate(EXTRACT_JS)
+        if len(retry.get("text") or "") > len(text):
+            data = retry
     try:
         data["html"] = page.content()
     except Exception:
@@ -710,12 +743,13 @@ FUNNEL_KEYS = (
 
 def collect_source(page, limiter, source, cutoff_date, errors,
                    collected_at, budget_s=SOURCE_TIMEOUT_S,
-                   index_phase_s=INDEX_PHASE_S, funnels=None):
+                   index_phase_s=INDEX_PHASE_S, funnels=None, browser=None):
     """Return a list of fresh-article RECORDS for one source. Never raises.
 
     Each record is the per-article JSON object written to
     raw/concepts/<source_slug>/<url_hash>.json. funnels (optional dict) records
-    this source's funnel counters under funnels[slug]."""
+    this source's funnel counters under funnels[slug]. `browser` is only
+    needed when source.get("fresh_context_per_article") is set (see Pass 2)."""
     slug = source["source_slug"]
     name = source.get("name", slug)
     funnel = {k: 0 for k in FUNNEL_KEYS}
@@ -738,6 +772,16 @@ def collect_source(page, limiter, source, cutoff_date, errors,
             extra_re = re.compile(source["article_path_re"], re.I)
         except re.error:
             log(f"  {slug}: bad article_path_re — ignoring")
+    # Same idea as article_path_re but for the QUERY STRING — some sites key
+    # articles by a query param rather than a path segment (e.g. SSRN:
+    # papers.cfm?abstract_id=NNNNNNN has no year/doc-id/hyphens in the PATH at
+    # all, so looks_like_article() never matches it however the path looks).
+    query_re = None
+    if source.get("article_query_re"):
+        try:
+            query_re = re.compile(source["article_query_re"], re.I)
+        except re.error:
+            log(f"  {slug}: bad article_query_re — ignoring")
     # Optional PER-SOURCE scope: only keep article links whose URL contains this
     # substring. Used when the listing lives on a subdomain that shares an apex
     # with a nav-heavy main site (e.g. NY Fed's Liberty Street Economics blog on
@@ -774,6 +818,11 @@ def collect_source(page, limiter, source, cutoff_date, errors,
                 if (apex_domain(parsed.netloc) == apex
                         and extra_re.match(parsed.path)):
                     is_article = True
+            if not is_article and query_re is not None:
+                parsed = urlparse(link)
+                if (apex_domain(parsed.netloc) == apex
+                        and query_re.search(parsed.query)):
+                    is_article = True
             if is_article and url_must and url_must not in link.lower():
                 continue   # per-source scope: outside the allowed host/path
             if is_article:
@@ -786,6 +835,15 @@ def collect_source(page, limiter, source, cutoff_date, errors,
     paywalled = bool(source.get("paywalled", False))
     category = source.get("category", "")
     stype = source.get("type", "")
+    # Some sites (confirmed: ARK Invest) run bot-detection that flags the
+    # BROWSER CONTEXT once it has visited the index/listing page — every
+    # article page visited afterward in that SAME context then hard-fails a
+    # Cloudflare challenge that never clears, no matter how long you wait.
+    # A brand-new context (no shared cookies/fingerprint history) visiting
+    # the SAME article URL directly passes immediately. So for opted-in
+    # sources, Pass 2 opens ONE throwaway context per article instead of
+    # reusing the shared `page` that just harvested the index.
+    fresh_ctx = bool(source.get("fresh_context_per_article")) and browser is not None
     for article_url in candidates:
         if len(records) >= MAX_ARTICLES_PER_SOURCE:
             log(f"  {slug}: hit per-source article cap ({MAX_ARTICLES_PER_SOURCE})")
@@ -794,15 +852,28 @@ def collect_source(page, limiter, source, cutoff_date, errors,
             log(f"  {slug}: source time budget reached while reading articles")
             break
         limiter.wait()
+        article_page = page
+        article_context = None
+        if fresh_ctx:
+            article_context = browser.new_context(
+                user_agent=USER_AGENT, viewport=DEFAULT_VIEWPORT,
+                ignore_https_errors=True,
+            )
+            article_page = article_context.new_page()
+            article_page.set_default_timeout(PAGE_TIMEOUT_MS)
         try:
-            navigate(page, article_url)
-            data = extract_article(page)
+            navigate(article_page, article_url)
+            data = extract_article(article_page)
         except (PlaywrightTimeout, PlaywrightError) as exc:
+            if article_context is not None:
+                article_context.close()
             funnel["nav_errors"] += 1
             log(f"  WARN {slug}: article failed {article_url} — {type(exc).__name__}")
             errors.append({"source_slug": slug, "url": article_url,
                            "error": f"article: {type(exc).__name__}"})
             continue
+        if article_context is not None:
+            article_context.close()
         funnel["visited"] += 1
 
         pub_date = (extract_date(data.get("html", ""), article_url)
@@ -1009,11 +1080,21 @@ def collect_source_rss(source, cutoff_date, collected_at, funnels=None,
     return records
 
 
-def skip_reason_for(source):
+def skip_reason_for(source, allow_residential=False):
     """Why this source is not Playwright-collected, or None to collect it.
     `collect: false` defers a source entirely; `paywalled: true` sources can't be
-    scraped (auth/Cloudflare) and reach the owner by other channels."""
+    scraped (auth/Cloudflare) and reach the owner by other channels.
+
+    `residential_only: true` sources stay `collect: false` (so the normal
+    cloud cron / unscoped daily run always skips them — they're genuinely
+    unreachable from Actions IPs) but are ALLOWED when allow_residential=True
+    (set via --residential, used only by the local residential-runner wrapper
+    scripts). This is a deliberate opt-in gate, not a relaxation of `collect:
+    false` in general — every other collect:false/paywalled source is still
+    skipped even with --residential."""
     if source.get("collect") is False:
+        if allow_residential and source.get("residential_only"):
+            return None
         return source.get("skip_reason") or "deferred (collect=false)"
     if source.get("paywalled"):
         return source.get("skip_reason") or "paywalled"
@@ -1060,6 +1141,13 @@ def main():
         "--resume", action="store_true",
         help="resume today's run: skip sources already completed (per the run's "
              "progress.json) and continue where a prior invocation left off",
+    )
+    parser.add_argument(
+        "--residential", action="store_true",
+        help="allow collect:false sources tagged residential_only:true to run "
+             "(used by the local residential-runner wrapper scripts for "
+             "cloud-IP-blocked sources; every other collect:false/paywalled "
+             "source is still skipped)",
     )
     args = parser.parse_args()
 
@@ -1158,7 +1246,7 @@ def main():
             slug = source["source_slug"]
             if slug in completed_set:        # already done (resume) — skip
                 continue
-            reason = skip_reason_for(source)
+            reason = skip_reason_for(source, allow_residential=args.residential)
             if reason:
                 log(f"[{i}/{len(sources)}] {slug} — SKIP ({reason[:70]})")
                 if slug not in skipped_set:
@@ -1176,7 +1264,8 @@ def main():
                 else:
                     found = collect_source(page, limiter, source, cutoff_date, errors,
                                            collected_at, budget_s=src_budget,
-                                           index_phase_s=src_index, funnels=funnels)
+                                           index_phase_s=src_index, funnels=funnels,
+                                           browser=browser)
             except Exception as exc:  # last-resort guard: never crash the run
                 log(f"  WARN {slug}: unexpected error — {type(exc).__name__}: {exc}")
                 errors.append({"source_slug": slug, "error": f"{type(exc).__name__}: {exc}"})
