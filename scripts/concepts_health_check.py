@@ -41,6 +41,8 @@ import re
 import sys
 from pathlib import Path
 
+import concepts_source_tally as tally  # same dir; authoritative active/parked count
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = REPO_ROOT / "config" / "concepts_sources.json"
 PROCESSED_ROOT = REPO_ROOT / "processed" / "concepts"
@@ -175,8 +177,18 @@ def main():
     if args.stale_only:
         rows = [r for r in rows if r["status"] == "STALE"]
 
+    tally_ok, tally_stored, tally_computed = tally.check_header()
+
     if args.json:
-        print(json.dumps({"generated_at": today.isoformat(), "sources": rows}, indent=2))
+        print(json.dumps({
+            "generated_at": today.isoformat(),
+            "sources": rows,
+            "active_parked_header_ok": tally_ok,
+            "active_parked_stored": tally_stored,
+            "active_parked_computed": tally_computed,
+        }, indent=2))
+        if not tally_ok:
+            sys.exit(1)
         return
 
     print(f"Concepts daily-stream health check — {today.isoformat()}")
@@ -195,7 +207,17 @@ def main():
     n_stale = sum(1 for r in rows if r["status"] == "STALE")
     print()
     print(f"{n_stale} STALE / {len(rows)} active sources.")
-    if n_stale:
+
+    if tally_ok:
+        print(f"active/parked header: OK — {tally_computed}")
+    else:
+        print("active/parked header: FAIL — _active_parked DISAGREES with the collect flags:",
+              file=sys.stderr)
+        print(f"  stored:   {tally_stored}", file=sys.stderr)
+        print(f"  computed: {tally_computed}", file=sys.stderr)
+        print("  -> run: python3 scripts/concepts_source_tally.py --write", file=sys.stderr)
+
+    if n_stale or not tally_ok:
         sys.exit(1)
 
 
