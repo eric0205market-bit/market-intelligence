@@ -158,6 +158,45 @@ def cmd_postprocess(args):
     print(f"postprocess totals: quotes={total} verified={verified}")
 
 
+def _write_quarantine_log(new_entries):
+    """Merge new_entries into QUARANTINE_LOG instead of replacing it wholesale —
+    same class of bug as the report-overwrite fix in _render(): the log is a
+    single running list with NO date scoping, so a plain write_text() on every
+    publish call that quarantines anything wipes out every earlier run's
+    entries, same-day or any prior day. Union by record_id (new_entries wins on
+    overlap, e.g. a re-check after a source fix); same shrink-guard tripwire as
+    _render() — refuse to write rather than silently lose entries."""
+    existing = []
+    if QUARANTINE_LOG.exists():
+        try:
+            existing = json.loads(QUARANTINE_LOG.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            print(f"  WARN: could not parse existing {QUARANTINE_LOG.name} — "
+                  f"treating as empty (this run's entries will still be written)")
+            existing = []
+
+    merged = {e["record_id"]: e for e in existing if e.get("record_id")}
+    existing_ids = set(merged)
+    merged.update({e["record_id"]: e for e in new_entries if e.get("record_id")})
+    merged_list = list(merged.values())
+
+    if len(merged_list) < len(existing):
+        sys.exit(f"FATAL: merge would SHRINK {QUARANTINE_LOG.name} from "
+                 f"{len(existing)} to {len(merged_list)} entries — refusing to "
+                 f"write. This should be mathematically impossible for a union "
+                 f"merge; something is wrong upstream (investigate before "
+                 f"re-running).")
+    if existing:
+        added = sum(1 for e in new_entries
+                   if e.get("record_id") and e["record_id"] not in existing_ids)
+        print(f"  merging into existing quarantine log: {len(existing)} entry(ies) "
+              f"on disk + {len(new_entries)} this run -> {len(merged_list)} total "
+              f"({added} new, {len(new_entries) - added} already present)")
+
+    QUARANTINE_LOG.write_text(json.dumps(merged_list, ensure_ascii=False, indent=2),
+                              encoding="utf-8")
+
+
 # --- entity-presence guard ---------------------------------------------------
 ENTITY_PRESENCE_MIN = 0.40   # a card whose top_entities are <40% present in its
                              # raw article text is a topic mismatch (hallucinated
@@ -323,8 +362,7 @@ def cmd_publish(args):
         for q in quarantined:
             print(f"    ✗ [{q['record_id']}] {q['source_name']} — {q['title']}  "
                   f"({int(q['entity_presence']*100)}% of {q['n_entities']} entities present)")
-        QUARANTINE_LOG.write_text(json.dumps(quarantined, ensure_ascii=False, indent=2),
-                                  encoding="utf-8")
+        _write_quarantine_log(quarantined)
         print(f"    -> logged to {QUARANTINE_LOG.relative_to(REPO)}. Re-extract these from "
               f"their raw article, then re-publish. (Processed files left in place.)\n")
 
