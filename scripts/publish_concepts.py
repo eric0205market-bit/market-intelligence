@@ -210,10 +210,67 @@ def _build_payload(cards, date, lookback_days=None):
     }
 
 
+def _existing_report_cards(date):
+    """Cards currently embedded in reports/concepts_<date>.html, if that file
+    already exists (e.g. from an earlier run today). [] if missing/unparseable.
+
+    Uses JSONDecoder.raw_decode from the `const REPORT_DATA = ` marker instead
+    of a regex match ending at the first `);` — a naive regex would truncate
+    early if any card's text happens to contain that two-character sequence."""
+    out_path = REPORTS_DIR / f"concepts_{date}.html"
+    if not out_path.exists():
+        return []
+    html = out_path.read_text(encoding="utf-8")
+    marker = "const REPORT_DATA = "
+    i = html.find(marker)
+    if i == -1:
+        return []
+    try:
+        data, _ = json.JSONDecoder().raw_decode(html, i + len(marker))
+    except json.JSONDecodeError:
+        print(f"  WARN: could not parse existing REPORT_DATA in {out_path.name} "
+              f"— treating as empty (a fresh render will still include every "
+              f"card passed to this run, nothing already-processed is lost)")
+        return []
+    return data.get("cards", []) or []
+
+
 def _render(cards, date):
+    """Write reports/concepts_<date>.html from `cards`, MERGING with whatever
+    is already there instead of replacing it — a second same-day run (e.g. two
+    routine passes on 2026-06-25) must not silently drop the first run's cards.
+    Merge is a union keyed by record_id; `cards` (this run's freshly-loaded,
+    guard-passed set) wins on overlap. NEW-ONLY-across-days semantics are
+    preserved automatically: a card only ever gets merged into the report for
+    the date `_render` was called with, driven by that record's own
+    processed_at / the caller's explicit --ids for that day — dates are never
+    cross-mixed here.
+
+    GUARD: the merged card count can only ever grow or stay flat (it is a
+    union). If it were ever observed to shrink, that would mean the merge
+    logic itself broke — hard-stop rather than silently write a corrupted
+    report."""
     if not TEMPLATE.exists():
         sys.exit(f"template not found: {TEMPLATE}")
-    payload = json.dumps(_build_payload(cards, date), ensure_ascii=False)
+
+    existing = _existing_report_cards(date)
+    merged = {c["record_id"]: c for c in existing if c.get("record_id")}
+    added = sum(1 for c in cards if c.get("record_id") not in merged)
+    merged.update({c["record_id"]: c for c in cards if c.get("record_id")})
+    merged_cards = list(merged.values())
+
+    if len(merged_cards) < len(existing):
+        sys.exit(f"FATAL: merge would SHRINK reports/concepts_{date}.html from "
+                 f"{len(existing)} to {len(merged_cards)} card(s) — refusing to "
+                 f"write. This should be mathematically impossible for a union "
+                 f"merge; something is wrong upstream (investigate before "
+                 f"re-running).")
+    if existing:
+        print(f"  merging into existing report: {len(existing)} card(s) on disk "
+              f"+ {len(cards)} card(s) this run -> {len(merged_cards)} total "
+              f"({added} new, {len(cards) - added} already present)")
+
+    payload = json.dumps(_build_payload(merged_cards, date), ensure_ascii=False)
     html = TEMPLATE.read_text(encoding="utf-8").replace("__REPORT_DATA__", payload)
     if "__REPORT_DATA__" in html:
         sys.exit("ERROR: placeholder __REPORT_DATA__ still present after substitution")
@@ -221,7 +278,7 @@ def _render(cards, date):
     out_path = REPORTS_DIR / f"concepts_{date}.html"
     out_path.write_text(html, encoding="utf-8")
     print(f"wrote {out_path.relative_to(REPO)} "
-          f"({len(html):,} bytes, {len(cards)} card(s))")
+          f"({len(html):,} bytes, {len(merged_cards)} card(s))")
 
 
 def cmd_publish(args):
