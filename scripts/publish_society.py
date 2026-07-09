@@ -215,6 +215,51 @@ def cmd_postprocess(args):
     print(f"postprocess totals: quotes={total} verified={verified}")
 
 
+def _write_quarantine_log(new_entries, date, force=False):
+    """Merge new_entries into QUARANTINE_LOG instead of replacing it wholesale —
+    a plain write_text() on every publish call that quarantines anything wiped
+    out every earlier run's entries, same-day or any prior day (the log has no
+    date scoping of its own). Union by record_id (new_entries wins on overlap,
+    e.g. a re-check after a source fix); each entry gets a `date` field stamped
+    with the run's --date so entries from different publish dates cannot
+    clobber each other. Called unconditionally (even with new_entries == [])
+    so the merge/preserve step always runs, not gated on `if quarantined:`.
+
+    SHRINK-GUARD: refuses to write (FATAL) if the merged count is smaller than
+    what's already on disk, unless force=True (--force/--rebuild) — a union
+    can only grow or stay flat, so a shrink means something is wrong upstream."""
+    existing = []
+    if QUARANTINE_LOG.exists():
+        try:
+            existing = json.loads(QUARANTINE_LOG.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            print(f"  WARN: could not parse existing {QUARANTINE_LOG.name} — "
+                  f"treating as empty (this run's entries will still be written)")
+            existing = []
+
+    dated_new = [{**e, "date": e.get("date") or date} for e in new_entries]
+    merged = {e["record_id"]: e for e in existing if e.get("record_id")}
+    existing_ids = set(merged)
+    merged.update({e["record_id"]: e for e in dated_new if e.get("record_id")})
+    merged_list = list(merged.values())
+
+    if len(merged_list) < len(existing) and not force:
+        sys.exit(f"FATAL: merge would SHRINK {QUARANTINE_LOG.name} from "
+                 f"{len(existing)} to {len(merged_list)} entries — refusing to "
+                 f"write. This should be mathematically impossible for a union "
+                 f"merge; something is wrong upstream (investigate before "
+                 f"re-running, or pass --force to write anyway).")
+    if existing:
+        added = sum(1 for e in dated_new
+                   if e.get("record_id") and e["record_id"] not in existing_ids)
+        print(f"  merging into existing quarantine log: {len(existing)} entry(ies) "
+              f"on disk + {len(dated_new)} this run -> {len(merged_list)} total "
+              f"({added} new, {len(dated_new) - added} already present)")
+
+    QUARANTINE_LOG.write_text(json.dumps(merged_list, ensure_ascii=False, indent=2),
+                              encoding="utf-8")
+
+
 # --- entity-presence guard ---------------------------------------------------
 ENTITY_PRESENCE_MIN = 0.40   # a card whose top_entities are <40% present in its
                              # raw article text is a topic mismatch (hallucinated
@@ -267,10 +312,67 @@ def _build_payload(cards, date, lookback_days=None):
     }
 
 
-def _render(cards, date):
+def _existing_report_cards(date):
+    """Cards currently embedded in reports/society_<date>.html, if that file
+    already exists (e.g. from an earlier run today). [] if missing/unparseable.
+
+    Uses JSONDecoder.raw_decode from the `const REPORT_DATA = ` marker instead
+    of a regex match ending at the first `);` — a naive regex would truncate
+    early if any card's text happens to contain that two-character sequence."""
+    out_path = REPORTS_DIR / f"society_{date}.html"
+    if not out_path.exists():
+        return []
+    html = out_path.read_text(encoding="utf-8")
+    marker = "const REPORT_DATA = "
+    i = html.find(marker)
+    if i == -1:
+        return []
+    try:
+        data, _ = json.JSONDecoder().raw_decode(html, i + len(marker))
+    except json.JSONDecodeError:
+        print(f"  WARN: could not parse existing REPORT_DATA in {out_path.name} "
+              f"— treating as empty (a fresh render will still include every "
+              f"card passed to this run, nothing already-processed is lost)")
+        return []
+    return data.get("cards", []) or []
+
+
+def _render(cards, date, force=False):
+    """Write reports/society_<date>.html from `cards`, MERGING with whatever is
+    already there instead of replacing it — a second same-day run (or, as seen
+    2026-07-08, dozens of wave-scoped runs) must not silently drop an earlier
+    run's cards. Merge is a union keyed by record_id; `cards` (this run's
+    freshly-loaded, guard-passed set) wins on overlap — this preserves the
+    legitimate "fix a card and re-publish" flow (a re-processed record_id
+    picks up the newer version). NEW-ONLY-across-days semantics are preserved
+    automatically: a card only ever gets merged into the report for the date
+    `_render` was called with — dates are never cross-mixed here.
+
+    SHRINK-GUARD: the merged card count can only ever grow or stay flat (it is
+    a union). If it were ever observed to shrink, that would mean the merge
+    logic itself broke — hard-stop rather than silently write a corrupted
+    report, unless force=True (--force/--rebuild) explicitly overrides it."""
     if not TEMPLATE.exists():
         sys.exit(f"template not found: {TEMPLATE}")
-    payload = json.dumps(_build_payload(cards, date), ensure_ascii=False)
+
+    existing = _existing_report_cards(date)
+    merged = {c["record_id"]: c for c in existing if c.get("record_id")}
+    added = sum(1 for c in cards if c.get("record_id") not in merged)
+    merged.update({c["record_id"]: c for c in cards if c.get("record_id")})
+    merged_cards = list(merged.values())
+
+    if len(merged_cards) < len(existing) and not force:
+        sys.exit(f"FATAL: merge would SHRINK reports/society_{date}.html from "
+                 f"{len(existing)} to {len(merged_cards)} card(s) — refusing to "
+                 f"write. This should be mathematically impossible for a union "
+                 f"merge; something is wrong upstream (investigate before "
+                 f"re-running, or pass --force to write anyway).")
+    if existing:
+        print(f"  merging into existing report: {len(existing)} card(s) on disk "
+              f"+ {len(cards)} card(s) this run -> {len(merged_cards)} total "
+              f"({added} new, {len(cards) - added} already present)")
+
+    payload = json.dumps(_build_payload(merged_cards, date), ensure_ascii=False)
     html = TEMPLATE.read_text(encoding="utf-8").replace("__REPORT_DATA__", payload)
     if "__REPORT_DATA__" in html:
         sys.exit("ERROR: placeholder __REPORT_DATA__ still present after substitution")
@@ -278,7 +380,7 @@ def _render(cards, date):
     out_path = REPORTS_DIR / f"society_{date}.html"
     out_path.write_text(html, encoding="utf-8")
     print(f"wrote {out_path.relative_to(REPO)} "
-          f"({len(html):,} bytes, {len(cards)} card(s))")
+          f"({len(html):,} bytes, {len(merged_cards)} card(s))")
 
 
 def cmd_publish(args):
@@ -323,13 +425,15 @@ def cmd_publish(args):
         for q in quarantined:
             print(f"    ✗ [{q['record_id']}] {q['source_name']} — {q['title']}  "
                   f"({int(q['entity_presence']*100)}% of {q['n_entities']} entities present)")
-        QUARANTINE_LOG.write_text(json.dumps(quarantined, ensure_ascii=False, indent=2),
-                                  encoding="utf-8")
+    # Called unconditionally (not gated on `if quarantined:`) — see
+    # _write_quarantine_log's docstring for why.
+    _write_quarantine_log(quarantined, date, force=args.force)
+    if quarantined:
         print(f"    -> logged to {QUARANTINE_LOG.relative_to(REPO)}. Re-extract these from "
               f"their raw article, then re-publish. (Processed files left in place.)\n")
 
     # --- render NEW-ONLY report (guard-filtered) + rebuild dashboard ---
-    _render(ok_cards, date)
+    _render(ok_cards, date, force=args.force)
     subprocess.run([sys.executable, str(REPO / "scripts" / "update_dashboard.py")], check=True)
     bb = REPO / "scripts" / "inject_back_button.py"
     if bb.exists():
@@ -347,6 +451,11 @@ def main():
     a = sub.add_parser("publish")
     a.add_argument("--date", default=None)
     a.add_argument("--ids", default=None)
+    a.add_argument("--force", "--rebuild", dest="force", action="store_true",
+                   help="allow the report/quarantine merge to shrink an existing "
+                        "file's record count instead of refusing to write "
+                        "(only needed for a deliberate rebuild that legitimately "
+                        "removes records, e.g. a retraction)")
     a.set_defaults(fn=cmd_publish)
     args = p.parse_args()
     args.fn(args)
