@@ -355,11 +355,53 @@ MIN_ARTICLE_WORDS = 120  # research articles run long; below this is a teaser /
 # body opens with a literal "Array\n(\n[content] => ..." dump). These are
 # content-SHAPE signatures, not URL-shape, so they apply as a global backstop
 # regardless of which source's link-discovery let the URL through.
+#
+# LENGTH-GATED (same lesson as the teaser detector): marker presence ALONE
+# used to reject outright, which silently dropped real SemiWiki forum-thread
+# articles that carry this same guest-notice wrapper as a PREFIX before the
+# actual thread content — confirmed on record c82ed282f0172577 ("Even the
+# BBC is talking about Semiconductors...", 1033 real words after the
+# wrapper), which the old rule rejected on sight. Instead of asking "is a
+# marker present", ask "is there substantial content LEFT after the wrapper
+# ends": strip everything up to the end of the last marker match, and only
+# reject if what remains doesn't clear MIN_ARTICLE_WORDS. A pure login-wall
+# page (nothing after the wrapper but a few nav links) still correctly fails.
 LOGIN_WALL_TITLE_EXACT = ("log in", "sign in", "register")
 PHP_DEBUG_DUMP_RE = re.compile(r"Array\s*\(\s*\[\w+\]\s*=>")
 LOGIN_WALL_BODY_RE = re.compile(
     r"guests have limited access|you must be logged-in|"
     r"you must be logged in|register to (view|continue|reply)", re.I)
+
+
+# How far into the text to look for the wrapper's OWN markers. Confirmed on
+# SemiWiki: the guest-notice/debug-dump wrapper is done by ~700 chars in a
+# real example. This window is deliberately NOT "the whole text" — SemiWiki
+# threads also carry a "You must log in or register to reply here." reply-CTA
+# in the FOOTER of every thread, real or not (confirmed at char ~6377 of the
+# same 1033-word example). Scanning the whole document for the LAST marker
+# match would jump past nearly all the real content to that footer, making
+# a genuine full-length article look like it has almost nothing after its
+# wrapper. Restricting the scan to the opening window means a footer-only
+# match (no wrapper markers up top) is correctly ignored.
+LOGIN_WALL_WRAPPER_SCAN_CHARS = 1000
+
+
+def _login_wall_remainder_words(text):
+    """Word count of whatever text follows the wrapper, if the text OPENS
+    with a login-wall/debug-dump marker (PHP_DEBUG_DUMP_RE or
+    LOGIN_WALL_BODY_RE) within the first LOGIN_WALL_WRAPPER_SCAN_CHARS
+    characters. None if no such marker appears in that opening window (a
+    marker appearing only later, e.g. a forum's universal reply-CTA footer,
+    does not count as a wrapper and is ignored)."""
+    window = text[:LOGIN_WALL_WRAPPER_SCAN_CHARS]
+    last_end = None
+    for rx in (PHP_DEBUG_DUMP_RE, LOGIN_WALL_BODY_RE):
+        for m in rx.finditer(window):
+            if last_end is None or m.end() > last_end:
+                last_end = m.end()
+    if last_end is None:
+        return None
+    return len(text[last_end:].split())
 
 
 def too_short(text):
@@ -370,13 +412,14 @@ def too_short(text):
 
 def is_junk(article):
     """True if an article is boilerplate (legal/privacy/careers), a listing
-    page, an empty/nav page, a login-wall/member-profile page, or sits at a
-    junk URL path."""
+    page, an empty/nav page, a login-wall/member-profile page with no real
+    content beyond the wrapper, or sits at a junk URL path."""
     title = (article.get("title") or "").strip().lower()
     if title in LOGIN_WALL_TITLE_EXACT:
         return True
     text = article.get("text") or ""
-    if PHP_DEBUG_DUMP_RE.search(text) or LOGIN_WALL_BODY_RE.search(text):
+    remainder = _login_wall_remainder_words(text)
+    if remainder is not None and remainder < MIN_ARTICLE_WORDS:
         return True
     if any(term in title for term in JUNK_TITLE_TERMS):
         return True
