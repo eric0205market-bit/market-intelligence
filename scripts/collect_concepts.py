@@ -320,6 +320,51 @@ def is_junk(article):
     return False
 
 
+# --- paywall-teaser detection (deterministic, no LLM) ------------------------
+# A short body carrying a subscribe/sign-in prompt is a paywall teaser, not
+# the real article — confirmed on Foreign Affairs
+# (raw/society/foreign_affairs/da11902084ae95ef.json, Society): a 413-word
+# teaser silently overwrote a good 2698-word raw on re-collection, orphaning
+# 10 verified quotes on an already-published card.
+#
+# Two signals combined: a known paywall-marker PHRASE is present, AND the
+# total text is short. The length gate is LOAD-BEARING, not cosmetic — the
+# SAME Foreign Affairs full 2698-word article carries the identical
+# boilerplate subscribe footer as its own teaser does, because that CTA is
+# site chrome on every FA page regardless of whether the article itself is
+# paywalled. Marker presence alone is not enough to tell a teaser from a
+# complete article on a site like this; word count is what actually
+# distinguishes "a 400-word preview with a subscribe wall" from "a
+# 2700-word article with a subscribe ad at the bottom." Both required.
+TEASER_MARKER_RE = re.compile(
+    r"subscribe (now|to unlock|to continue|to read|to get)|"
+    r"finish reading this article|"
+    r"this is a subscriber-only feature|"
+    r"sign in to continue|"
+    r"unlock (this (article|feature)|access)|"
+    r"get unlimited access to all|"
+    r"enter your email and we.?ll send",
+    re.I,
+)
+TEASER_MAX_WORDS = 700  # texts this short (or shorter) that also carry a
+                        # paywall marker are almost certainly a teaser, not
+                        # a complete article — well above MIN_ARTICLE_WORDS
+                        # (120, the general junk floor) but comfortably below
+                        # a real long-form piece.
+
+
+def looks_like_teaser(text):
+    """True if `text` reads as a paywall teaser rather than the full article:
+    a known paywall-marker phrase is present AND the total text is no longer
+    than TEASER_MAX_WORDS. Both conditions required — see the module comment
+    above for why length (not marker presence alone) is load-bearing."""
+    if not text:
+        return False
+    if len(text.split()) > TEASER_MAX_WORDS:
+        return False
+    return bool(TEASER_MARKER_RE.search(text))
+
+
 # --- URL helpers ------------------------------------------------------------
 def apex_domain(host):
     host = (host or "").lower().lstrip(".")
@@ -738,6 +783,9 @@ def extract_article(page):
 FUNNEL_KEYS = (
     "anchors_found", "candidates", "visited", "nav_errors",
     "dropped_undated", "dropped_old", "dropped_short", "dropped_junk", "kept",
+    "degrade_skipped",  # write_source_records() refused to overwrite a better
+                        # existing raw file with a worse re-fetch — see the
+                        # no-degrade guard there.
 )
 
 
@@ -908,6 +956,7 @@ def collect_source(page, limiter, source, cutoff_date, errors,
             "author": data.get("author", "") or "",
             "word_count": len((text or "").split()),
             "text": text,
+            "teaser": looks_like_teaser(text),
             "image_urls": data.get("images", []),
             "collected_at": collected_at,
         }
@@ -1056,6 +1105,7 @@ def collect_source_rss(source, cutoff_date, collected_at, funnels=None,
             "author": author,
             "word_count": len(text.split()),
             "text": text,
+            "teaser": looks_like_teaser(text),
             "image_urls": [],
             "collected_at": collected_at,
         })
@@ -1101,17 +1151,69 @@ def skip_reason_for(source, allow_residential=False):
     return None
 
 
-def write_source_records(records):
-    """Flush one source's per-article files immediately (crash-safe). Returns the
-    count of NEW files written. Called right after each source so an interrupted
-    run keeps everything collected so far instead of losing it all."""
+# A re-fetch below this fraction of the EXISTING raw's word_count is treated
+# as a degrade, not an update, and is refused (see write_source_records()).
+# Tunable: 0.8 means a new fetch must retain at least 80% of the prior raw's
+# length to be allowed to overwrite it.
+DEGRADE_MIN_RATIO = 0.8
+
+
+def write_source_records(records, funnels=None):
+    """Flush one source's per-article files immediately (crash-safe). Returns
+    the count of NEW files written. Called right after each source so an
+    interrupted run keeps everything collected so far instead of losing it
+    all. This is the SINGLE write path shared by every collection route
+    (plain Playwright, fetch_mode:"rss", and --residential — residential only
+    changes which sources are allowed to run via skip_reason_for(), it does
+    not bypass this function), so the guard below covers all of them.
+
+    NO-DEGRADE GUARD: before overwriting an EXISTING raw file for a known
+    record_id, compare the new fetch against what's already on disk:
+      - a new record flagged `teaser` (see looks_like_teaser()) NEVER
+        overwrites an existing non-teaser record, regardless of word_count —
+        a paywall bounce is never "an update" to a real article;
+      - otherwise, the new word_count must be >= DEGRADE_MIN_RATIO of the
+        existing word_count, or the write is refused.
+    A refused write is logged loudly (source, record_id, existing vs new
+    word_count, url) and counted in that source's funnel as
+    `degrade_skipped` so it surfaces in the run report instead of vanishing
+    silently. The existing good raw is left untouched on disk. New
+    record_ids (no existing file) always write, exactly as before — the
+    guard applies to OVERWRITES only."""
     new = 0
     for rec in records:
         src_dir = RAW_ROOT / rec["source_slug"]
         src_dir.mkdir(parents=True, exist_ok=True)
         out_path = src_dir / f"{rec['record_id']}.json"
-        if not out_path.exists():
+
+        if out_path.exists():
+            try:
+                existing = json.loads(out_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                existing = None
+            if existing is not None:
+                existing_wc = existing.get("word_count") or 0
+                new_wc = rec.get("word_count") or 0
+                existing_is_teaser = bool(existing.get("teaser"))
+                new_is_teaser = bool(rec.get("teaser"))
+                degraded = (
+                    (new_is_teaser and not existing_is_teaser)
+                    or (existing_wc > 0 and new_wc < existing_wc * DEGRADE_MIN_RATIO)
+                )
+                if degraded:
+                    reason = "new fetch is a paywall teaser" if new_is_teaser and not existing_is_teaser \
+                        else f"new word_count below {int(DEGRADE_MIN_RATIO*100)}% of existing"
+                    log(f"  DEGRADE_SKIPPED [{rec['source_slug']}] {rec['record_id']}: "
+                        f"{reason} — existing={existing_wc}w new={new_wc}w "
+                        f"url={rec.get('source_url')}")
+                    if funnels is not None:
+                        slug = rec["source_slug"]
+                        funnels.setdefault(slug, {k: 0 for k in FUNNEL_KEYS})
+                        funnels[slug]["degrade_skipped"] += 1
+                    continue
+        else:
             new += 1
+
         out_path.write_text(
             json.dumps(rec, ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -1271,7 +1373,7 @@ def main():
                 errors.append({"source_slug": slug, "error": f"{type(exc).__name__}: {exc}"})
                 found = []
             # --- crash-safe incremental flush: write this source NOW ---
-            new_files += write_source_records(found)
+            new_files += write_source_records(found, funnels=funnels)
             for rec in found:
                 by_source[rec["source_slug"]] = by_source.get(rec["source_slug"], 0) + 1
             total_records += len(found)
@@ -1300,7 +1402,7 @@ def main():
 
     cols = list(FUNNEL_KEYS)
     labels = ["source", "anchors", "candidates", "visited", "nav_err",
-              "undated", "old", "short", "junk", "kept"]
+              "undated", "old", "short", "junk", "kept", "degraded"]
     flines = [f"{labels[0]:30}" + "".join(f"{h:>11}" for h in labels[1:]),
               "-" * (30 + 11 * len(cols))]
     for slug in sorted(funnels, key=lambda k: (funnels[k]["kept"], k)):
