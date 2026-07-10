@@ -18,6 +18,8 @@ import glob
 import html
 import json
 import os
+import re
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -127,30 +129,125 @@ def render_episode(rec):
     return f'<details class="ep">{head}{"".join(body)}</details>'
 
 
+EP_DETAILS_RE = re.compile(r'<details class="ep">')
+EP_LINK_HREF_RE = re.compile(r'<div class="ep-link"><a href="([^"]+)"')
+VIDEO_ID_QS_RE = re.compile(r'[?&]v=([A-Za-z0-9_-]+)')
+
+
+def _extract_ids_from_legacy_html(html_text):
+    """Recover video_ids from a pre-fix report that has no REPORT_IDS marker,
+    by scraping the "▶ Watch on YouTube" link's ?v= query param — the only
+    place a video_id survives in the rendered markup. One ep-link per episode,
+    so this is a 1:1 recovery when it succeeds."""
+    ids = []
+    for m in EP_LINK_HREF_RE.finditer(html_text):
+        url = html.unescape(m.group(1))
+        vid_m = VIDEO_ID_QS_RE.search(url)
+        if vid_m:
+            ids.append(vid_m.group(1))
+    return ids
+
+
+def _existing_report_ids(date):
+    """video_ids in reports/youtube_<date>.html, if that file already exists
+    (e.g. from an earlier run today). Returns (ids, None) on success, or
+    (None, out_path) if the file exists but its ids cannot be recovered —
+    callers must fail closed in that case rather than treat it as empty.
+    ([], None) if the file does not exist yet.
+
+    Uses JSONDecoder.raw_decode from the `const REPORT_IDS = ` marker instead
+    of a regex match ending at a literal terminator — a naive regex could
+    truncate early if a title/quote happens to contain that sequence. Falls
+    back to scraping the HTML body for reports written before this marker
+    existed ("legacy" reports)."""
+    out_path = OUT_DIR / f"youtube_{date}.html"
+    if not out_path.exists():
+        return [], None
+    html_text = out_path.read_text(encoding="utf-8")
+    marker = "const REPORT_IDS = "
+    i = html_text.find(marker)
+    if i != -1:
+        try:
+            data, _ = json.JSONDecoder().raw_decode(html_text, i + len(marker))
+            if isinstance(data, list):
+                return data, None
+        except json.JSONDecodeError:
+            pass  # fall through to legacy scrape below
+
+    legacy_ids = _extract_ids_from_legacy_html(html_text)
+    n_episodes = len(EP_DETAILS_RE.findall(html_text))
+    if n_episodes == 0:
+        return [], None  # genuinely empty report — nothing to recover
+    if len(legacy_ids) < n_episodes:
+        print(f"  WARN: {out_path.name} has {n_episodes} episode(s) in its body "
+              f"but only recovered {len(legacy_ids)} id(s) — cannot safely "
+              f"merge/shrink-guard this report.")
+        return None, out_path
+    print(f"  NOTE: {out_path.name} has no REPORT_IDS marker (legacy report) — "
+          f"recovered {len(legacy_ids)} id(s) from its HTML body for this merge")
+    return legacy_ids, None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=None)
-    # NEW-ONLY per-day reports (like the other routines): restrict the digest to
-    # a specific run's episodes. --ids is the explicit list; with neither flag we
-    # fall back to records whose processed_at date == --date. (No more cumulative.)
+    # NEW-ONLY-PER-DAY reports (like the other routines): restrict the digest to
+    # a specific run's episodes, THEN merge with whatever this date's report
+    # already has on disk — a second same-day publish must not silently drop
+    # an earlier run's episodes. --ids is the explicit list; with neither flag
+    # we fall back to records whose processed_at date == --date. Merge is
+    # scoped to this single date only — dates are never cross-mixed.
     ap.add_argument("--ids", default=None,
                     help="comma-separated video_ids to include (this run's new episodes)")
+    ap.add_argument("--force", action="store_true",
+                    help="override the shrink-guard (write even if episodes would be dropped)")
     args = ap.parse_args()
     date = args.date or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 
     files = sorted(glob.glob(str(PROCESSED / "*.json")))
-    recs = []
+    all_recs = []
     for f in files:
         try:
-            recs.append(json.load(open(f)))
+            all_recs.append(json.load(open(f)))
         except (json.JSONDecodeError, OSError) as e:
             print(f"WARN: skip {f}: {e}")
 
     if args.ids:
-        wanted = {x.strip() for x in args.ids.split(",") if x.strip()}
-        recs = [r for r in recs if r.get("video_id") in wanted]
+        run_ids = {x.strip() for x in args.ids.split(",") if x.strip()}
     else:
-        recs = [r for r in recs if (r.get("processed_at") or "")[:10] == date]
+        run_ids = {r.get("video_id") for r in all_recs
+                   if (r.get("processed_at") or "")[:10] == date}
+
+    recovered_ids, unrecoverable_path = _existing_report_ids(date)
+    if recovered_ids is None:
+        if not args.force:
+            sys.exit(f"FATAL: {unrecoverable_path} exists but its episode ids "
+                     f"could not be recovered (no REPORT_IDS marker and the "
+                     f"HTML body did not yield one id per episode) — refusing "
+                     f"to write, this run would silently replace whatever "
+                     f"episodes are in that file. Pass --force to overwrite "
+                     f"anyway.")
+        print(f"  WARN: --force overriding unrecoverable ids in "
+              f"{unrecoverable_path} — its episodes may be dropped.")
+        recovered_ids = []
+
+    existing_ids = set(recovered_ids)
+    merged_ids = existing_ids | run_ids
+    recs = [r for r in all_recs if r.get("video_id") in merged_ids]
+
+    found_ids = {r.get("video_id") for r in recs}
+    missing = existing_ids - found_ids
+    if missing and not args.force:
+        sys.exit(f"FATAL: merge would DROP {len(missing)} previously-published "
+                 f"episode(s) from reports/youtube_{date}.html: {sorted(missing)} "
+                 f"— their processed/youtube/<id>.json file is missing or "
+                 f"unreadable. Refusing to write (investigate before re-running, "
+                 f"or pass --force to write anyway).")
+    if existing_ids:
+        added = len(found_ids - existing_ids)
+        print(f"  merging into existing report: {len(existing_ids)} episode(s) "
+              f"on disk + {len(run_ids)} episode(s) this run -> {len(found_ids)} "
+              f"total ({added} new)")
 
     # group by channel
     by_ch = defaultdict(list)
@@ -235,7 +332,9 @@ a.ts:hover {{ text-decoration:underline; }}
   </div>
 </header>
 {"".join(blocks)}
-</div></body></html>"""
+</div>
+<script>const REPORT_IDS = {json.dumps(sorted(found_ids))};</script>
+</body></html>"""
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     # Filename prefix "youtube_" matches the dashboard's report discovery

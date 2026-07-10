@@ -297,6 +297,48 @@ ENTITY_CHECK_MIN_N = 4       # only judge records with >=4 entities (small lists
 QUARANTINE_LOG = PROC_DIR / "_quarantine.json"
 
 
+def _write_quarantine_log(new_entries, date, force=False):
+    """Merge new_entries into QUARANTINE_LOG instead of overwriting it — a second
+    publish call (same day or a different day) must not erase quarantine entries
+    from an earlier run. Union keyed by video_id; each entry stamped with `date`
+    so it is date-scoped/inspectable; new_entries win on overlap.
+
+    Called UNCONDITIONALLY (even with an empty new_entries) so an empty run can
+    never be mistaken for a reason to skip writing, and prior entries are always
+    preserved rather than only being touched when this run happens to quarantine
+    something.
+
+    SHRINK-GUARD: refuse to write if the merge would produce fewer entries than
+    already on disk — mathematically impossible for a union merge, so this is a
+    hard-stop unless force=True explicitly overrides it."""
+    existing = []
+    if QUARANTINE_LOG.exists():
+        try:
+            existing = json.loads(QUARANTINE_LOG.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            print(f"  WARN: could not parse existing {QUARANTINE_LOG.name} "
+                  f"— treating as empty (nothing already-quarantined is lost; "
+                  f"this run's entries will still be written)")
+            existing = []
+    merged = {e["video_id"]: e for e in existing if e.get("video_id")}
+    for e in new_entries:
+        e = dict(e)
+        e["date"] = date
+        merged[e["video_id"]] = e
+    merged_entries = list(merged.values())
+
+    if len(merged_entries) < len(existing) and not force:
+        sys.exit(f"FATAL: merge would SHRINK {QUARANTINE_LOG} from "
+                 f"{len(existing)} to {len(merged_entries)} entries — refusing "
+                 f"to write. This should be mathematically impossible for a "
+                 f"union merge; something is wrong upstream (investigate before "
+                 f"re-running, or pass --force to write anyway).")
+
+    QUARANTINE_LOG.write_text(json.dumps(merged_entries, ensure_ascii=False, indent=2),
+                              encoding="utf-8")
+    return merged_entries, existing
+
+
 def entity_presence(rec, raw):
     """Fraction of a record's top_entities that actually appear in its raw transcript.
     Returns (fraction, n_entities). The exact integrity check that caught the one
@@ -353,15 +395,19 @@ def cmd_publish(args):
         for q in quarantined:
             print(f"    ✗ [{q['video_id']}] {q['title']}  "
                   f"({int(q['entity_presence']*100)}% of {q['n_entities']} entities in transcript)")
-        QUARANTINE_LOG.write_text(json.dumps(quarantined, ensure_ascii=False, indent=2),
-                                  encoding="utf-8")
-        print(f"    -> logged to {QUARANTINE_LOG}. Re-extract these from their raw transcripts, "
-              f"then re-publish. (Processed files left in place; not deleted.)\n")
+
+    merged_q, existing_q = _write_quarantine_log(quarantined, date, force=getattr(args, "force", False))
+    if quarantined:
+        print(f"    -> logged to {QUARANTINE_LOG} ({len(merged_q)} total entries, "
+              f"{len(existing_q)} previously on disk). Re-extract these from their raw "
+              f"transcripts, then re-publish. (Processed files left in place; not deleted.)\n")
 
     render_cmd = [sys.executable, str(REPO / "scripts" / "render_youtube_digest.py"),
                   "--date", date]
     # Always pass an explicit (guard-filtered) id list so quarantined records can't render.
     render_cmd += [f"--ids={','.join(ok)}"]
+    if getattr(args, "force", False):
+        render_cmd += ["--force"]
     subprocess.run(render_cmd, check=True)
     subprocess.run([sys.executable, str(REPO / "scripts" / "update_dashboard.py")], check=True)
     bb = REPO / "scripts" / "inject_back_button.py"
@@ -378,7 +424,10 @@ def main():
     a = sub.add_parser("prompt"); a.add_argument("id"); a.set_defaults(fn=cmd_prompt)
     a = sub.add_parser("postprocess"); a.add_argument("ids", nargs="+"); a.set_defaults(fn=cmd_postprocess)
     a = sub.add_parser("publish"); a.add_argument("--date", default=None)
-    a.add_argument("--ids", default=None); a.set_defaults(fn=cmd_publish)
+    a.add_argument("--ids", default=None)
+    a.add_argument("--force", action="store_true",
+                    help="override the report/quarantine shrink-guards")
+    a.set_defaults(fn=cmd_publish)
     args = p.parse_args()
     args.fn(args)
 
