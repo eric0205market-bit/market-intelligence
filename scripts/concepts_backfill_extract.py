@@ -313,6 +313,23 @@ def build_prompt(record, slug):
 
 
 def cmd_prompt(args):
+    # GUARD: this script never writes the card itself — the extraction agent does,
+    # per the DELIVERY section of build_prompt(). So refusing to EMIT the prompt is
+    # the only code-enforced protection point against an agent silently overwriting
+    # a finished card (a stale wave list, an overlapping wave, or a retried agent
+    # whose original later completes would otherwise all be able to clobber it).
+    # concepts-history/ is outside git, so an overwrite there is unrecoverable —
+    # fail closed by default.
+    status = _card_status(args.slug, args.record_id)
+    if status in ("finalized", "quarantined") and not getattr(args, "force", False):
+        sys.exit(f"REFUSING: concepts-history/{'_processed' if status == 'finalized' else '_quarantine'}"
+                 f"/{args.slug}/{args.record_id}.json is already {status} — emitting this prompt would let "
+                 f"an extraction agent overwrite it with a fresh re-extraction. Pass --force if you "
+                 f"specifically intend to re-extract this article.")
+    if status in ("finalized", "quarantined"):
+        _err(f"WARNING: --force overriding {status} status for {args.slug}/{args.record_id} "
+             f"— this agent's write can overwrite that card. concepts-history/ is outside git; "
+             f"this cannot be undone.")
     d = _hist_record(args.slug, args.record_id)
     if not d:
         sys.exit(f"history record not found: concepts-history/{args.slug}/{args.record_id}.json")
@@ -470,6 +487,8 @@ def main():
     a = sub.add_parser("prompt", parents=[common], help="emit the extraction prompt for one article")
     a.add_argument("slug")
     a.add_argument("record_id")
+    a.add_argument("--force", action="store_true",
+                    help="allow emitting a prompt for an already-finalized/quarantined id")
     a.set_defaults(fn=cmd_prompt)
 
     a = sub.add_parser("finalize", parents=[common],
