@@ -9,6 +9,7 @@
 ## Revised: Jun 29, 2026 — Society built/live (weekly cron Sun 10:00 UTC, first auto-collect Jul-05) → ALL FOUR KNOWLEDGE streams live (YouTube, Concepts, Technology, Society). AS-BUILT correction: track-wide Flow triage NOT engaged by Technology/Society (WATCHLIST_GATE=False; watchlist/discovery-sample OFF). Taxonomy move (11 IR think-tanks Concepts→Society, Jun-27) finalized: Concepts companion edit collect:false done, no double-collection.
 ## Revised: Jul 9, 2026 — Concepts 51/27 (NBER parked); Society 47/20 (67 sources, 10 IR think-tanks, Chatham House single-homed in Concepts); SCIENCE line reserved (NBER+SSRN); Society history seed (Brookings 104 + Carnegie 28) → society-history/; shared capabilities (RSS route, fresh context, residential path, health check) + publish_*.py data-loss bugs flagged cross-stream.
 ## Revised: Jul 9, 2026 (v2) — Concepts counts corrected to 50/28, now auto-generated from collect flags (tally script + drift check); note 50≠45 (attempted). Society 47/20 (67). Model discipline: daily=Opus, backfill=Sonnet.
+## Revised: Jul 10, 2026 — WRITE SAFETY rules recorded (4 bugs / 3 layers / one root: cloned code). Guards live in all four streams. Concepts history COMPLETE (2608). Supabase load preconditions: blast-radius ratio scan, teaser:true marking, PK = (source_slug, record_id).
 
 > **Design doc — slow-changing.** Holds the model, principles, tiers, knowledge
 > architecture, build order. Does NOT hold live status — that's in
@@ -146,6 +147,33 @@ Three tiers, all cloud API (works when Mac is off):
 **Current — GitHub-as-bus:** collectors commit `reports/*.html`; `scripts/update_dashboard.py` reads them and writes `index.html`; GitHub Pages serves the live dashboard. `claude/**` branches auto-merge to main via `merge-to-main.yml`, which re-runs the generator on main's full report set (so the committed `index.html` is a derived artifact CI overwrites — config in the generator is what matters).
 
 **Target — Supabase (Postgres + pgvector):** unchanged from v3, **not started.** Schema (raw_items, knowledge_cards, ontology_rules, chart_data, promoted_items, earnings) and migration path as in v3. Gradual; can run in parallel.
+
+**Preconditions of the base load (not "clean up later"):**
+- **Blast-radius scan is a precondition, not a follow-up.** `quote_verified` is a contract field of `KNOWLEDGE_CARD_SCHEMA v1` and the entity-guard verifies against raw; degraded raw makes part of the corpus unverifiable. Scan by **WORD-COUNT RATIO** (card's `source_meta.word_count` vs current raw), NOT by teaser signature — Concepts' single degraded record was clobbered by a reader comment (158w), not a paywall teaser, so a ratio scan catches strictly more than a marker scan.
+- **`teaser:true` records must be marked or filtered before load.** Society: 11 of 22 Foreign Affairs cards are "born teasers" (good raw never existed) — a pre-existing `paywalled:false` debt, now detectable.
+- **Primary key = (source_slug, record_id).** `record_id` alone collides across slugs (one article reachable from two listings) and would silently merge two cards.
+
+---
+
+## WRITE SAFETY (hard rules)
+
+**Four bugs, three layers, one root: code is cloned between streams.** Bugs 1–2 (publish render, `_quarantine.json`), Bug 3 (raw records), Bug 4 (backfill extraction prompt) are all the same class — *writing over an existing file without reading it first.*
+
+**RULE 1 — No write over an existing file without a merge or a guard.**
+- aggregates (reports, quarantine logs) → **union by (slug, record_id)**
+- content (raw records) → **no-degrade ratio guard** (`DEGRADE_MIN_RATIO=0.8`)
+- every rejection logged loudly and visible in the funnel (`degrade_skipped`), never silent.
+
+**RULE 2 — Length-gate, not marker-gate.** Any junk/teaser detector requires BOTH a marker AND a length threshold, and is tested ONLY against real raw from git history, never synthetic. Five real cases where a marker signature nearly cut live content: `/forum/members/` vs `/forum/threads/` URL shape (would have killed 66 real articles); W&B nav boilerplate (present on 387 real articles); "already a subscriber" false-fired on 9 of 10 real Wired articles; SemiWiki login footer on every thread including real ones; Foreign Affairs serves the same subscribe footer on full articles and on teasers (site chrome).
+
+**RULE 3 — In KNOWLEDGE extraction, the AGENT writes the card, not the script.** The write instruction lives in `routines/routine_*.md`; no code can intercept the agent's Write tool. Therefore **refusing to issue the prompt is the only point of control available to code.** `cmd_prompt()` (or equivalent) MUST check card status and refuse on finalized/quarantined without `--force`. `finalize`/`heal` run *after* the card exists — too late. ⚠ The worklist's dedup (`_global_done_ids`) protects `worklist`, NOT `prompt` — `cmd_prompt` is a separate entry point callable with an arbitrary id. "Worklist dedup covers us" is FALSE.
+
+**RULE 4 — Out-of-git data (`*-history/`) has no right to error.** Live `raw/` is tracked and was restorable from git; `history/` is not. Any history write path requires BOTH: fetch-time dedup (`already_known()` gates the download, no `--force`) AND prompt-time clobber-guard. Dropbox versioning covers all history dirs (owner-confirmed) — a required condition, not a convenience, and it has a retention limit, so the guards are the real defense. **Backfill machinery lives in the repo; `history/` data never does.**
+
+**Anti-false-alarm notes:**
+- Duplicate `finalize` entries in a runlog are NOT proof of damage. `_finalize_one` is deterministic; a re-invoked unchanged batch double-logs byte-identical output. Compare per-record insight/verified/quote counts between occurrences before concluding a clobber.
+- **`record_id` collides across source slugs** (one article reachable from two listings). Files are keyed `<slug>/<record_id>`. Any state/dedup keyed on `record_id` ALONE will silently merge two cards. ⚠ Applies to the future Supabase load: primary key must be `(source_slug, record_id)`, not `record_id`.
+- YouTube: cards with zero insights are intentionally excluded from the digest, so "episodes in report < cards for that date" can be legitimate — not a loss.
 
 ---
 
