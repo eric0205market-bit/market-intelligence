@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd agent for the Technology historical backfill collector (RAW ONLY).
+  SEPARATE from the Technology DAILY stream. NO git operations anywhere. Writes only
+  to technology-history/ (OUTSIDE the repo, sibling of concepts-history/).
+
+  Fires at 16:45 + 21:45 local — the slot the Concepts backfill used. Concepts is
+  fully drained (its job NO-OPs now), so UNLOAD the Concepts backfill first and there
+  is no clash:
+    launchctl unload ~/Library/LaunchAgents/com.marketintel.concepts-backfill.plist
+  Window (no two heavy local jobs start together):
+    • Concepts daily cloud cron   10:00 UTC (= 12:00 local)
+    • YouTube daily collector     12:00 local (launchd)
+    • YouTube backfill            16:00 / 21:00 local (launchd)
+    • Technology backfill         16:45 / 21:45 local (this job)
+
+  SCOPE — the FINAL 12 core analytical sources (--core). UNCAPPED: one firing drains
+  the whole core backlog in a single multi-hour run (12 different sites, load
+  distributed). Resumable via file-dedup + _state/technology_backfill_state.json — the
+  21:45 firing / next day continues any tail, then NO-OPs once complete. WORD-FLOOR +
+  RENDER-RETRY are active inside the collector.
+
+  PER-SITE QUARANTINE (no global halt): a 429/bot block on one site is recorded in
+  _state and cooled 24h; the run continues through the other sites.
+
+  The wrapper (scripts/run_technology_backfill_local.sh) manages:
+    • PID lockfile (single instance)
+    • per-site quarantine surfaced from collector state
+    • osascript notification on quarantine / unexpected exit
+
+  Logs:
+    ~/Dropbox (Personal)/Business/InvestTool/market-intelligence/
+      technology-history/_runlog/launchd_YYYY-MM-DD.md   (dated session log)
+    ~/Library/Logs/market-intel-technology-backfill.log   (launchd stream)
+
+  INSTALL:
+    cp config/com.marketintel.technology-backfill.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.marketintel.technology-backfill.plist
+  UNLOAD:
+    launchctl unload ~/Library/LaunchAgents/com.marketintel.technology-backfill.plist
+  RUN NOW (test):
+    launchctl start com.marketintel.technology-backfill
+
+  NOTE: launchd cannot expand $HOME — paths are absolute /Users/bacopa.
+  Update if the username or clone location differs.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.marketintel.technology-backfill</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/bacopa/Dropbox (Personal)/Business/InvestTool/market-intelligence/market-intelligence/scripts/run_technology_backfill_local.sh</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Hour</key><integer>16</integer>
+      <key>Minute</key><integer>45</integer>
+    </dict>
+    <dict>
+      <key>Hour</key><integer>21</integer>
+      <key>Minute</key><integer>45</integer>
+    </dict>
+  </array>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/bacopa/Library/Logs/market-intel-technology-backfill.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/bacopa/Library/Logs/market-intel-technology-backfill.log</string>
+</dict>
+</plist>
