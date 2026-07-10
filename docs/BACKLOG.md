@@ -27,7 +27,21 @@ These are SHARED across the KNOWLEDGE track (Concepts/Technology/Society hit the
 
 ## Conventions
 
-- **Local-Dropbox sync — first AND last action of every session that touches this repo.** Whenever a session touches this repo (read or write), the FIRST action AND the LAST action is to sync the user's working clone at `~/Dropbox (Personal)/Business/InvestTool/market-intelligence/market-intelligence` to `origin/main` — regardless of whether THIS session pushed anything. CI collection commits (collect-twitter, bank-research, merge-to-main, …) advance `origin/main` continuously, so the Dropbox folder can drift behind even when Claude Code did nothing. The sequence (run via `git -C "<that path>"`): `git stash push --include-untracked` → `git fetch origin main` → `git checkout main` → `git pull --rebase origin main` → `git stash pop`. The Dropbox folder and `origin/main` must never be left divergent. If `stash pop` conflicts, STOP and report — do not force, do not discard.
+- **Local-Dropbox sync — first AND last action of every session that touches this repo.** Whenever a session touches this repo (read or write), the FIRST action AND the LAST action is to sync the user's working clone at `~/Dropbox (Personal)/Business/InvestTool/market-intelligence/market-intelligence` to `origin/main` — regardless of whether THIS session pushed anything. CI collection commits (collect-twitter, bank-research, merge-to-main, …) advance `origin/main` continuously, so the Dropbox folder can drift behind even when Claude Code did nothing. The Dropbox folder and `origin/main` must never be left divergent.
+
+  **⚠ Bug fixed 2026-07-10 (foreign-stash pop).** `git stash push` creates NO entry when the tree is already clean ("No local changes to save"). An unconditional `git stash pop` afterward then pops a PRE-EXISTING stash belonging to an EARLIER session — silently applying someone else's WIP to the working tree. This happened on 2026-07-10: a clean-tree session popped `stash@{2}` ("user WIP: dashboard bank_research + v1 deletion", created 2026-05-30), which conflicted on `.DS_Store`. Nothing was lost (the session stopped and reported per this convention), but the half-applied foreign WIP had to be unwound by hand. Fix: pop ONLY a stash this session actually pushed.
+
+  **The sequence** (run via `git -C "<that path>"`), from the repo root:
+  1. Record the stash top before pushing: `BEFORE=$(git rev-parse -q --verify refs/stash || echo none)`
+  2. `git stash push --include-untracked -m "autosync <session> <timestamp>"`
+  3. Record it after: `AFTER=$(git rev-parse -q --verify refs/stash || echo none)`
+  4. `git fetch origin main` → `git checkout main` → `git pull --rebase origin main`
+  5. **Pop ONLY if step 2 created a new entry** (`AFTER != BEFORE`). If the tree was clean, `stash push` creates nothing, `refs/stash` is unchanged, and a blind `git stash pop` would pop a PRE-EXISTING stash from an earlier session — someone else's WIP. Never pop what you did not push.
+  6. If popping: verify the top stash is the one you just created (match the `autosync` message) before `git stash pop`.
+
+  ⚠ If `stash pop` conflicts, STOP and report — do not force, do not discard.
+  ⚠ Never `git stash drop` or `git stash clear` a stash you did not create. Foreign stashes are the owner's to adjudicate.
+  ⚠ `.DS_Store` is macOS junk and is the most common phantom conflict here. It is untracked/ignored; if it blocks a pop, it is safe to discard THAT FILE (not the stash).
 
 ## Neil Sethi search-ban (2026-06-15)
 @neilksethi was suspended by X (posting BoA charts); restarted as @neilksethinew. Both are wired into collection (BANK_RESEARCH_ACCOUNTS, twitter_watchlist.txt, classification=data) — config is CORRECT. But @neilksethinew returns ZERO via GetXAPI because X search-suppresses restarted-after-suspension accounts: the profile/tweets are live (verified: a "DB: Positioning…" chart, 780 views) but absent from the search index, and collection only uses /twitter/tweet/advanced_search. This is an X-side limitation, NOT a code bug. DECISION: no code change, no new provider. Collection will auto-resume the day X re-indexes him (typically weeks). Until then, bank-research coverage leans on Zaccardi + others and is thinner on Neil's narrative. Do NOT re-diagnose — just check periodically whether neilksethinew tweet count >0 in tweets_bank_research.json. (Note: local GETXAPI_KEY in .env is expired/401 — irrelevant to CI/production, which works.)
