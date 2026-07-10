@@ -25,6 +25,15 @@ These are SHARED across the KNOWLEDGE track (Concepts/Technology/Society hit the
 - **society-history/ backfill machinery to build — guards FIRST.** Build the Society backfill with BOTH write-safety guards in place BEFORE the first run: fetch-time dedup (`already_known()`, no `--force`) AND prompt-time `cmd_prompt` clobber-guard. Canary must **DEMONSTRATE both guards firing**, not merely their presence (owner decision 2026-07-09). Start from the 132 already-collected records (brookings 104 + carnegie 28) in `society-history/`. No cron; must not touch the live weekly stream. Source policy: no heroics (JS-SPA / bot-block / no-pagination / teaser → skip-log; workarounds are shared-backlog, not built here).
 - **.gitignore:** `concepts-history/` + `technology-history/` added (belt-and-suspenders; these history dirs already live outside the repo at the parent level). History data never enters git; Dropbox versioning is the backup — retention-limited, so the guards are the real defense.
 
+### Added 2026-07-10 (Institutional write-safety audit)
+- **Upstream dedup:** 416 of 435 shared URLs between two runs are EXACT word_count ties — refetch is deterministic in 96% of cases. Don't fetch a URL already in today's raw → ~96% less collector work and no repeat WAF hit (Carnegie's 403 likely provoked by a second pass from the same IP range).
+- **Bug 1 publish-side** (union / shrink-guard / `--force`): design decision open — report is prose synthesis, so union-by-record_id does not transfer.
+- **`routines/routine_institutional_v1.md`** — dead, referenced by nothing (grep .py/.yml/.md); v2 never existed. Delete (owner: Institutional chat).
+- **`MIN_TEXT_LEN=100`** — dead constant kept as a "legacy backstop", zero active references. Delete. (Dead code comes back to life: `_card_status()` was dead in three streams and that was the hole.)
+- **`LOOKBACK_DAYS=7`** is the script default on manual run without `--days` (the workflow always sends `--days 10`). The script docstring shows a flagless invocation → the window silently narrows.
+- **Source `iea`:** 22 articles → 0 when the window narrows. Lead on an IP block; no direct evidence.
+- **`routines/youtube_extraction_routine.md`** — untracked file from another stream sitting in the worktree.
+
 ## Conventions
 
 - **Local-Dropbox sync — first AND last action of every session that touches this repo.** Whenever a session touches this repo (read or write), the FIRST action AND the LAST action is to sync the user's working clone at `~/Dropbox (Personal)/Business/InvestTool/market-intelligence/market-intelligence` to `origin/main` — regardless of whether THIS session pushed anything. CI collection commits (collect-twitter, bank-research, merge-to-main, …) advance `origin/main` continuously, so the Dropbox folder can drift behind even when Claude Code did nothing. The Dropbox folder and `origin/main` must never be left divergent.
