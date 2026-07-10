@@ -77,13 +77,16 @@ def _raw_records():
 
 
 def _processed_ids():
-    return {os.path.basename(f)[:-5] for f in glob.glob(str(PROC_DIR / "*.json"))}
+    return {os.path.basename(f)[:-5] for f in glob.glob(str(PROC_DIR / "*.json"))
+            if os.path.basename(f) != QUARANTINE_LOG.name}
 
 
 def _processed_sigs():
     """(channel_name, duration_seconds) of already-processed episodes — for content-dedup."""
     sigs = []
     for f in glob.glob(str(PROC_DIR / "*.json")):
+        if os.path.basename(f) == QUARANTINE_LOG.name:
+            continue
         try:
             d = json.load(open(f))
         except (json.JSONDecodeError, OSError):
@@ -365,6 +368,8 @@ def cmd_publish(args):
     else:
         cand = []
         for f in sorted(glob.glob(str(PROC_DIR / "*.json"))):
+            if Path(f).name == QUARANTINE_LOG.name:
+                continue
             try:
                 d = json.load(open(f))
             except (json.JSONDecodeError, OSError):

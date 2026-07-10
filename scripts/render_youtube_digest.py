@@ -207,6 +207,8 @@ def main():
     files = sorted(glob.glob(str(PROCESSED / "*.json")))
     all_recs = []
     for f in files:
+        if Path(f).name == "_quarantine.json":
+            continue
         try:
             all_recs.append(json.load(open(f)))
         except (json.JSONDecodeError, OSError) as e:
