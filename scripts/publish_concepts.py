@@ -81,10 +81,65 @@ def _processed_ids():
     return ids
 
 
+# --- worklist junk pre-filter ------------------------------------------------
+# STRUCTURAL (theme-agnostic) signal only — catches a raw record that was
+# collected as if it were an article but is actually one of three junk shapes:
+# an archive/listing index page mistaken for a post, a broken glyph-soup
+# extraction (a JS canvas/font render captured instead of real text), or a
+# CAPTCHA/bot-check interstitial. Without this, a record like that never gets a
+# card (an agent correctly refuses it every time) and never gets removed from
+# raw/, so it resurfaces in the worklist FOREVER — one bad source can then
+# quietly block a whole day's extraction (2026-07-10: 14/14 worklisted
+# aswath_damodaran records were 2026-06/07 archive-page leftovers, netting 0
+# cards). Skip-not-delete: raw is untouched, only kept out of THIS list.
+#
+# Deliberately NOT a bare word-count floor — tested against the live corpus
+# and rejected: genuinely short-but-complete articles (a 152-word CFR "In
+# Memoriam" notice, a 132-word Dimensional podcast-episode page) already have
+# real, successfully-extracted cards sitting at 123-160 words, directly
+# overlapping the word range real junk (paywall teasers, cookie-gate pages)
+# also occupies at this source mix. Any length threshold either fails to catch
+# the junk or clips proven-good short content — length alone can't tell them
+# apart here. Verified 0 false positives for the three signals below across
+# all 509 currently-processed (proven-real) cards.
+_GLYPH_RE = re.compile(r"[▀-▟]")   # Unicode block-drawing chars —
+# a glyph-soup extraction is near-entirely these; real article text has none.
+_GLYPH_DENSITY_MIN = 0.15
+
+_BOT_CHECK_RE = re.compile(
+    r"unusual traffic|are you a human|verify you.?re (a person|human)|"
+    r"captcha|access denied|please enable javascript and cookies|"
+    r"checking your browser", re.I)
+
+
+def _looks_like_archive_listing(title, url):
+    """The extractor found no real headline, so title fell back to the raw
+    URL — the classic symptom of a monthly/yearly archive index page being
+    enumerated as if it were an individual post."""
+    if not title or not url:
+        return False
+    return title.strip().rstrip("/") == url.strip().rstrip("/")
+
+
+def _worklist_junk_reason(d):
+    """'archive-listing' | 'glyph-soup' | 'bot-check' | None for a raw record
+    about to be offered in the daily worklist."""
+    text = d.get("text") or ""
+    if _looks_like_archive_listing(d.get("title") or "", d.get("source_url") or ""):
+        return "archive-listing"
+    if text and (len(_GLYPH_RE.findall(text)) / len(text)) > _GLYPH_DENSITY_MIN:
+        return "glyph-soup"
+    if _BOT_CHECK_RE.search(text[:500]):
+        return "bot-check"
+    return None
+
+
 # --- worklist ---------------------------------------------------------------
 def cmd_worklist(_args):
     done = _processed_ids()
     rows = []
+    dropped = {}                       # junk reason -> count
+    per_source = {}                    # slug -> {"kept": n, "junk": n}
     for f in _raw_files():
         rid = Path(f).stem
         if rid in done:
@@ -93,7 +148,35 @@ def cmd_worklist(_args):
             d = json.load(open(f, encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             continue
-        rows.append((rid, d.get("source_slug", ""), d.get("title", ""), f))
+        slug = d.get("source_slug", "")
+        bucket = per_source.setdefault(slug, {"kept": 0, "junk": 0})
+        reason = _worklist_junk_reason(d)
+        if reason:
+            dropped[reason] = dropped.get(reason, 0) + 1
+            bucket["junk"] += 1
+            print(f"  JUNK_SKIPPED [{reason}] {slug}/{rid}: "
+                  f"{(d.get('title') or '')[:70]}", file=sys.stderr)
+            continue
+        bucket["kept"] += 1
+        rows.append((rid, slug, d.get("title", ""), f))
+
+    # HEALTH CHECK: a source whose worklist contribution THIS RUN is 100% junk
+    # (>=1 record seen, 0 kept) is exactly the failure mode that let Damodaran
+    # block the routine silently for 3 weeks — call it out distinctly so it's
+    # visible even when the run's overall headline is "no new articles" (a
+    # mixed-junk source with at least one real article is not flagged; that's
+    # normal noise, not a stuck source).
+    all_junk_sources = {slug: b["junk"] for slug, b in per_source.items()
+                        if b["kept"] == 0 and b["junk"] > 0}
+    if all_junk_sources:
+        print("\n⚠ SOURCE(S) PRODUCING ONLY JUNK this run (0 kept, all skipped) — "
+              "likely a broken listing/collection method, not a one-off:", file=sys.stderr)
+        for slug, n in sorted(all_junk_sources.items(), key=lambda kv: -kv[1]):
+            print(f"    {slug}: {n} junk record(s), 0 real", file=sys.stderr)
+
+    if dropped:
+        print("\nworklist pre-filter skipped (not deleted): "
+              + ", ".join(f"{k}={n}" for k, n in sorted(dropped.items())), file=sys.stderr)
     if not rows:
         print("No new Concepts articles to extract.")
         return
