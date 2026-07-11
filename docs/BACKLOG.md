@@ -35,6 +35,14 @@ These are SHARED across the KNOWLEDGE track (Concepts/Technology/Society hit the
 - **Source `iea`:** 22 articles → 0 when the window narrows. Lead on an IP block; no direct evidence.
 - **`routines/youtube_extraction_routine.md`** — untracked file from another stream sitting in the worktree.
 
+### Added 2026-07-10 (Society backfill quality debts — collector-side, owner chats)
+- **heavy_sitemap recency-sort bug:** `walk_sitemap_recent()` sorts sub-maps by date but NOT articles within them before the cap → "150 newest" are not newest (Brookings recorded 0 of 150, all out-of-window 2013–2024). Affects any heavy_sitemap stream (Concepts/Technology think-tank backfills too).
+- **author-widget scrape:** Brookings raw author taken from a "More On / Related" widget, not the byline ("Rebecca Winthrop" wrongly on 3 unrelated articles). speaker is a contract field.
+- **nautilus duplicate-URL:** one article under several URL variants, record_id not normalized before dedup → 73 extra fetches. Affects the generic sitemap method.
+- **is_junk() in LIVE `collect_society.py`** lacks `/project(s)/`, `/attachment/`, `/tag/`, `/category/`, `/author/` (added only in the backfill-supplement). Non-article enumeration should be rejected at the enumerator, not after extraction (the_point: 87 of 106 were WordPress `/attachment/` pages).
+- **RSS port for Society:** Concepts' generic `collect_source_rss()` (fetch_mode:rss + rss_url, plain urllib, works from any cloud IP) NOT ported into `collect_society.py`. 5 cloud-IP-blocked sources (aeon, AEI, bruegel, iea_commentaries, african_arguments) — verify each has a working feed, then port. Closes backlog #1 (residential/RSS) for those five.
+- **translated-source false quarantine:** 10 non-English WBB cards quarantined because translated entity names don't match Arabic/French raw — entity-guard non-English limitation, NOT fabrication.
+
 ## Conventions
 
 - **Local-Dropbox sync — first AND last action of every session that touches this repo.** Whenever a session touches this repo (read or write), the FIRST action AND the LAST action is to sync the user's working clone at `~/Dropbox (Personal)/Business/InvestTool/market-intelligence/market-intelligence` to `origin/main` — regardless of whether THIS session pushed anything. CI collection commits (collect-twitter, bank-research, merge-to-main, …) advance `origin/main` continuously, so the Dropbox folder can drift behind even when Claude Code did nothing. The Dropbox folder and `origin/main` must never be left divergent.
