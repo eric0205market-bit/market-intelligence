@@ -422,8 +422,70 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// ---------- schema normalization ----------
+// Some producer runs emit the "sections" schema documented in the routine
+// spec (report_type/input_stats/sections.A_events.../coverage) instead of
+// the flat schema this renderer reads (date/events/insights/contrarian/
+// positioning/links/stats). Normalize so either shape renders correctly.
+function firstOf(v) {
+  return Array.isArray(v) ? v[0] : v;
+}
+
+function normalizeItem(it) {
+  if (!it || typeof it !== 'object') return it;
+  return {
+    author: it.author || it.author_username,
+    text: it.text != null ? it.text : it.summary,
+    category: firstOf(it.category),
+    tweet_url: firstOf(it.tweet_url),
+    images: it.images,
+    created_at: it.created_at,
+    is_thread: it.is_thread != null ? it.is_thread : (it.type === 'thread'),
+  };
+}
+
+function normalizeData(d) {
+  if (!d || typeof d !== 'object') return {};
+  const hasFlat = d.events || d.insights || d.contrarian || d.positioning || d.links || d.stats;
+  if (hasFlat) return d;
+
+  const s = d.sections;
+  if (!s) return d;
+
+  const out = Object.assign({}, d);
+  out.date = d.date || (d.collected_at ? String(d.collected_at).replace('T', ' ').replace('Z', ' UTC') : '');
+  if (s.A_events) {
+    out.events = s.A_events.map(cl => ({
+      title: cl.cluster || cl.title,
+      category: firstOf(cl.category),
+      description: cl.description,
+      items: (cl.items || []).map(normalizeItem),
+    }));
+  }
+  if (s.B_insights) out.insights = s.B_insights.map(normalizeItem);
+  if (s.C_contrarian) out.contrarian = s.C_contrarian.map(normalizeItem);
+  if (s.D_positioning) out.positioning = s.D_positioning.map(normalizeItem);
+  if (s.E_links) {
+    out.links = s.E_links.map(l => ({
+      author: l.author,
+      url: l.url,
+      tweet_url: firstOf(l.tweet_url),
+      description: l.note || l.description,
+    }));
+  }
+  const stats = d.stats || {};
+  out.stats = {
+    received: stats.received != null ? stats.received : (d.input_stats && d.input_stats.total_tweets),
+    after_filter: stats.after_filter != null ? stats.after_filter : (d.input_stats && d.input_stats.after_noise_filter),
+    authors: stats.authors != null ? stats.authors : (d.coverage && d.coverage.authors_total),
+    coverage: stats.coverage != null ? stats.coverage : (d.coverage && d.coverage.coverage_pct),
+  };
+  return out;
+}
+
 // ---------- main ----------
 function renderReport(d) {
+  d = normalizeData(d);
   if (!d || typeof d !== 'object') d = {};
   document.getElementById('report-date').textContent = d.date || '';
   const sections = [
