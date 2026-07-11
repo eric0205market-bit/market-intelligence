@@ -47,6 +47,16 @@ mkdir -p "$RUNLOG_DIR" "$STATE_DIR"
 log()    { echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $*" | tee -a "$LOG"; }
 notify() { osascript -e "display notification \"$1\" with title \"YouTube Backfill\"" 2>/dev/null || true; }
 
+# Soft-throttle monitor, shared with the daily wrapper (same file, can't drift).
+# Missing file → disable loudly, never break collection.
+if [ -f "$SCRIPT_DIR/_ip_health.sh" ]; then
+    # shellcheck source=scripts/_ip_health.sh
+    source "$SCRIPT_DIR/_ip_health.sh"
+else
+    log "WARN: scripts/_ip_health.sh missing — soft-throttle monitor DISABLED"
+    throttle_watch() { :; }
+fi
+
 # TMPOUT declared early so the EXIT trap can always reference it safely.
 TMPOUT=""
 trap 'rm -f "$LOCKFILE" ${TMPOUT:+"$TMPOUT"}' EXIT
@@ -160,3 +170,6 @@ else
     log ""
     notify "YouTube backfill unexpected exit $EXIT_CODE"
 fi
+
+# --- GAP 2: soft-throttle watch on this run's captured output ---------------
+throttle_watch "$TMPOUT" "backfill"

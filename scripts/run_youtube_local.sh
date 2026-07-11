@@ -39,10 +39,43 @@ mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/market-intel-youtube.log"
 
 log() { echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $*" | tee -a "$LOG"; }
+notify() { osascript -e "display notification \"$1\" with title \"YouTube Daily\"" 2>/dev/null || true; }
+
+# Shared IP-health state + monitor — one residential IP serves both collectors.
+HISTORY_ROOT="$(cd "$REPO_DIR/.." && pwd)/youtube-history"
+BACKOFF_FILE="$HISTORY_ROOT/_state/BACKOFF"
+# Soft-throttle monitor, shared with the backfill wrapper. If the file is
+# missing, disable it LOUDLY rather than break collection (fail loud, not blind).
+if [ -f "$SCRIPT_DIR/_ip_health.sh" ]; then
+    # shellcheck source=scripts/_ip_health.sh
+    source "$SCRIPT_DIR/_ip_health.sh"
+else
+    log "WARN: scripts/_ip_health.sh missing — soft-throttle monitor DISABLED"
+    throttle_watch() { :; }
+fi
 
 cd "$REPO_DIR" || { log "FATAL: cannot cd $REPO_DIR"; exit 1; }
 
 log "=== YouTube local run starting in $REPO_DIR ==="
+
+# --- GAP 1: honor the shared BACKOFF the backfill wrapper writes on exit-10 --
+# One residential IP serves both collectors. If backfill hard-stopped on a
+# 429 / bot signal in the last 24h, the daily run stands down too rather than
+# charge the sensitized IP. mtime of the marker = time of the hard-stop.
+# NOTE: the marker only clears once it is >24h old. Whichever collector next
+# sees a stale one removes it — so if backfill is ever DISABLED, the daily run
+# clears the dead marker itself (below) instead of logging "stale" forever.
+if [ -f "$BACKOFF_FILE" ]; then
+    AGE=$(( $(date +%s) - $(stat -f %m "$BACKOFF_FILE") ))
+    if [ "$AGE" -lt 86400 ]; then
+        log "BACKOFF active (${AGE}s < 86400s / 24h) — skipping daily run to protect shared IP"
+        notify "Daily YouTube run skipped — shared BACKOFF active (IP cooling down)"
+        exit 0
+    fi
+    log "BACKOFF marker stale (${AGE}s >= 24h) — clearing dead marker and proceeding"
+    rm -f "$BACKOFF_FILE"
+fi
+
 git config user.name  "github-actions"   >/dev/null 2>&1
 git config user.email "actions@github.com" >/dev/null 2>&1
 
@@ -55,7 +88,9 @@ git checkout main --quiet 2>/dev/null || git checkout -b main --quiet
 
 # Collect (writes raw/youtube/** and state/youtube_seen.json). Pass through any
 # extra flags, e.g. --max-channels for a smoke run.
-python3 scripts/collect_youtube.py "$@" 2>&1 | tee -a "$LOG"
+TMPOUT="$(mktemp)"; trap 'rm -f "$TMPOUT"' EXIT
+python3 scripts/collect_youtube.py "$@" 2>&1 | tee "$TMPOUT" | tee -a "$LOG"
+throttle_watch "$TMPOUT" "daily"
 
 # Stage ONLY our outputs and commit them if there are any.
 git add -- raw/youtube state/youtube_seen.json 2>/dev/null || true
