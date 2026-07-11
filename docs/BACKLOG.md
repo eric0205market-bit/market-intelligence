@@ -43,6 +43,10 @@ These are SHARED across the KNOWLEDGE track (Concepts/Technology/Society hit the
 - **RSS port for Society:** Concepts' generic `collect_source_rss()` (fetch_mode:rss + rss_url, plain urllib, works from any cloud IP) NOT ported into `collect_society.py`. 5 cloud-IP-blocked sources (aeon, AEI, bruegel, iea_commentaries, african_arguments) — verify each has a working feed, then port. Closes backlog #1 (residential/RSS) for those five.
 - **translated-source false quarantine:** 10 non-English WBB cards quarantined because translated entity names don't match Arabic/French raw — entity-guard non-English limitation, NOT fabrication.
 
+### Added 2026-07-10 (contamination-audit follow-ups)
+- **Tooling note for future semantic verifiers:** give the subagent ONLY its own file, not the directory — YouTube's verifier false-positived by reading a neighboring file in a shared dir (attributed neighbor's content to the card). Verifier contamination, not data.
+- **YouTube unquoted-insight provenance:** 17.6% insights carry quote=null (rubric "null generously") → no verification. Candidate rubric improvement: unquoted insights carry a timestamp-anchor as a weak provenance signal instead of bare null.
+
 ## Conventions
 
 - **Local-Dropbox sync — first AND last action of every session that touches this repo.** Whenever a session touches this repo (read or write), the FIRST action AND the LAST action is to sync the user's working clone at `~/Dropbox (Personal)/Business/InvestTool/market-intelligence/market-intelligence` to `origin/main` — regardless of whether THIS session pushed anything. CI collection commits (collect-twitter, bank-research, merge-to-main, …) advance `origin/main` continuously, so the Dropbox folder can drift behind even when Claude Code did nothing. The Dropbox folder and `origin/main` must never be left divergent.
