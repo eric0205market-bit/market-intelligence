@@ -154,6 +154,7 @@ Three tiers, all cloud API (works when Mac is off):
 - **Blast-radius scan is a precondition, not a follow-up.** `quote_verified` is a contract field of `KNOWLEDGE_CARD_SCHEMA v1` and the entity-guard verifies against raw; degraded raw makes part of the corpus unverifiable. Scan by **WORD-COUNT RATIO** (card's `source_meta.word_count` vs current raw), NOT by teaser signature — Concepts' single degraded record was clobbered by a reader comment (158w), not a paywall teaser, so a ratio scan catches strictly more than a marker scan.
 - **`teaser:true` records must be marked or filtered before load.** Society: 11 of 22 Foreign Affairs cards are "born teasers" (good raw never existed) — a pre-existing `paywalled:false` debt, now detectable.
 - **Primary key = (source_slug, record_id).** `record_id` alone collides across slugs (one article reachable from two listings) and would silently merge two cards.
+- **Chart vision** (chart_data population via Sonnet) and **PDF content ingestion** (no mechanism yet — design needed) are both preconditions of a complete base load. Charts currently accumulate as URLs unprocessed (tier-routing off); PDFs are collected as links only. A base loaded without them leaves the visual/PDF-heavy streams (Twitter Banks, Institutional, Bank PDF) largely unextracted.
 
 ---
 
