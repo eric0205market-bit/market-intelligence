@@ -1,0 +1,263 @@
+{
+  "record_id": "5844a6e24a26556f",
+  "source_type": "technology",
+  "source_name": "Cohere Blog",
+  "source_url": "https://cohere.com/blog/hardware-aware-dynamic-speculative-decoding",
+  "title": "Hardware-Aware, Dynamic Speculative Decoding (DSD) | Cohere",
+  "published_date": "2026-07-10",
+  "language": "en",
+  "processed_at": "2026-07-13T08:47:49Z",
+  "processor": "claude-code-sub-opus",
+  "tags": ["Tech", "AI"],
+  "gist": "Cohere introduces hardware-aware Dynamic Speculative Decoding (DSD), which adapts the number of draft tokens (K) in real time to the GPU's compute/memory-bound regime, delivering up to ~23% faster inference than fixed-K speculative decoding at high batch sizes and contributing the technique upstream to vLLM.",
+  "themes": [
+    {
+      "theme": "Speculative decoding fundamentals",
+      "insights": [
+        {
+          "claim": "Speculative decoding (SD) speeds up LLM inference by having a small draft model propose multiple tokens that a large target model then verifies in a single timestep, exploiting the gap between GPU compute and memory bandwidth.",
+          "speaker": "@cohere",
+          "type": "framework",
+          "entities": ["speculative decoding", "GPU", "LLM inference"],
+          "conviction": "high",
+          "so_what": "Core mechanism underlying most production LLM inference acceleration techniques being deployed by inference providers and model labs.",
+          "quote": "SD instead uses a smaller draft model to propose multiple tokens, which are then verified by the large target model in a single timestep.",
+          "locator": "opening paragraph",
+          "quote_verified": false
+        },
+        {
+          "claim": "At small batch sizes LLM inference is memory bandwidth-bound (dominated by loading weights from HBM to SRAM), while at large batch sizes it becomes compute-bound (dominated by matrix multiplications), and this regime shift determines when speculative decoding helps or hurts.",
+          "speaker": "@cohere",
+          "type": "framework",
+          "entities": ["GPU", "HBM", "SRAM"],
+          "conviction": "high",
+          "so_what": "Explains why a fixed-K SD deployment can silently degrade throughput as production traffic volume grows.",
+          "quote": null,
+          "locator": "Batching multiple requests improves GPU utilization",
+          "quote_verified": false
+        },
+        {
+          "claim": "Verification is the bottleneck in speculative decoding because if the draft proposes K tokens, the target model must process batch-size times (K+1) tokens, doing K+1 times more computation than ordinary decoding at a given batch size.",
+          "speaker": "@cohere",
+          "type": "causal",
+          "entities": ["speculative decoding"],
+          "conviction": "high",
+          "so_what": "Sizing K correctly is the key lever for SD efficiency; oversized K wastes compute on rejected tokens.",
+          "quote": null,
+          "locator": "Draft models are much cheaper to run",
+          "quote_verified": false
+        },
+        {
+          "claim": "On modern GPUs, compute units are roughly two orders of magnitude faster than memory bandwidth, so during memory-bound, small-batch inference the compute units sit largely idle — this idle capacity is exactly what speculative decoding exploits.",
+          "speaker": "@cohere",
+          "type": "data_point",
+          "entities": ["GPU"],
+          "conviction": "high",
+          "so_what": "Quantifies the structural inefficiency in low-batch LLM serving that SD monetizes; relevant to inference cost modeling for AI infrastructure investors.",
+          "quote": "On modern GPUs, the compute units are typically about two orders of magnitude faster than memory bandwidth, so during memory bandwidth-bound, small-BS inference, the compute units sit largely idle.",
+          "locator": "Time in SD has two main components",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Why fixed-K SD breaks in production",
+      "insights": [
+        {
+          "claim": "As batch size grows in production, ordinary LLM inference becomes increasingly compute-bound, leaving no idle compute for speculative decoding to exploit, and fixed-K SD can actually be slower than not using SD at all.",
+          "speaker": "@cohere",
+          "type": "contrarian",
+          "entities": ["speculative decoding"],
+          "conviction": "high",
+          "so_what": "Undercuts the assumption that SD is a free speedup; teams running high-batch production inference with fixed-K SD may be losing throughput without realizing it.",
+          "quote": "In this regime, SD can actually be slower than ordinary inference.",
+          "locator": "Dynamic batching in production",
+          "quote_verified": false
+        },
+        {
+          "claim": "In reinforcement learning training, the rollout (data/reward generation) phase is the main bottleneck and can consume up to 85% of total resources, making rollout inference speed a high-leverage target for acceleration.",
+          "speaker": "@cohere",
+          "type": "data_point",
+          "entities": ["reinforcement learning", "RL rollout"],
+          "conviction": "high",
+          "so_what": "Frames RL-based post-training scaling as an inference-cost problem; infrastructure that speeds rollout directly cheapens frontier model RL training runs.",
+          "quote": "The rollout phase is the main bottleneck and can consume up to 85% of resources.",
+          "locator": "Reinforcement learning (RL)",
+          "quote_verified": false
+        },
+        {
+          "claim": "RL training with reasoning models produces a long-tail generation distribution where a single request in a batch can keep generating far longer than others, stalling the whole batch and wasting compute — a scenario SD could help with but where fixed-K SD's high-batch penalty limits its overall usefulness.",
+          "speaker": "@cohere",
+          "type": "causal",
+          "entities": ["reinforcement learning", "reasoning models"],
+          "conviction": "medium",
+          "so_what": "Identifies a concrete production pain point (tail latency in RL rollouts) that motivated Cohere's dynamic-K approach.",
+          "quote": null,
+          "locator": "RL with reasoning models produces a long-tail distribution",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Dynamic speculative decoding mechanism",
+      "insights": [
+        {
+          "claim": "DSD makes the number of draft tokens K adaptive rather than fixed, increasing K when inference is memory bandwidth-bound and decreasing it when inference is compute-bound, based on the interaction between model and hardware.",
+          "speaker": "@cohere",
+          "type": "framework",
+          "entities": ["DSD", "speculative decoding"],
+          "conviction": "high",
+          "so_what": "Turns speculative decoding from a static tuning parameter into a runtime-adaptive system, removing the tradeoff between low-batch and high-batch performance.",
+          "quote": "DSD increases K when inference is memory bandwidth-bound and decreases it when inference is compute-bound.",
+          "locator": "Dynamic speculative decoding",
+          "quote_verified": false
+        },
+        {
+          "claim": "For dense models the optimal draft-token count K decreases monotonically as batch size grows, but for Mixture-of-Experts (MoE) models optimal K is non-monotonic: low at small batch size (extra expert loading during verification), higher at mid batch size (most experts already loaded), and lower again at high batch size (compute-bound).",
+          "speaker": "@cohere",
+          "type": "data_point",
+          "entities": ["MoE", "dense models", "Command A", "Command A+"],
+          "conviction": "high",
+          "so_what": "MoE-serving teams need materially different SD tuning than dense-model teams; a one-size-fits-all fixed K is especially suboptimal for MoE deployments.",
+          "quote": "For MoE (Mixture-of-Experts) models, the optimal K is non-monotonic in BS",
+          "locator": "For dense models, this generally means a higher K",
+          "quote_verified": false
+        },
+        {
+          "claim": "The marginal contribution of an additional draft token to the accepted sequence length decays exponentially with its position, even though each draft token costs the same amount of compute to process — this asymmetry is why a smarter tradeoff metric is needed to pick K.",
+          "speaker": "@cohere",
+          "type": "data_point",
+          "entities": ["speculative decoding"],
+          "conviction": "high",
+          "so_what": "Explains the mathematical basis for why static K is inefficient and why a per-token marginal-value metric is required.",
+          "quote": null,
+          "locator": "The computational cost of processing one draft token is the same",
+          "quote_verified": false
+        },
+        {
+          "claim": "Cohere selects optimal K using a simplified goodput metric, goodput = acceptance length (AL) / inter-token latency (ITL), which is simpler than prior work like TurboSpec and avoids needing to profile and recombine each system component separately.",
+          "speaker": "@cohere",
+          "type": "framework",
+          "entities": ["TurboSpec", "goodput"],
+          "conviction": "high",
+          "so_what": "A simpler metric is easier to port to new model architectures, lowering the engineering cost of adopting DSD across future model families.",
+          "quote": "goodput = AL / ITL",
+          "locator": "Existing DSD work, such as TurboSpec",
+          "quote_verified": false
+        },
+        {
+          "claim": "DSD's optimal K is precomputed via offline profiling and stored as a runtime lookup table, which solves the cold-start problem and can be extended to incorporate live acceptance-length and latency statistics from the serving engine to adapt to changing workloads.",
+          "speaker": "@cohere",
+          "type": "framework",
+          "entities": ["DSD"],
+          "conviction": "high",
+          "so_what": "Makes DSD deployable without per-request online search overhead, and leaves a path to further adaptivity using live telemetry.",
+          "quote": "This offline table solves the cold-start problem and is extensible: it can incorporate live AL and ITL statistics from the engine's runtime metrics, allowing DSD to adapt to changing workloads.",
+          "locator": "We run offline profiling to measure AL and ITL",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Benchmark results on Command A / Command A+",
+      "insights": [
+        {
+          "claim": "On the MT-Bench dataset with Command A (dense model), DSD matches fixed-K SD's speedup at low batch sizes, beats both fixed-K SD and vanilla inference at high batch sizes (64/128), and gracefully falls back to roughly match vanilla throughput at very high batch size (256) — whereas fixed-K SD regresses below vanilla at batch sizes 128 and 256.",
+          "speaker": "@cohere",
+          "type": "data_point",
+          "entities": ["Command A", "MT-Bench", "vLLM"],
+          "conviction": "high",
+          "so_what": "Demonstrates DSD removes the main production risk of speculative decoding (throughput regression at high load) while preserving its low-load benefits.",
+          "quote": "DSD captures the SD speedup where it helps and gracefully falls back toward vanilla performance where fixed-K SD would otherwise hurt.",
+          "locator": "For Command A (Dense), the gains from DSD are clear",
+          "quote_verified": false
+        },
+        {
+          "claim": "Concretely, DSD is about 23% faster than fixed-K (K=3) speculative decoding at both batch size 128 and 256 on Command A, and 7.5% faster than vanilla inference at batch size 128 and 1.82% faster at batch size 256.",
+          "speaker": "@cohere",
+          "type": "data_point",
+          "entities": ["Command A"],
+          "conviction": "high",
+          "so_what": "Concrete throughput numbers investors/engineers can use to benchmark Cohere's inference efficiency claims against competitors' serving stacks.",
+          "quote": "DSD is ~23% faster than SD at both BS 128 and BS 256.",
+          "locator": "Concretely, DSD is ~23% faster than SD",
+          "quote_verified": false
+        },
+        {
+          "claim": "On the MoE model Command A+, DSD delivers similar speedups to fixed-K SD overall because it selects K=3 for most of the batch-size range, only raising K to 5 between batch sizes 16 and 32 — and that higher K did not yield extra speedup, likely because the EAGLE draft head is trained for a single timestep but reused across multiple draft steps, limiting acceptance rate.",
+          "speaker": "@cohere",
+          "type": "data_point",
+          "entities": ["Command A+", "MoE", "EAGLE"],
+          "conviction": "medium",
+          "so_what": "Shows DSD's gains are currently capped by draft-head quality for MoE models, not by the dynamic-K algorithm itself — a distinct bottleneck to watch.",
+          "quote": "most likely because the EAGLE head is trained for a single timestep but reused across K > 1 timesteps, so acceptance is not high enough to yield a boost",
+          "locator": "For Command A+ (MoE), SD and DSD deliver similar speedups",
+          "quote_verified": false
+        },
+        {
+          "claim": "Cohere expects newer draft-head methods such as EAGLE-3 or DFlash to show clearer DSD gains on MoE models than the current EAGLE-based draft head.",
+          "speaker": "@cohere",
+          "type": "prediction",
+          "entities": ["EAGLE-3", "DFlash", "MoE"],
+          "conviction": "exploratory",
+          "so_what": "Signals a near-term roadmap item; DSD's MoE benefits may materially improve as draft-head architectures evolve, worth revisiting Cohere's future benchmarks.",
+          "quote": "We expect more recent methods, such as EAGLE-3 or DFlash, to show clearer gains in this scenario.",
+          "locator": "That higher K did not translate into additional speedup",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "vLLM engineering integration",
+      "insights": [
+        {
+          "claim": "Cohere contributed the DSD optimization upstream to the open-source vLLM inference engine earlier in 2026, working with reviewers from Red Hat and Nvidia.",
+          "speaker": "@cohere",
+          "type": "anecdote",
+          "entities": ["Cohere", "vLLM", "Red Hat", "Nvidia"],
+          "conviction": "high",
+          "so_what": "Signals Cohere's strategy of open-sourcing serving optimizations into the dominant community inference stack rather than keeping them proprietary, likely to accelerate broader industry adoption of hardware-aware SD.",
+          "quote": null,
+          "locator": "Our contributions to vLLM",
+          "quote_verified": false
+        },
+        {
+          "claim": "As production GPUs get faster, CPU scheduling overhead becomes a relatively larger fraction of total inference time, which motivated vLLM's asynchronous scheduling that overlaps the CPU scheduler for the next timestep with GPU model execution for the current one — DSD had to be made compatible with this overlap.",
+          "speaker": "@cohere",
+          "type": "causal",
+          "entities": ["vLLM", "GPU"],
+          "conviction": "high",
+          "so_what": "Highlights that as hardware improves, software scheduling overhead — not raw compute — becomes the next bottleneck in LLM serving stacks.",
+          "quote": "As modern production-grade GPUs get faster, the CPU scheduling overhead becomes relatively larger — the GPU finishes early and waits for the next batch to be scheduled.",
+          "locator": "Compatibility with async scheduling",
+          "quote_verified": false
+        },
+        {
+          "claim": "DSD breaks vLLM's prior assumption that the same number of draft tokens is generated and verified at every timestep, requiring changes to bookkeeping in both the scheduler and the model runner to support a variable K.",
+          "speaker": "@cohere",
+          "type": "causal",
+          "entities": ["vLLM", "DSD"],
+          "conviction": "high",
+          "so_what": "Illustrates the real engineering cost of adopting dynamic-K SD in a production framework beyond the core algorithmic idea.",
+          "quote": "DSD breaks the assumption that the same number of draft tokens is generated and verified at every timestep, which changes the bookkeeping in both the scheduler and the model runner.",
+          "locator": "The scheduler tells the model runner how many draft tokens",
+          "quote_verified": false
+        },
+        {
+          "claim": "To remain compatible with vLLM's Full CUDA Graph optimization (which eliminates per-kernel-launch CPU overhead by replaying a captured graph), DSD had to capture graphs for many combinations of batch size and K rather than just one fixed K, so that runtime K changes still hit a captured graph.",
+          "speaker": "@cohere",
+          "type": "framework",
+          "entities": ["vLLM", "CUDA Graph"],
+          "conviction": "high",
+          "so_what": "Shows the nontrivial systems cost of combining two independently valuable optimizations (dynamic K and full graph capture) in a single serving stack.",
+          "quote": "DSD extends this to capture <number of tokens in a batch, different optimal K>, recording more combinations so that changing K at runtime still hits a captured CUDA Graph",
+          "locator": "Compatibility with full CUDA Graph",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 18,
+  "top_entities": ["Cohere", "vLLM", "Command A", "Command A+", "EAGLE", "EAGLE-3", "DFlash", "TurboSpec", "Nvidia", "Red Hat", "MoE models", "GPU"],
+  "source_meta": {"author": "@cohere", "word_count": 1729, "paywalled": false}
+}
