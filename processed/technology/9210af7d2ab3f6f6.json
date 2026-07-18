@@ -1,0 +1,268 @@
+{
+  "record_id": "9210af7d2ab3f6f6",
+  "source_type": "technology",
+  "source_name": "Anyscale / Ray Blog",
+  "source_url": "https://www.anyscale.com/blog/enhancing-ray-cluster-stability-with-resource-isolation",
+  "title": "Enhancing Ray Cluster Stability With Resource Isolation | Anyscale",
+  "published_date": "2026-07-14",
+  "language": "en",
+  "processed_at": "2026-07-18T10:42:16Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "Tech",
+    "AI"
+  ],
+  "gist": "Anyscale added a Resource Isolation feature to Ray (shipped in Ray 2.56) that uses Linux cgroup-v2 to separate critical system processes (GCS, raylet) from application workloads, eliminating kernel OOM kills and node deaths; on a real video-preprocessing pipeline benchmark it cut completion time to 219% of ideal (vs 347% baseline) and drove kernel OOMs, node failures, and job failures to zero.",
+  "themes": [
+    {
+      "theme": "Growing workload resource demands break Ray cluster stability",
+      "insights": [
+        {
+          "claim": "As AI workloads shift from text-only models toward higher-dimensional data (images, video, multimodal foundation models for drug discovery and autonomous driving), per-worker compute and memory demands have grown large enough to cause resource contention with Ray's own critical system processes, leading to node and job failures.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "causal",
+          "entities": [
+            "Ray",
+            "Anyscale",
+            "multimodal LLMs",
+            "foundation models"
+          ],
+          "conviction": "high",
+          "so_what": "Infrastructure reliability is becoming a binding constraint for scaling video/multimodal AI training and data pipelines, not just raw compute cost -- vendors solving this (cgroup-based isolation, workload-aware schedulers) capture disproportionate value as data dimensionality rises.",
+          "quote": "As their resource demands grow, these processes begin contending for the same underlying resources, often leading to workload instability, node failures, and even job failures.",
+          "locator": "opening paragraph",
+          "quote_verified": true
+        },
+        {
+          "claim": "In an unmitigated Ray cluster, when a memory-hungry workload (e.g., a script requiring 128 GiB run on a smaller host) exhausts system memory, the raylet process itself stalls, stops responding to health checks, and the entire node is declared dead, wiping out all progress on that node.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "causal",
+          "entities": [
+            "Ray",
+            "raylet"
+          ],
+          "conviction": "high",
+          "so_what": "This is a systemic failure mode (not just slow performance) -- any team running large-scale Ray clusters without resource isolation is exposed to catastrophic job restarts as data sizes grow, inflating effective compute cost.",
+          "quote": "When the raylet stalls for long enough that it fails to respond to health checks, the entire node is declared dead and all progress on the node is lost.",
+          "locator": "Ray's memory model section",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Why the Linux kernel OOM killer is the wrong tool for AI workloads",
+      "insights": [
+        {
+          "claim": "The default Linux kernel OOM killer selects processes to terminate using a simple heuristic that, from Ray's perspective, is almost arbitrary, meaning it can repeatedly kill the processes with the most completed progress and prevent a distributed job from ever finishing.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "framework",
+          "entities": [
+            "Linux kernel",
+            "Ray"
+          ],
+          "conviction": "high",
+          "so_what": "Generic OS-level memory management is misaligned with distributed job semantics; any distributed compute framework relying on default kernel OOM behavior under memory pressure risks non-terminating jobs at scale.",
+          "quote": "Although the Linux kernel OOM killer follows a simple heuristic for killing processes, from the perspective of Ray, processes are selected almost arbitrarily.",
+          "locator": "Kernel Out-Of-Memory kills section",
+          "quote_verified": true
+        },
+        {
+          "claim": "Ray previously used a poll-based memory monitor enforcing a 95% memory ceiling with a custom kill order, but this approach missed memory spikes that occurred between polling intervals and could enter a whack-a-mole failure mode where killing one memory-hungry task immediately freed capacity for another queued task to take its place, still triggering kernel OOMs.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "framework",
+          "entities": [
+            "Ray"
+          ],
+          "conviction": "high",
+          "so_what": "Shows why polling-based safeguards are structurally insufficient for bursty AI memory usage patterns, motivating the shift to kernel-enforced (event-driven) cgroup constraints -- a pattern likely to recur across other orchestration systems (Kubernetes, Slurm) facing the same class of problem.",
+          "quote": "Killing one to relieve pressure often means another immediately takes its place, leading to kernel OOMs and continued instability.",
+          "locator": "Shortcomings of the existing Ray memory monitor section",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "cgroup-v2-based resource isolation architecture",
+      "insights": [
+        {
+          "claim": "Ray's Resource Isolation feature separates critical system processes (GCS, raylet) into a dedicated 'system' cgroup, isolated from a 'user' cgroup that holds both workload worker processes and other non-Ray processes, using Linux kernel cgroup-v2 primitives.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "framework",
+          "entities": [
+            "Ray",
+            "Linux cgroup-v2"
+          ],
+          "conviction": "high",
+          "so_what": "Establishes cgroups as the mechanism-of-choice for multi-tenant resource guarantees inside distributed AI frameworks; competing frameworks (Spark, Dask, Kubernetes-native schedulers) without equivalent isolation carry a comparable stability risk that could become a differentiator in enterprise infra buying decisions.",
+          "quote": null,
+          "locator": "Ray's Cgroup Hierarchy section",
+          "quote_verified": false
+        },
+        {
+          "claim": "Ray applies a memory.low constraint of 10% of total host memory (minimum 500MiB, maximum 10GiB) to the system cgroup to make that memory reclaimed last, and a memory.high constraint on the user cgroup equal to the sum of object store and application memory, which throttles rather than kills memory-hungry processes -- deliberately avoiding memory.max because it triggers immediate, uncontrolled kernel OOM kills.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "data_point",
+          "entities": [
+            "Ray",
+            "Linux cgroup-v2"
+          ],
+          "conviction": "high",
+          "so_what": "Concrete, reusable design pattern (throttle via memory.high instead of hard-cap via memory.max) that other infra teams building resource isolation for GPU/AI clusters can copy directly.",
+          "quote": "The memory.max constraint is often a common choice when applying memory constraints. However it is avoided here because it triggers immediate kernel OOM kills, which are undesirable for performance and visibility.",
+          "locator": "Ray's Cgroup Hierarchy section",
+          "quote_verified": true
+        },
+        {
+          "claim": "Ray introduced its own 'event memory monitor' that triggers when the user cgroup's upper memory bound is exceeded and kills a fraction of worker processes using a work-preserving heuristic that prioritizes killing tasks with the shortest execution time, on the assumption that execution time correlates with progress made.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "framework",
+          "entities": [
+            "Ray"
+          ],
+          "conviction": "high",
+          "so_what": "A workload-aware killing policy that preserves long-running (high-progress) tasks is a meaningful reliability edge over generic OS-level or Kubernetes-level OOM handling for long AI training/data jobs.",
+          "quote": "Execution time is assumed to represent progress and priority is given to killing tasks with the shortest execution time.",
+          "locator": "Cgroup Based Memory Monitors section",
+          "quote_verified": true
+        },
+        {
+          "claim": "Because Ray's shared object store is provisioned by the raylet but used by processes in both the system and user cgroups, Linux's cgroup memory accounting can shift object store usage between the two cgroups, so Ray added a separate threshold monitor tracking combined object-store-plus-application-heap usage across both cgroups to guarantee the total host memory limit is never exceeded.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "framework",
+          "entities": [
+            "Ray"
+          ],
+          "conviction": "medium",
+          "so_what": "Illustrates a subtle but important edge case (shared-memory accounting drift across cgroup boundaries) that any team building similar isolation on shared object stores (e.g., Arrow Plasma, shared GPU memory pools) needs to account for or risk silent capacity breaches.",
+          "quote": null,
+          "locator": "Cgroup Based Memory Monitors section (object store discussion)",
+          "quote_verified": false
+        },
+        {
+          "claim": "With both the event monitor and threshold monitor in place, Ray's own OOM killer now always triggers before the Linux kernel OOM killer, which also unlocks detailed diagnostic logging (per-worker memory footprint and resource requests) that was previously impossible because a kernel SIGKILL cannot be intercepted or explained after the fact.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "causal",
+          "entities": [
+            "Ray",
+            "Linux kernel"
+          ],
+          "conviction": "high",
+          "so_what": "Better observability into OOM root causes reduces debugging time for AI infra teams, which is itself a meaningful operational-cost lever at scale.",
+          "quote": "Ray was not able to log insightful context at the time of Linux kernel OOM kills as the kernel’s SIGKILL cannot be intercepted.",
+          "locator": "paragraph after threshold monitor discussion",
+          "quote_verified": true
+        },
+        {
+          "claim": "For CPU contention, Ray uses the cgroup cpu.weight constraint to give critical system processes a guaranteed proportional share of CPU (5% of CPU by default, minimum 1 core, maximum 3 cores) while still letting application workloads consume any idle CPU capacity when the system is underutilized.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "data_point",
+          "entities": [
+            "Ray",
+            "Linux cgroup-v2"
+          ],
+          "conviction": "high",
+          "so_what": "Proportional (not hard-capped) CPU allocation means the reliability fix comes at near-zero throughput cost when the cluster isn't CPU-saturated, which is the more common case -- a favorable cost/benefit trade for adoption.",
+          "quote": null,
+          "locator": "Solving CPU Contention section",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Quantified benchmark results",
+      "insights": [
+        {
+          "claim": "On a synthetic oversubscribed-memory benchmark, enabling Ray's Resource Isolation delivered up to 1.5x speedup and zero node deaths or job failures on workloads that were previously unstable, such as large video data processing pipelines.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "data_point",
+          "entities": [
+            "Ray",
+            "Anyscale"
+          ],
+          "conviction": "high",
+          "so_what": "A quantified, vendor-reported reliability/performance gain (1.5x speedup, zero failures) that Anyscale can use as a concrete sales/adoption argument for enterprises running large-scale video/multimodal AI pipelines on Ray.",
+          "quote": "Ray with Resource Isolation enabled was able to deliver up to 1.5x speedup and 0 node deaths and job failures on previously unstable workloads such as large video data processing pipelines and significant stability improvement to high resource consumption workloads across the board.",
+          "locator": "opening summary",
+          "quote_verified": true
+        },
+        {
+          "claim": "In a controlled test on a 10-node L4 GPU cluster running a real video data preprocessing pipeline (averaged over 7 runs), the baseline configuration took 3426.77 +/- 579.74 seconds (347.4% of the ideal-memory case), suffered 163.33 +/- 24.94 kernel OOMs, 5.33 +/- 1.37 node failures, and 10 job failures, while Resource Isolation cut completion time to 2164.27 +/- 614.71 seconds (219.4% of ideal), with zero kernel OOMs, zero node failures, and zero job failures.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "data_point",
+          "entities": [
+            "Ray",
+            "Anyscale",
+            "L4 GPU"
+          ],
+          "conviction": "high",
+          "so_what": "The most concrete, reproducible evidence in the piece: roughly 37% faster completion plus complete elimination of node/job failures on a real GPU workload -- a benchmark investors/customers can hold Anyscale to as it rolls out to more workload types.",
+          "quote": null,
+          "locator": "video data preprocessing pipeline results table",
+          "quote_verified": false
+        },
+        {
+          "claim": "At lower oversubscription levels the older polling-based memory monitor performs similarly to the new cgroup-based Resource Isolation, because there is less risk of memory usage spiking between monitoring intervals -- the new system's advantage is concentrated in high-contention, high-oversubscription scenarios.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "data_point",
+          "entities": [
+            "Ray"
+          ],
+          "conviction": "medium",
+          "so_what": "Sets realistic expectations: Resource Isolation is a fix for high-scale, bursty, memory-intensive workloads (e.g., video/multimodal pipelines) rather than a universal speedup, so evaluate ROI against actual oversubscription levels before assuming broad gains.",
+          "quote": null,
+          "locator": "paragraph after benchmark charts",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Adoption path and roadmap",
+      "insights": [
+        {
+          "claim": "Resource Isolation was introduced in Ray 2.56 and is enabled via the --enable-resource-isolation flag on ray start, requiring cgroup v2 to be configured with read/write permissions (or a custom --cgroup-path with memory and CPU controllers enabled); Anyscale is actively soliciting user feedback on the feature.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "data_point",
+          "entities": [
+            "Ray",
+            "Anyscale"
+          ],
+          "conviction": "medium",
+          "so_what": "Feature is opt-in and new (Ray 2.56), so adoption and real-world hardening are still early -- worth monitoring subsequent Ray releases for default-on status or reported issues before assuming universal production readiness.",
+          "quote": null,
+          "locator": "Using Resource Isolation section",
+          "quote_verified": false
+        },
+        {
+          "claim": "The current Resource Isolation implementation protects node-level system processes but does not yet isolate resources at the actor or task level; Anyscale states it plans to extend resource isolation to long-running actors that coordinate child tasks and actors as a near-term roadmap item.",
+          "speaker": "David Dai and Ibrahim Rabbani",
+          "type": "prediction",
+          "entities": [
+            "Ray",
+            "Anyscale"
+          ],
+          "conviction": "medium",
+          "so_what": "Signals a multi-release investment roadmap in Ray's reliability layer -- an indicator that Anyscale sees cluster stability/resource management as a durable competitive moat against other distributed compute frameworks, worth tracking in future Ray release notes.",
+          "quote": "We will be looking to introduce actor and task level resource isolation for adding greater expressivity to ray in the near future.",
+          "locator": "The Road Ahead section",
+          "quote_verified": true
+        }
+      ]
+    }
+  ],
+  "insight_total": 15,
+  "top_entities": [
+    "Ray",
+    "Anyscale",
+    "Linux cgroup-v2",
+    "raylet",
+    "GCS",
+    "L4 GPU",
+    "David Dai",
+    "Ibrahim Rabbani"
+  ],
+  "source_meta": {
+    "author": "Anyscale / Ray",
+    "word_count": 2596,
+    "paywalled": false
+  }
+}
