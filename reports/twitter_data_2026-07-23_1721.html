@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER DATA INTELLIGENCE",
+  "date": "2026-07-23 17:21 UTC",
+  "input_stats": {
+    "total_tweets": 91,
+    "unique_authors": 22,
+    "tweets_with_images": 42,
+    "after_filter": 79
+  },
+  "summary": "79 items from 22 accounts across 11 topics. Dominant themes: (1) Iran/Houthi escalation driving Brent crude to $100/barrel (+42% in 20 days) — war-risk insurance doubled for Red Sea, US missile struck Qeshm Island Iran, Senate blocked war powers restriction 49-47; (2) Rate shock — US 10Y surges above 4.70% (highest since Jan 2025), 30Y yields above 5% for 27 consecutive days (longest since 2007), real 30Y yields at 3% (highest since 2008), market pricing at least one hike by December; (3) ECB held at 2.25% but officials signal September hike, German bond yields hit 15-year high; (4) Labor paradox — jobless claims crushed at 187k vs 210k est (lowest since 1969) while Indeed job postings -3.5% YoY, -37.2% since April 2022. Equities: Nasdaq -2.5%, S&P 500 -$900B, Tesla -14% on earnings, Alphabet first-ever negative FCF quarter. Key numbers: Brent $100/bbl, WTI $90/bbl, 10Y 4.70%, jobless claims 187k, 30Y mortgage 6.58%, AAII bullish sentiment 29.6%, VIX futures positioning 1st percentile.",
+  "topics": [
+    {
+      "topic": "Geopolitics & Middle East",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "Trump says US will 'hold Iran responsible' for Houthi strikes on 2 Saudi Arabian vessels in the Red Sea overnight. Iran escalation accelerating sharply.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2080275445732286890",
+          "images": [
+            "https://pbs.twimg.com/media/HN6ffiyWkAAdM_o.jpg"
+          ],
+          "data_points": [
+            "Houthis struck 2 Saudi vessels Red Sea",
+            "Trump holds Iran accountable for Houthi attacks"
+          ],
+          "created_at": "2026-07-23T12:54:50.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "Trump says he is 'close' to a decision on a 'massive attack' on Iran — 'bigger than ever before.' Israel would join 'in two minutes if I ask them.' 'They haven't received enough pain yet.'",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2080315122665304543",
+          "images": [],
+          "data_points": [
+            "Trump 'close' to massive Iran attack",
+            "Attack 'bigger than ever before'",
+            "Israel 'would join in 2 minutes'"
+          ],
+          "created_at": "2026-07-23T15:32:30.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "US missile reported to have hit Suza Town on Qeshm Island in southern Iran, per Tasnim news agency.",
+          "tweet_url": "https://x.com/zerohedge/status/2080322825349472434",
+          "images": [],
+          "data_points": [
+            "US missile struck Qeshm Island S. Iran"
+          ],
+          "created_at": "2026-07-23T16:03:06.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Houthis threaten Saudi Aramco after Trump warns he will punish Iran for future shipping attacks out of Yemen.",
+          "tweet_url": "https://x.com/zerohedge/status/2080327857155256428",
+          "images": [],
+          "data_points": [
+            "Houthis threatening Saudi Aramco"
+          ],
+          "created_at": "2026-07-23T16:23:06.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "War-risk insurance costs reportedly doubled for some southern Red Sea voyages following Houthi threats.",
+          "tweet_url": "https://x.com/Polymarket/status/2080342170507030760",
+          "images": [],
+          "data_points": [
+            "War-risk insurance doubled for Red Sea voyages"
+          ],
+          "created_at": "2026-07-23T17:19:58.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Senate votes 49-47 to block measure seeking to restrict Trump's war powers re: Iran. Polymarket: 5% chance US military draft authorized this year.",
+          "tweet_url": "https://x.com/Polymarket/status/2080339873739784677",
+          "images": [],
+          "data_points": [
+            "Senate 49-47 blocks Iran war powers restriction",
+            "5% Polymarket: US military draft 2026"
+          ],
+          "created_at": "2026-07-23T17:10:51.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "House passes resolution to halt US military action in Iran for second time; 4 Republicans joined Democrats.",
+          "tweet_url": "https://x.com/Polymarket/status/2080309605444288853",
+          "images": [],
+          "data_points": [
+            "House passed Iran halt resolution 2nd time",
+            "4 Republicans joined Democrats"
+          ],
+          "created_at": "2026-07-23T15:10:34.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Saudis respond to Trump demand that normalization with Israel be condition of US-Saudi nuclear deal: 'Tweets don't overturn signed deals.' Saudi deal now complicated.",
+          "tweet_url": "https://x.com/zerohedge/status/2080336918995194298",
+          "images": [],
+          "data_points": [
+            "Saudi resists Trump normalization-for-nuclear-deal demand"
+          ],
+          "created_at": "2026-07-23T16:59:06.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Flash headline: Trump says close to decision on massive Iran attack — per Axios.",
+          "tweet_url": "https://x.com/C_Barraud/status/2080314946257129674",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-07-23T15:31:48.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Analysis: American drone-motor company positioned for 'massive procurement tailwind' as asymmetric warfare demand surges — defense sector beneficiary profile.",
+          "tweet_url": "https://x.com/zerohedge/status/2080314526063263997",
+          "images": [],
+          "data_points": [
+            "Defense drone procurement tailwind"
+          ],
+          "created_at": "2026-07-23T15:30:08.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Commodities & Energy",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "Brent crude surges above $98/barrel immediately following Houthi strikes on two Saudi oil tankers — early morning chart shows sharp spike.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2080207360690155672",
+          "images": [
+            "https://pbs.twimg.com/media/HN5hkffWAAA-byC.jpg"
+          ],
+          "data_points": [
+            "Brent crude $98/barrel",
+            "Houthis struck 2 Saudi tankers"
+          ],
+          "created_at": "2026-07-23T08:24:17.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "US oil (WTI) rises above $90/barrel for the first time since June 11th — intraday surge chart.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2080222582314332339",
+          "images": [
+            "https://pbs.twimg.com/media/HN5vahRW0AEvVls.jpg"
+          ],
+          "data_points": [
+            "WTI above $90/barrel",
+            "First since June 11"
+          ],
+          "created_at": "2026-07-23T09:24:46.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "Brent crude officially above $100/barrel — up +42% in 20 days. Inflation expectations and interest rates now rising sharply again. Chart shows the vertical sprint.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2080280349611802871",
+          "images": [
+            "https://pbs.twimg.com/media/HN6juQjW0AEQcBI.jpg"
+          ],
+          "data_points": [
+            "Brent crude $100/barrel",
+            "+42% in 20 days",
+            "Inflation expectations rising"
+          ],
+          "created_at": "2026-07-23T13:14:19.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Bloomberg confirms: Brent Crude hits $100 a barrel on Red Sea disruption and Iran supply threats.",
+          "tweet_url": "https://x.com/C_Barraud/status/2080282164990534020",
+          "images": [],
+          "data_points": [
+            "Brent $100/barrel confirmed Bloomberg"
+          ],
+          "created_at": "2026-07-23T13:21:32.000Z"
+        },
+        {
+          "author": "M_McDonough",
+          "description": "Real-time chart: tanker crossings at Bab el-Mandeb chokepoint in the 24h following Houthi strikes — early data shows pullback developing. Chart updated every 30 min on Bloomberg Terminal.",
+          "tweet_url": "https://x.com/M_McDonough/status/2080281841701896598",
+          "images": [
+            "https://pbs.twimg.com/media/HN6jroLXAAAg4o-.jpg"
+          ],
+          "data_points": [
+            "Bab el-Mandeb tanker crossings declining",
+            "24h rolling real-time data"
+          ],
+          "created_at": "2026-07-23T13:20:15.000Z"
+        },
+        {
+          "author": "M_McDonough",
+          "description": "Bloomberg Terminal chart: now tracking tanker crossings at BOTH Hormuz AND Bab el-Mandeb against Brent crude price simultaneously — full chokepoint dashboard.",
+          "tweet_url": "https://x.com/M_McDonough/status/2080286114867216886",
+          "images": [
+            "https://pbs.twimg.com/media/HN6ostiWkAAyihD.jpg"
+          ],
+          "data_points": [
+            "Hormuz + Bab el-Mandeb tracked vs Brent"
+          ],
+          "created_at": "2026-07-23T13:37:14.000Z"
+        },
+        {
+          "author": "M_McDonough",
+          "description": "AIS ship-tracking discovery: tanker captains are broadcasting messages to the Houthis via the vessel 'Destination' field — broadcasting 'China Crew & Owner,' 'Armed Guards On Board,' etc. Visible in Bloomberg Terminal AIS data.",
+          "tweet_url": "https://x.com/M_McDonough/status/2080292706803192229",
+          "images": [
+            "https://pbs.twimg.com/media/HN6t3mhW8AAmvYz.jpg"
+          ],
+          "data_points": [
+            "Tanker captains signaling Houthis via AIS Destination field"
+          ],
+          "created_at": "2026-07-23T14:03:25.000Z"
+        },
+        {
+          "author": "themarketear",
+          "description": "Technicals breaking down, oil becoming a headwind again, and CTA positioning could amplify the next leg lower in equities.",
+          "tweet_url": "https://x.com/themarketear/status/2080303249664446728",
+          "images": [],
+          "data_points": [
+            "Technicals breaking down",
+            "CTA positioning amplifies downside risk"
+          ],
+          "created_at": "2026-07-23T14:45:19.000Z"
+        },
+        {
+          "author": "themarketear",
+          "description": "Everyone saw the oil rally. Few are positioned for the spillover. Biggest opportunity: growing disconnect between oil price and equity volatility (VIX hasn't caught up to the crude spike).",
+          "tweet_url": "https://x.com/themarketear/status/2080223652503531617",
+          "images": [],
+          "data_points": [
+            "Oil/equity volatility disconnect",
+            "VIX lagging crude surge"
+          ],
+          "created_at": "2026-07-23T09:29:02.000Z"
+        },
+        {
+          "author": "WarrenPies",
+          "description": "Analysis on crude dynamics: positioning dictates direction in crude market, fundamentals dictate amplitude. But in current regime, the paper market is actually dictating direction — structural point.",
+          "tweet_url": "https://x.com/WarrenPies/status/2080280094862426606",
+          "images": [],
+          "data_points": [
+            "Paper market dictating crude direction",
+            "Fundamentals determine move amplitude"
+          ],
+          "created_at": "2026-07-23T13:13:19.000Z"
+        },
+        {
+          "author": "sentimentrader",
+          "description": "Energy stocks in uptrends now outnumber downtrends by 50+ points; crude front month >5% above deferred contract. Historically XLE was higher 71% of the time 4-6 months later, with median 1-year gain of 7%. Energy did not lead S&P 500 after these signals.",
+          "tweet_url": "https://x.com/sentimentrader/status/2080291851769200968",
+          "images": [
+            "https://pbs.twimg.com/media/HN6dtqlbYAAPGta.png"
+          ],
+          "data_points": [
+            "Energy uptrends > downtrends by 50+ pts",
+            "Crude front >5% above deferred",
+            "XLE higher 71% of time 4-6mo later",
+            "XLE median 1yr gain: 7%"
+          ],
+          "created_at": "2026-07-23T14:00:02.000Z"
+        },
+        {
+          "author": "sentimentrader",
+          "description": "Lithium traders are depressed (contrarian signal). Across 10 prior similar signals, GLD was higher at 2 weeks, 2 months, AND 6 months every single time. Median 1-year GLD return: 14.32%.",
+          "tweet_url": "https://x.com/sentimentrader/status/2080291848145563945",
+          "images": [
+            "https://pbs.twimg.com/media/HN4LoDpbcAAe6LK.jpg"
+          ],
+          "data_points": [
+            "Lithium sentiment depressed (contrarian signal)",
+            "GLD higher 10/10 times at 2wk/2mo/6mo after",
+            "Median 1yr GLD return: 14.32%"
+          ],
+          "created_at": "2026-07-23T14:00:01.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Gold showing resilience driven by global central bank reserve diversification and rising sovereign debt burdens — article on structural bid.",
+          "tweet_url": "https://x.com/zerohedge/status/2080319562055131526",
+          "images": [],
+          "data_points": [
+            "Gold bid supported by debt/reserve dynamics"
+          ],
+          "created_at": "2026-07-23T15:50:08.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Energy Department issues Emergency Order as extreme hot weather threatens power grid blackouts — immediate energy demand spike risk.",
+          "tweet_url": "https://x.com/zerohedge/status/2080335661400211474",
+          "images": [],
+          "data_points": [
+            "DOE Emergency Order issued",
+            "Heat threatening power grid blackouts"
+          ],
+          "created_at": "2026-07-23T16:54:07.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Rates & Fixed Income",
+      "items": [
+        {
+          "author": "lisaabramowicz1",
+          "description": "US 30-year yields have remained above 5% for 27 days this year, including the last 12 days in a row — the longest stretch since 2007. Real yields on 30-year notes at nearly 3%, highest since 2008. Chart of 30Y yield history.",
+          "tweet_url": "https://x.com/lisaabramowicz1/status/2080215188465201553",
+          "images": [
+            "https://pbs.twimg.com/media/HN5orGyWUAAXP0G.png"
+          ],
+          "data_points": [
+            "30Y yields >5% for 27 days",
+            "Last 12 days in a row above 5%",
+            "Real 30Y yields ~3% (highest since 2008)",
+            "Longest above-5% streak since 2007"
+          ],
+          "created_at": "2026-07-23T08:55:24.000Z"
+        },
+        {
+          "author": "LizAnnSonders",
+          "description": "Market pricing in at least one rate hike by December — chart showing fed funds futures pricing.",
+          "tweet_url": "https://x.com/LizAnnSonders/status/2080258644554240306",
+          "images": [
+            "https://pbs.twimg.com/media/HN6QNoiWgAAt-Om.jpg"
+          ],
+          "data_points": [
+            "Market pricing ≥1 rate hike by December"
+          ],
+          "created_at": "2026-07-23T11:48:04.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "US 10Y yield officially surges above 4.70% for the first time since January 2025 — now above the 'Liberation Day' April high, set to drive rates to new 52-week highs. 'The bond market is flashing red.' Chart included.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2080286811364991015",
+          "images": [
+            "https://pbs.twimg.com/media/HN6ji_vWwAAlsz9.jpg"
+          ],
+          "data_points": [
+            "10Y yield above 4.70%",
+            "First time since January 2025",
+            "Above Liberation Day high",
+            "New 52-week high in yields imminent"
+          ],
+          "created_at": "2026-07-23T13:40:00.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "German Bond Yields hit 15-year high as oil spikes ahead of ECB decision — Bloomberg chart shows bund yield surge.",
+          "tweet_url": "https://x.com/C_Barraud/status/2080281951676617139",
+          "images": [
+            "https://pbs.twimg.com/media/HN6lZoNXIAEzlwJ.png"
+          ],
+          "data_points": [
+            "German bund yields at 15-year high"
+          ],
+          "created_at": "2026-07-23T13:20:41.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "30-year fixed rate mortgage average hits 6.58% in week of July 23 — highest level since August 21, 2025, per Freddie Mac.",
+          "tweet_url": "https://x.com/zerohedge/status/2080325721679888673",
+          "images": [],
+          "data_points": [
+            "30Y mortgage rate: 6.58%",
+            "Highest since August 21 2025",
+            "Per Freddie Mac"
+          ],
+          "created_at": "2026-07-23T16:14:37.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "Ultra-long bond position check-in: price down 10% from issue; now yields 6.8%. Ultra-long bonds extremely rate-sensitive; price drop mostly duration + rates impact.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2080321231492886841",
+          "images": [
+            "https://pbs.twimg.com/media/HN7I1jUW4AAsLQr.jpg"
+          ],
+          "data_points": [
+            "Ultra-long bond price -10% from issue",
+            "Current yield: 6.8%"
+          ],
+          "created_at": "2026-07-23T15:56:46.000Z"
+        },
+        {
+          "author": "EricBalchunas",
+          "description": "Chart: bond losses reality check — rough day to be a duration investor as 30Y+ bonds crater with yields surging.",
+          "tweet_url": "https://x.com/EricBalchunas/status/2080312569449849168",
+          "images": [
+            "https://pbs.twimg.com/media/HN7BKqFWUAA53Qn.jpg"
+          ],
+          "data_points": [
+            "Duration bonds declining sharply on yield surge"
+          ],
+          "created_at": "2026-07-23T15:22:21.000Z"
+        },
+        {
+          "author": "JSeyff",
+          "description": "Observes: if you invested in 'safe' Treasury bonds 5 years ago, you would have lost 50% of your money — notes this may be the 'bottom signal for duration' (contrarian note).",
+          "tweet_url": "https://x.com/JSeyff/status/2080336716305502383",
+          "images": [],
+          "data_points": [
+            "Treasuries -50% from 5yr ago",
+            "Contrarian duration bottom signal watch"
+          ],
+          "created_at": "2026-07-23T16:58:18.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Analysis: a surprise July rate hike would upend risk sentiment across markets — article outlining the scenario and impact.",
+          "tweet_url": "https://x.com/zerohedge/status/2080339687823057115",
+          "images": [],
+          "data_points": [
+            "Surprise July hike scenario analysis"
+          ],
+          "created_at": "2026-07-23T17:10:07.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "ECB & European Markets",
+      "items": [
+        {
+          "author": "C_Barraud",
+          "description": "ECB leaves deposit facility rate at 2.25% (as expected); marginal lending facility at 2.65%. Decision in-line with consensus.",
+          "tweet_url": "https://x.com/C_Barraud/status/2080266327650889778",
+          "images": [],
+          "data_points": [
+            "ECB deposit rate: 2.25% (unchanged)",
+            "Marginal lending: 2.65% (unchanged)"
+          ],
+          "created_at": "2026-07-23T12:18:36.000Z"
+        },
+        {
+          "author": "Schuldensuehner",
+          "description": "ECB holds rates unchanged as expected. Notes 'uncertainty level remains high' and inflation impact of energy shock has 'yet to fully play out.' Chart of ECB decision context.",
+          "tweet_url": "https://x.com/Schuldensuehner/status/2080270046346035505",
+          "images": [
+            "https://pbs.twimg.com/media/HN6aidQXkAACPBj.png"
+          ],
+          "data_points": [
+            "ECB: uncertainty remains high",
+            "Energy shock inflation impact not fully played out"
+          ],
+          "created_at": "2026-07-23T12:33:23.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "ECB Lagarde: not seeing any second-round effects from the energy/oil price shock — key quote from press conference.",
+          "tweet_url": "https://x.com/C_Barraud/status/2080279751340544426",
+          "images": [],
+          "data_points": [
+            "Lagarde: no second-round effects visible"
+          ],
+          "created_at": "2026-07-23T13:11:57.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "ECB officials are ready to raise interest rates in September — Bloomberg headline. Markets now pricing September hike.",
+          "tweet_url": "https://x.com/C_Barraud/status/2080296658558988454",
+          "images": [],
+          "data_points": [
+            "ECB officials signal September rate hike",
+            "September hike now being priced"
+          ],
+          "created_at": "2026-07-23T14:19:08.000Z"
+        },
+        {
+          "author": "Schuldensuehner",
+          "description": "ECB Day context: Taylor Rule puts appropriate policy rate ~1.7pp ABOVE current ECB rate. Markets pricing 1.9 hikes by year-end. Inflation eased, unemployment above NAIRU — gap narrowing. Chart included.",
+          "tweet_url": "https://x.com/Schuldensuehner/status/2080221342188687613",
+          "images": [
+            "https://pbs.twimg.com/media/HN5uQ1IWgAAZuwY.png"
+          ],
+          "data_points": [
+            "Taylor Rule gap: 1.7pp above ECB rate",
+            "Markets pricing 1.9 ECB hikes by year-end",
+            "Unemployment above NAIRU"
+          ],
+          "created_at": "2026-07-23T09:19:51.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Labor Market",
+      "items": [
+        {
+          "author": "LizAnnSonders",
+          "description": "Initial jobless claims plunged to 187k vs 210k estimate and 209k prior — massive beat. Continuing claims 1.796M vs 1.809M est. Greatest decreases in NY (-17k), MI (-5k), CA (-3.9k). Two charts included.",
+          "tweet_url": "https://x.com/LizAnnSonders/status/2080289332250751249",
+          "images": [
+            "https://pbs.twimg.com/media/HN6sHwyXsAAgc0e.jpg",
+            "https://pbs.twimg.com/media/HN6sN9WWEAASsZA.jpg"
+          ],
+          "data_points": [
+            "Jobless claims 187k vs 210k est",
+            "Continuing claims 1.796M vs 1.809M est",
+            "Prior revised down to 209k",
+            "Largest drop in NY (-17k)"
+          ],
+          "created_at": "2026-07-23T13:50:01.000Z"
+        },
+        {
+          "author": "lisaabramowicz1",
+          "description": "US initial jobless claims just came in at the lowest level since 1969 — chart of claims history highlighting the extreme read.",
+          "tweet_url": "https://x.com/lisaabramowicz1/status/2080270265414484232",
+          "images": [
+            "https://pbs.twimg.com/media/HN6afdRWUAAwHor.png"
+          ],
+          "data_points": [
+            "Claims lowest since 1969"
+          ],
+          "created_at": "2026-07-23T12:34:15.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Jobless Claims beat estimates — Initial Claims hit lowest level since 1969. KC Fed Manufacturing Activity missed. Summary chart of both releases.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2080312139831484587",
+          "images": [
+            "https://pbs.twimg.com/media/HN69FwOXUAAXkcr.png"
+          ],
+          "data_points": [
+            "Claims lowest since 1969",
+            "KC Fed Manufacturing missed"
+          ],
+          "created_at": "2026-07-23T15:20:39.000Z"
+        },
+        {
+          "author": "LizAnnSonders",
+          "description": "July Kansas City Fed Manufacturing Index: 9 vs 12 estimate and 11 prior. New orders 10 vs 13 prior; shipments 20 vs 20 prior; prices paid 52 vs 68 prior (easing!); employment 2 vs 10 prior. Chart.",
+          "tweet_url": "https://x.com/LizAnnSonders/status/2080321387474870339",
+          "images": [
+            "https://pbs.twimg.com/media/HN7JRtWWcAAy5SS.jpg"
+          ],
+          "data_points": [
+            "KC Fed Mfg Index: 9 vs 12 est",
+            "Prices paid: 52 vs 68 prior (easing)",
+            "Employment: 2 vs 10 prior (weak)"
+          ],
+          "created_at": "2026-07-23T15:57:23.000Z"
+        },
+        {
+          "author": "benjamincowen",
+          "description": "Initial claims data snapshot: Actual 187k vs Estimated 210k vs Prior 209k.",
+          "tweet_url": "https://x.com/benjamincowen/status/2080312059888091178",
+          "images": [],
+          "data_points": [
+            "Claims actual: 187k",
+            "Claims estimate: 210k",
+            "Claims prior: 209k"
+          ],
+          "created_at": "2026-07-23T15:20:20.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "US job postings on Indeed fell -3.5% YoY in week ending July 10 — near the lowest this year. Postings down -37.2% since April 2022, now at February 2021 levels. New postings -10.9% YoY, lowest since early January. Vacancies only +1.0% above pre-pandemic Feb 2020 levels. Chart included.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2080338566643671113",
+          "images": [
+            "https://pbs.twimg.com/media/HN64ORUXQAA3tdV.jpg"
+          ],
+          "data_points": [
+            "Indeed postings -3.5% YoY",
+            "Postings -37.2% since April 2022",
+            "New postings -10.9% YoY (4-year decline)",
+            "Vacancies +1.0% above Feb 2020 levels"
+          ],
+          "created_at": "2026-07-23T17:05:39.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Pre-market schedule: Jobless Claims and KC Fed Manufacturing on the tape at 8:30 and 11:00 AM ET respectively — data release preview chart.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2080244029204078630",
+          "images": [
+            "https://pbs.twimg.com/media/HN1cjQaW0AA7EdQ.png"
+          ],
+          "data_points": [
+            "Jobless Claims 8:30 AM ET",
+            "KC Fed 11:00 AM ET"
+          ],
+          "created_at": "2026-07-23T10:50:00.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Equities & Market Action",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "Nasdaq 100 extends losses to over -2.5% on the day as Iran war escalates and tech stocks drop on earnings results. S&P 500 erases -$900 billion in market cap today. Chart of Nasdaq intraday.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2080308821059097052",
+          "images": [
+            "https://pbs.twimg.com/media/HN6910PXQAAFwir.png"
+          ],
+          "data_points": [
+            "Nasdaq 100 -2.5%+",
+            "S&P 500 -$900B market cap erased"
+          ],
+          "created_at": "2026-07-23T15:07:27.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "AAII bullish sentiment fell more than 15 percentage points this week to 29.6% — sub-30 reading, lowest since last September.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2080265466694504501",
+          "images": [],
+          "data_points": [
+            "AAII bullish sentiment: 29.6%",
+            "Down 15+pp this week",
+            "Lowest since September"
+          ],
+          "created_at": "2026-07-23T12:15:11.000Z"
+        },
+        {
+          "author": "themarketear",
+          "description": "Asset managers' VIX futures positioning has fallen to the 1st percentile — extreme complacency indicator even as volatility events accumulate.",
+          "tweet_url": "https://x.com/themarketear/status/2080236667651141815",
+          "images": [],
+          "data_points": [
+            "Asset managers VIX futures at 1st percentile",
+            "Extreme complacency in positioning"
+          ],
+          "created_at": "2026-07-23T10:20:45.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Bespoke research on extreme price and breadth divergences in the current market environment — link to full analysis.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2080260890058772826",
+          "images": [],
+          "data_points": [
+            "Extreme price/breadth divergences noted"
+          ],
+          "created_at": "2026-07-23T11:57:00.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Morning market note: 'Back to $90' — morning headline as WTI crude oil returns to $90/barrel level. Full note with chart.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2080278584753545649",
+          "images": [],
+          "data_points": [
+            "WTI back to $90/barrel morning note"
+          ],
+          "created_at": "2026-07-23T13:07:18.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Morning Lineup chart — daily market snapshot image with key levels and context.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2080276339689459985",
+          "images": [
+            "https://pbs.twimg.com/media/HN6f--UXgAA6qSN.png"
+          ],
+          "data_points": [],
+          "created_at": "2026-07-23T12:58:23.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Chart-only post: market data visualization posted during the volatile session.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2080280869479010420",
+          "images": [
+            "https://pbs.twimg.com/media/HN6ka22WcAAc70y.png"
+          ],
+          "data_points": [],
+          "created_at": "2026-07-23T13:16:23.000Z"
+        },
+        {
+          "author": "crossbordercap",
+          "description": "Latest Capital Wars Substack — Michael Howell's global liquidity framework analysis, with chart.",
+          "tweet_url": "https://x.com/crossbordercap/status/2080196199349399755",
+          "images": [
+            "https://pbs.twimg.com/media/HN5XaRUXkAArnn1.jpg"
+          ],
+          "data_points": [
+            "Global liquidity framework update"
+          ],
+          "created_at": "2026-07-23T07:39:56.000Z"
+        },
+        {
+          "author": "RealVision",
+          "description": "RealVision member spotlights an under-tracked trade while everyone chases semiconductor names — chart of the setup included.",
+          "tweet_url": "https://x.com/RealVision/status/2080294447246385575",
+          "images": [
+            "https://pbs.twimg.com/media/HN6wtyhWsAAgwN9.jpg"
+          ],
+          "data_points": [],
+          "created_at": "2026-07-23T14:10:20.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Earnings & Corporate",
+      "items": [
+        {
+          "author": "bespokeinvest",
+          "description": "Tesla (TSLA) on track for 2nd biggest one-day earnings drop in its history as a public company — currently down 14.1%. Would become worst earnings day ever if falls past 14.51% (eclipsing Nov 6, 2013). Historical earnings reaction chart.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2080318090131148839",
+          "images": [
+            "https://pbs.twimg.com/media/HN7Fg10WYAA2VIP.png"
+          ],
+          "data_points": [
+            "TSLA -14.1% on earnings",
+            "2nd biggest earnings drop in TSLA history",
+            "14.51% would be worst ever earnings day"
+          ],
+          "created_at": "2026-07-23T15:44:17.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Alphabet (GOOG/GOOGL) down 7.6% on Q2 earnings — biggest drop since July 2008 report. Historical earnings reaction chart showing the magnitude.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2080310558201389141",
+          "images": [
+            "https://pbs.twimg.com/media/HN6_UE4XgAEPA35.png"
+          ],
+          "data_points": [
+            "GOOG -7.6% on Q2 earnings",
+            "Biggest Q2 earnings drop since July 2008"
+          ],
+          "created_at": "2026-07-23T15:14:22.000Z"
+        },
+        {
+          "author": "Schuldensuehner",
+          "description": "Alphabet had negative free cash flow for the first time as a public company — investments/capex totaled ~$45bn in the past quarter, with -$39bn from operating activities. Chart of FCF history.",
+          "tweet_url": "https://x.com/Schuldensuehner/status/2080288136710504744",
+          "images": [
+            "https://pbs.twimg.com/media/HN6pADkXUAAPQMB.png"
+          ],
+          "data_points": [
+            "Alphabet first-ever negative FCF",
+            "Capex: ~$45bn in Q2",
+            "Operating cash: -$39bn"
+          ],
+          "created_at": "2026-07-23T13:45:16.000Z"
+        },
+        {
+          "author": "lisaabramowicz1",
+          "description": "Alphabet highlights how much the hyperscaler landscape has changed — once cash machines, now Google parent posted first negative free cashflow quarter since at least 2016. Chart of FCF trend.",
+          "tweet_url": "https://x.com/lisaabramowicz1/status/2080226516458172908",
+          "images": [
+            "https://pbs.twimg.com/media/HN5y2hzWkAAjRrm.png"
+          ],
+          "data_points": [
+            "Alphabet first negative FCF since 2016",
+            "Hyperscalers no longer cash machines"
+          ],
+          "created_at": "2026-07-23T09:40:24.000Z"
+        },
+        {
+          "author": "borrowed_ideas",
+          "description": "Google Cloud at almost 40% of Google Search revenue in 2Q26 — up from just 14% five years ago. Chart projects these two revenue streams could reach parity by 2030. Two charts included.",
+          "tweet_url": "https://x.com/borrowed_ideas/status/2080313136410927613",
+          "images": [
+            "https://pbs.twimg.com/media/HN7BQscacAAKahe.png",
+            "https://pbs.twimg.com/media/HN7BUk7bUAA0Fs3.png"
+          ],
+          "data_points": [
+            "Google Cloud ~40% of Search revenue (2Q26)",
+            "Was 14% five years ago",
+            "May reach parity with Search by 2030"
+          ],
+          "created_at": "2026-07-23T15:24:36.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Texas Instruments (TXN) and Lockheed Martin (LMT) both reported triple plays — TXN trading lower despite beat (second straight triple play); LMT triple play confirmed. Three earnings reaction charts.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2080290198051573817",
+          "images": [
+            "https://pbs.twimg.com/media/HN6rGfqXIAAoz8t.png",
+            "https://pbs.twimg.com/media/HN6rK85XAAAv620.png",
+            "https://pbs.twimg.com/media/HN6rJJkW4AABpYy.png"
+          ],
+          "data_points": [
+            "TXN triple play (2nd straight)",
+            "LMT triple play",
+            "TXN lower despite beat"
+          ],
+          "created_at": "2026-07-23T13:53:27.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Through this morning, 93 (88.6%) of the 105 S&P 500 companies that reported Q2 numbers this month have beaten consensus analyst EPS estimates.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2080292059009708282",
+          "images": [],
+          "data_points": [
+            "88.6% of S&P 500 reporters beat Q2 EPS est",
+            "93 of 105 companies beat"
+          ],
+          "created_at": "2026-07-23T14:00:51.000Z"
+        },
+        {
+          "author": "WarrenPies",
+          "description": "Commentary on semi IV and skew dynamics: going to be a tough nut to crack for semis, especially if K3 remains a fundamental tailwind (which it is).",
+          "tweet_url": "https://x.com/WarrenPies/status/2080292013145043101",
+          "images": [],
+          "data_points": [
+            "Semi options IV/skew elevated",
+            "K3 fundamental tailwind for semis"
+          ],
+          "created_at": "2026-07-23T14:00:40.000Z"
+        },
+        {
+          "author": "WarrenPies",
+          "description": "Observation: harder to explain neoclouds (hyperscaler alternatives) holding in while hyperscalers get nuked off Alphabet earnings — market structure divergence.",
+          "tweet_url": "https://x.com/WarrenPies/status/2080317488273719313",
+          "images": [],
+          "data_points": [
+            "Neocloud vs hyperscaler divergence post-GOOG earnings"
+          ],
+          "created_at": "2026-07-23T15:41:54.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "SpaceX meltdown vaporizes $1 trillion in market cap as both stock and bonds crater — major single-entity market cap destruction event.",
+          "tweet_url": "https://x.com/zerohedge/status/2080324591331717496",
+          "images": [],
+          "data_points": [
+            "SpaceX -$1 trillion market cap",
+            "SpaceX stock + bonds cratered"
+          ],
+          "created_at": "2026-07-23T16:10:07.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Fund Flows & Positioning",
+      "items": [
+        {
+          "author": "glassnode",
+          "description": "Strategy Watch #6: June turned risk-off — directional crypto funds fell (Fundamental funds -11.6%) while market-neutral strategies held up. Net capital left every major asset class in June. Monthly fund performance and flow report with chart.",
+          "tweet_url": "https://x.com/glassnode/status/2080302435738808761",
+          "images": [
+            "https://pbs.twimg.com/media/HN63om8XAAAkIl-.jpg"
+          ],
+          "data_points": [
+            "Fundamental crypto funds -11.6% in June",
+            "Market-neutral outperformed",
+            "Net capital outflows from all major assets in June"
+          ],
+          "created_at": "2026-07-23T14:42:05.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Crypto & Digital Assets",
+      "items": [
+        {
+          "author": "EricBalchunas",
+          "description": "BITO (Bitcoin futures ETF) volume correlation with IBIT price reversals upward — likely basis trade heating up. BITO traded $40B in July vs $20B for spot IBIT. Unusual since retail clearly prefers 20bps spot ETFs over 95bps futures ETFs. Must be pro traders/HFs in arb trade. Chart.",
+          "tweet_url": "https://x.com/EricBalchunas/status/2080269258626318528",
+          "images": [
+            "https://pbs.twimg.com/media/HN6ZO5mXQAEykSb.jpg"
+          ],
+          "data_points": [
+            "BITO volume $40B in July",
+            "IBIT volume $20B in July",
+            "BITO volume spikes correlate with IBIT price reversals up",
+            "Basis trade signal"
+          ],
+          "created_at": "2026-07-23T12:30:15.000Z"
+        },
+        {
+          "author": "EricBalchunas",
+          "description": "Crypto PACs went 48 for 48 in winning elections in 2024 — backing Rs, Ds, incumbents, challengers, long-shots. Scaramucci: Democrats will be forced to pass the Bitcoin Clarity Act. Chart of crypto PAC performance.",
+          "tweet_url": "https://x.com/EricBalchunas/status/2080326526583599206",
+          "images": [
+            "https://pbs.twimg.com/media/HN7MGpFWcAAe9vR.jpg"
+          ],
+          "data_points": [
+            "Crypto PACs 48 for 48 in 2024 elections",
+            "100% win rate across party lines"
+          ],
+          "created_at": "2026-07-23T16:17:49.000Z"
+        },
+        {
+          "author": "ARKInvest",
+          "description": "ARK Invest joins Bitcoin Security Consortium alongside Anchorage, BlackRock, Blockstream, Coinbase, Galaxy, Strategy, and others — focus on post-quantum security preparation for Bitcoin network.",
+          "tweet_url": "https://x.com/ARKInvest/status/2080275361711935686",
+          "images": [
+            "https://pbs.twimg.com/media/HN6ekXoWoAAOlNf.jpg"
+          ],
+          "data_points": [
+            "ARK Invest joins Bitcoin Security Consortium",
+            "Industry preparing Bitcoin for post-quantum security"
+          ],
+          "created_at": "2026-07-23T12:54:30.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "Compute shortage causing lag in capex model updates for crypto/digital asset sector — chart of compute constraints impact.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2080295645282218287",
+          "images": [
+            "https://pbs.twimg.com/media/HN6uzq1WIAAW6o4.png"
+          ],
+          "data_points": [
+            "Compute shortage delaying capex model updates"
+          ],
+          "created_at": "2026-07-23T14:15:06.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "AI, Tech & Space",
+      "items": [
+        {
+          "author": "zerohedge",
+          "description": "Analysis: The $2 trillion in circular AI financing is contingent on Anthropic/OpenAI being solvent on their $1.5TN+ in unfunded commitments — which won't hold if Chinese open LLMs grab market share. Hence the political push against Chinese LLMs.",
+          "tweet_url": "https://x.com/zerohedge/status/2080326506371248224",
+          "images": [],
+          "data_points": [
+            "$2T circular AI financing",
+            "Anthropic/OpenAI: $1.5T+ unfunded commitments",
+            "Chinese LLMs market share = threat to AI financing structure"
+          ],
+          "created_at": "2026-07-23T16:17:44.000Z"
+        },
+        {
+          "author": "a16z",
+          "description": "a16z invests in Etched — AI inference chip startup from Harvard dropouts who built entire inference system (chips, boards, interconnects, racks) from scratch starting 2022. Thesis: AI inference is the most consequential workload of our lifetime.",
+          "tweet_url": "https://x.com/a16z/status/2080319825508024470",
+          "images": [],
+          "data_points": [
+            "a16z invests in Etched AI inference chips",
+            "Inference system built from scratch (chips to racks)",
+            "Founded 2022, pre-ChatGPT"
+          ],
+          "created_at": "2026-07-23T15:51:11.000Z"
+        },
+        {
+          "author": "ARKInvest",
+          "description": "ARK research on SpaceX Starship and reusable rockets driving the space economy — Starship launch tonight. ARK analyst sees massive cost reduction making space economy viable. Chart included.",
+          "tweet_url": "https://x.com/ARKInvest/status/2080322295264940269",
+          "images": [
+            "https://pbs.twimg.com/media/HN6g8tSW0AAGUd_.jpg"
+          ],
+          "data_points": [
+            "Starship launch scheduled tonight",
+            "Reusable rockets driving space economy cost reduction"
+          ],
+          "created_at": "2026-07-23T16:01:00.000Z"
+        },
+        {
+          "author": "a16z",
+          "description": "SF rental market data via EliseAI: chart shows something remarkable about the San Francisco rental market — full analysis at a16z.news. Data-driven real estate market update.",
+          "tweet_url": "https://x.com/a16z/status/2080293096705929377",
+          "images": [
+            "https://pbs.twimg.com/media/HN6vjAKa0AA2i7r.jpg"
+          ],
+          "data_points": [
+            "SF rental market data (EliseAI)"
+          ],
+          "created_at": "2026-07-23T14:04:58.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "82% probability a new Claude Opus model is released by tomorrow night per Polymarket prediction markets.",
+          "tweet_url": "https://x.com/Polymarket/status/2080336135692173589",
+          "images": [],
+          "data_points": [
+            "82% Polymarket: new Claude Opus released by tomorrow night"
+          ],
+          "created_at": "2026-07-23T16:56:00.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Prediction Markets (Polymarket)",
+      "items": [
+        {
+          "author": "Polymarket",
+          "description": "US Trade Rep. Greer to announce Trump's tariff plans today as the 10% global baseline tariff nears expiration. Polymarket: 13% chance Trump creates a tariff dividend by end of year.",
+          "tweet_url": "https://x.com/Polymarket/status/2080331857489744274",
+          "images": [],
+          "data_points": [
+            "USTR Greer tariff announcement today",
+            "10% global baseline tariff nearing expiration",
+            "13% Polymarket: tariff dividend by Dec 31"
+          ],
+          "created_at": "2026-07-23T16:39:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "FDA projected to move BPC-157 to Category 1 as panel of advisers weighs looser restrictions on popular peptides. Polymarket: 59% probability.",
+          "tweet_url": "https://x.com/Polymarket/status/2080332492859396101",
+          "images": [],
+          "data_points": [
+            "59% Polymarket: FDA moves BPC-157 to Category 1"
+          ],
+          "created_at": "2026-07-23T16:41:31.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "88% chance Roku beats earnings (GAAP EPS report due July 30, 2026).",
+          "tweet_url": "https://x.com/Polymarket/status/2080338149386142093",
+          "images": [
+            "https://pbs.twimg.com/media/HN7XAD5WEAA-iyJ.png",
+            "https://pbs.twimg.com/media/HN7XDhKWsAAAtwY.png"
+          ],
+          "data_points": [
+            "88% Polymarket: Roku beats Q2 earnings",
+            "Roku GAAP EPS report: July 30 2026"
+          ],
+          "created_at": "2026-07-23T17:04:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "New polling: Joe Rogan is most favorable figure among Republicans under age 45 (NYT). Polymarket: 21% chance a Republican wins the 2028 presidential election.",
+          "tweet_url": "https://x.com/Polymarket/status/2080312128611733864",
+          "images": [],
+          "data_points": [
+            "21% Polymarket: Republican wins 2028 presidential election",
+            "Joe Rogan most favorable among young Republicans"
+          ],
+          "created_at": "2026-07-23T15:20:36.000Z"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/geopolitical/trump-will-hold-iran-accountable-future-houthi-shipping-attacks-rubio-says-us-not",
+      "description": "Trump/Iran: Rubio on Iran accountability for Houthi attacks"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-07-23/brent-crude-hits-100-a-barrel-on-red-sea-iran-supply-threats",
+      "description": "Bloomberg: Brent Crude hits $100 on Red Sea/Iran threats"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-07-23/german-bond-yields-hit-15-year-as-oil-prices-spike-before-ecb",
+      "description": "Bloomberg: German bond yields 15-year high before ECB"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/markets/surprise-july-rate-hike-would-upend-risk-sentiment",
+      "description": "Surprise July rate hike scenario analysis"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/markets/spacex-meltdown-vaporizes-1-trillion-market-cap-stock-bonds-crater",
+      "description": "SpaceX meltdown: $1T market cap vaporized"
+    },
+    {
+      "author": "themarketear",
+      "url": "https://www.zerohedge.com/the-market-ear/dominoes-are-starting-fall",
+      "description": "Technicals/CTA: Dominoes starting to fall"
+    },
+    {
+      "author": "themarketear",
+      "url": "https://www.zerohedge.com/the-market-ear/complacency-trap",
+      "description": "VIX 1st percentile: complacency trap"
+    },
+    {
+      "author": "themarketear",
+      "url": "https://www.zerohedge.com/the-market-ear/oil-time-bomb-how-play-it",
+      "description": "Oil/VIX disconnect: how to play it"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/precious-metals/gold-show-resilience-reserves-debt-burdens",
+      "description": "Gold resilience: reserves and debt burden thesis"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/markets/energy-department-issues-emergency-order-hot-weather-conditions-threaten-blackouts",
+      "description": "DOE Emergency Order: heat-driven blackout risk"
+    },
+    {
+      "author": "glassnode",
+      "url": "https://www.papermark.com/view/cmrxj09mb00dklc04a7o3j9tj",
+      "description": "Glassnode Strategy Watch #6: June fund flows"
+    },
+    {
+      "author": "a16z",
+      "url": "https://www.a16z.news/p/how-to-win-the-largest-market-in",
+      "description": "a16z: Etched — AI inference chip investment thesis"
+    },
+    {
+      "author": "a16z",
+      "url": "https://www.a16z.news/p/renting-is-stressful-millions-of",
+      "description": "a16z: SF rental market analysis with EliseAI data"
+    },
+    {
+      "author": "ARKInvest",
+      "url": "https://open.substack.com/pub/arkinvestmentmanagement/p/reusable-rockets-are-driving-the",
+      "description": "ARK: Reusable rockets driving the space economy"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/technology/how-profit-asymmetric-warfare-boom-pure-play-us-drone-motor-supply-chain",
+      "description": "Drone-motor supply chain: asymmetric warfare procurement"
+    }
+  ],
+  "coverage": {
+    "authors_covered": 22,
+    "authors_total": 22
+  }
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
