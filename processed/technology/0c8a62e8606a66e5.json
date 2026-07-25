@@ -1,0 +1,294 @@
+{
+  "record_id": "0c8a62e8606a66e5",
+  "source_type": "technology",
+  "source_name": "InfoQ",
+  "source_url": "https://www.infoq.com/news/2026/07/client-side-load-balancer/",
+  "title": "How Zalando Built an In-Process Client-Side Load Balancer for One Million Requests per Second",
+  "published_date": "2026-07-25",
+  "language": "en",
+  "processed_at": "2026-07-25T15:26:31Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "Tech"
+  ],
+  "gist": "Zalando moved routing for high fan-out internal traffic out of its shared Skipper edge proxy and into the calling process, cutting the Skipper fleet from 50+ pods to 8 and daily deployment cost from $450 to $110 while making latency attribution possible. The team reimplemented Skipper's exact consistent-hash algorithm (xxHash64, 100 virtual nodes) to avoid cache splits during migration, and its own senior engineer concludes almost no one else should copy the approach.",
+  "themes": [
+    {
+      "theme": "Why routing moved into the process",
+      "insights": [
+        {
+          "claim": "Zalando's Product Read API batch endpoint fans a single request into up to 100 parallel calls to individual product pods, each hop transiting the shared Skipper edge load balancer, so a batch's latency is set by the slowest of 100 hops through infrastructure the product team did not own.",
+          "speaker": "Renato Losio",
+          "type": "causal",
+          "entities": [
+            "Zalando",
+            "Product Read API",
+            "Skipper"
+          ],
+          "conviction": "high",
+          "so_what": "High fan-out request patterns multiply any shared-proxy tail latency by the fan-out factor — a structural argument for owning the routing path in read-heavy, latency-SLA services.",
+          "quote": "As a batch waited on the slowest of 100 hops through infrastructure the team didn't own, they could not separate Skipper latency spikes from their own.",
+          "locator": "Zalando's Product Read API is designed to serve millions",
+          "quote_verified": true
+        },
+        {
+          "claim": "Zalando's stated design rule is that routing decisions for high fan-out internal traffic belong inside the calling process while edge and single-GET traffic stays on the shared proxy — an explicit split rather than a proxy replacement.",
+          "speaker": "Conor Gallagher",
+          "type": "framework",
+          "entities": [
+            "Zalando",
+            "Skipper",
+            "Conor Gallagher"
+          ],
+          "conviction": "high",
+          "so_what": "A reusable partition for platform teams: keep the managed proxy at the edge, graduate only the fan-out hot path to in-process routing, so the migration is additive rather than a rip-and-replace.",
+          "quote": "We decided that for high fan-out internal traffic, the routing decision should live inside the calling process itself. Edge traffic, where Skipper excels, should stay exactly where it is.",
+          "locator": "Conor Gallagher, senior principal engineer at Zalando, explains",
+          "quote_verified": true
+        },
+        {
+          "claim": "The inability to attribute latency spikes between a shared edge proxy and the calling service — not raw throughput — was the trigger for Zalando to build its own load balancer.",
+          "speaker": "Renato Losio",
+          "type": "causal",
+          "entities": [
+            "Zalando",
+            "Skipper"
+          ],
+          "conviction": "medium",
+          "so_what": "Observability boundaries, not performance ceilings, are increasingly what forces infrastructure ownership decisions inside large engineering orgs.",
+          "quote": null,
+          "locator": "The engineering team at Zalando recently described",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Migration mechanics without cache splits",
+      "insights": [
+        {
+          "claim": "Zalando reimplemented Skipper's exact consistent-hash algorithm — xxHash64 with 100 virtual nodes per endpoint — so both the old proxy path and the new in-process path route identical keys to identical pods during migration, with unit tests pinning that behaviour.",
+          "speaker": "Renato Losio",
+          "type": "data_point",
+          "entities": [
+            "Zalando",
+            "Skipper",
+            "xxHash64"
+          ],
+          "conviction": "high",
+          "so_what": "Bit-identical hashing between old and new routing paths is the mechanism that lets a cache-dependent service migrate incrementally rather than in a big-bang cutover.",
+          "quote": "And because both Skipper and our library use the same hash function and the same number of virtual nodes, they produce identical rings for the same set of pods.",
+          "locator": "The team reimplemented Skipper's exact algorithm",
+          "quote_verified": true
+        },
+        {
+          "claim": "Consistent hashing limits the blast radius of endpoint churn: adding or removing an endpoint remaps only about 1/N of keys, which is what keeps pod-local caches warm as the fleet scales.",
+          "speaker": "Conor Gallagher",
+          "type": "framework",
+          "entities": [
+            "Zalando",
+            "Conor Gallagher"
+          ],
+          "conviction": "high",
+          "so_what": "Cache-churn math is the deciding constraint for any autoscaled, cache-backed service — it determines whether scaling out helps or hurts under load.",
+          "quote": "This means that adding or removing an endpoint remaps only about 1/N of keys, minimising cache churn.",
+          "locator": "Gallagher writes",
+          "quote_verified": true
+        },
+        {
+          "claim": "Zalando replaced control-plane-crashing polling with a watch-based Kubernetes informer and rebuilt a multi-hour deployment pipeline into fast, reversible deploys before ramping the new balancer from 1% to 100% behind feature toggles.",
+          "speaker": "Renato Losio",
+          "type": "data_point",
+          "entities": [
+            "Zalando",
+            "Kubernetes",
+            "Skipper"
+          ],
+          "conviction": "high",
+          "so_what": "Reversible deploys and percentage ramps are the prerequisite that makes replacing a load-balancing layer survivable at all; teams without them cannot attempt this migration.",
+          "quote": null,
+          "locator": "The team replaced control-plane-crashing polling",
+          "quote_verified": false
+        },
+        {
+          "claim": "To eliminate scale-up latency spikes, Zalando added an N-ring fade-in over 30 seconds on a ^2.5 curve so newly added pods warm only the products they will actually serve.",
+          "speaker": "Renato Losio",
+          "type": "data_point",
+          "entities": [
+            "Zalando"
+          ],
+          "conviction": "high",
+          "so_what": "Gradual traffic ramp shaped by a convex curve is a concrete, copyable pattern for any cache-backed service whose new instances start cold.",
+          "quote": null,
+          "locator": "To eliminate scale-up latency spikes",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Cost and fleet-size outcomes",
+      "insights": [
+        {
+          "claim": "Moving the internal fan-out path off the shared proxy shrank Zalando's Skipper fleet from more than 50 pods to 8 and cut deployment daily cost from $450 to $110.",
+          "speaker": "Renato Losio",
+          "type": "data_point",
+          "entities": [
+            "Zalando",
+            "Skipper"
+          ],
+          "conviction": "high",
+          "so_what": "A ~76% daily cost reduction on one path quantifies how much of a shared proxy fleet exists purely to absorb internal east-west fan-out traffic.",
+          "quote": null,
+          "locator": "The team replaced control-plane-crashing polling",
+          "quote_verified": false
+        },
+        {
+          "claim": "The Product Read API serves 25 markets for one of Europe's largest online fashion retailers at around one million requests per second with single-digit-millisecond latency targets, which is the scale that justified custom routing.",
+          "speaker": "Renato Losio",
+          "type": "data_point",
+          "entities": [
+            "Zalando",
+            "Product Read API"
+          ],
+          "conviction": "high",
+          "so_what": "Sets the volume threshold at which in-process load balancing pays back — below roughly this scale the engineering cost dominates the savings.",
+          "quote": null,
+          "locator": "Zalando's Product Read API is designed to serve millions",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Failure modes discovered in production",
+      "insights": [
+        {
+          "claim": "Zalando's attempt at availability-zone-aware routing, intended to cut inter-AZ network costs, fragmented its caches and triggered DynamoDB read explosions.",
+          "speaker": "Renato Losio",
+          "type": "causal",
+          "entities": [
+            "Zalando",
+            "DynamoDB"
+          ],
+          "conviction": "high",
+          "so_what": "AZ-affinity routing is a common cloud cost optimisation that can silently shift spend into the database tier — a cautionary datapoint for anyone modelling inter-AZ savings.",
+          "quote": "While Zalando’s attempt at AZ-aware routing was meant to cut inter-AZ costs, it fragmented caches and triggered DynamoDB read explosions.",
+          "locator": "While Zalando's attempt at AZ-aware routing",
+          "quote_verified": true
+        },
+        {
+          "claim": "Zalando hardened the in-process routing path with a single jittered retry, FIFO overload shedding, and richer logging that exposed brief node-level freezes the balancer now routes around automatically.",
+          "speaker": "Renato Losio",
+          "type": "data_point",
+          "entities": [
+            "Zalando"
+          ],
+          "conviction": "high",
+          "so_what": "Client-side routing surfaces node-level pathologies that a shared proxy hides, converting an unexplained tail into an automatically mitigated one.",
+          "quote": null,
+          "locator": "With the new approach, they hardened the path",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Build-versus-buy verdict and industry reaction",
+      "insights": [
+        {
+          "claim": "The Zalando engineer who led the work explicitly advises almost everyone not to build their own client-side load balancer, arguing a mature proxy such as Skipper or Envoy already ships consistent-hash routing hardened by thousands of users.",
+          "speaker": "Conor Gallagher",
+          "type": "contrarian",
+          "entities": [
+            "Zalando",
+            "Skipper",
+            "Envoy",
+            "Conor Gallagher"
+          ],
+          "conviction": "high",
+          "so_what": "The authoring team disclaiming general applicability is the strongest signal that this is an extreme-edge-case pattern, not an emerging default — discount vendor pitches that generalise it.",
+          "quote": "Should you build your own? For almost everyone, the answer is don't.",
+          "locator": "Highlighting that Zalando built its own client-side load balancer",
+          "quote_verified": true
+        },
+        {
+          "claim": "Amazon CTO Werner Vogels publicly praised the engineering while saying he dislikes client-side load balancing for a range of reasons, showing the pattern remains contested among senior cloud architects.",
+          "speaker": "Werner Vogels",
+          "type": "contrarian",
+          "entities": [
+            "Werner Vogels",
+            "Amazon",
+            "Zalando"
+          ],
+          "conviction": "medium",
+          "so_what": "Divergence between hyperscaler leadership and practitioner enthusiasm means client-side LB will stay a niche pattern rather than becoming a managed-service product line.",
+          "quote": "I am not a big fan of doing this client-side, for a whole slew of reasons, but this is impressive engineering by the Zalando team.",
+          "locator": "Werner Vogels, CTO of Amazon, writes",
+          "quote_verified": true
+        },
+        {
+          "claim": "An AWS principal engineer says client-side load balancing was a revelation when he moved from Amazon to Google and argues the approach deserves more prominence, indicating the practice is far more normalised inside Google than inside AWS.",
+          "speaker": "Alexey Kuznetsov",
+          "type": "anecdote",
+          "entities": [
+            "Alexey Kuznetsov",
+            "AWS",
+            "Amazon",
+            "Google"
+          ],
+          "conviction": "medium",
+          "so_what": "Divergent internal norms at the two largest cloud providers hint at where managed client-side routing primitives might appear first.",
+          "quote": "Client side load balancing was kind of a revelation for me when I moved from Amazon to Google.",
+          "locator": "Alexey Kuznetsov, principal engineer at AWS, comments",
+          "quote_verified": true
+        },
+        {
+          "claim": "A Hacker News commenter argued Zalando should have contributed improvements upstream instead of treating Skipper as a third-party dependency, since Skipper is built and operated by Zalando's own colleagues.",
+          "speaker": "Renato Losio",
+          "type": "contrarian",
+          "entities": [
+            "Zalando",
+            "Skipper",
+            "Hacker News"
+          ],
+          "conviction": "medium",
+          "so_what": "Internal platform teams being treated as external vendors by their own product teams is a recurring organisational failure mode that shows up as duplicated infrastructure spend.",
+          "quote": "it felt weird that they treated Skipper as a third-party dependency, even though it is developed and operated by their colleagues.",
+          "locator": "On Hacker News, a user questions the choice",
+          "quote_verified": true
+        },
+        {
+          "claim": "Skipper remains open source on GitHub but Zalando's new client-side load balancer is unpublished and internal only, so the pattern cannot be adopted directly by outsiders.",
+          "speaker": "Renato Losio",
+          "type": "data_point",
+          "entities": [
+            "Zalando",
+            "Skipper",
+            "GitHub"
+          ],
+          "conviction": "high",
+          "so_what": "No reusable artifact means the ecosystem gets the design lessons but not the code — the competitive advantage stays with Zalando.",
+          "quote": null,
+          "locator": "While Skipper is open source and available on GitHub",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 16,
+  "top_entities": [
+    "Zalando",
+    "Skipper",
+    "Conor Gallagher",
+    "Product Read API",
+    "Kubernetes",
+    "Werner Vogels",
+    "Envoy",
+    "DynamoDB",
+    "xxHash64",
+    "AWS",
+    "Alexey Kuznetsov"
+  ],
+  "source_meta": {
+    "author": "Renato Losio",
+    "word_count": 1233,
+    "paywalled": false
+  }
+}
