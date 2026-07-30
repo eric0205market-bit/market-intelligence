@@ -1,0 +1,397 @@
+{
+  "record_id": "2e7cc2c11b64d436",
+  "source_type": "technology",
+  "source_name": "Together AI Blog",
+  "source_url": "https://www.together.ai/blog/configuring-dedicated-model-inference",
+  "title": "Configuring Dedicated Model Inference",
+  "published_date": "2026-07-29",
+  "language": "en",
+  "processed_at": "2026-07-30T10:48:54Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "Tech",
+    "AI"
+  ],
+  "gist": "Together AI documents the control-plane architecture of its Dedicated Model Inference product — immutable configs, disposable deployments, and stable endpoints tied together by a capacity-aware traffic split where routing weight is per ready replica — and backs it with measured data: a 599-request-per-phase live routing test (47.6/52.4 then 69.4/30.6 shares) and a concurrency sweep showing one certified profile scaling to 1,464 tok/s at c16 while another collapses from 495 to 240 tok/s past c≈4. The commercial subtext is that dedicated GPU capacity is being sold with Kubernetes-style deploy/rollout/A-B primitives, with NVIDIA B200 + FP4 already the certified default for a frontier open model.",
+  "themes": [
+    {
+      "theme": "Dedicated inference control plane",
+      "insights": [
+        {
+          "claim": "Together AI has factored its dedicated GPU inference product into three primitives — endpoints (stable client-facing names), deployments (model + hardware replicas), and immutable configs — joined by a capacity-aware traffic split, giving enterprise buyers Kubernetes-style deploy/rollback semantics rather than a raw GPU rental.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "thesis",
+          "entities": [
+            "Together AI",
+            "Dedicated Model Inference",
+            "GPU inference"
+          ],
+          "conviction": "high",
+          "so_what": "Neocloud/inference vendors are competing on control-plane sophistication, not just $/GPU-hour; this is the feature surface that lets Together sell to platform teams who would otherwise self-host on Kubernetes or buy Bedrock/SageMaker-style managed inference.",
+          "quote": null,
+          "locator": "SummaryDedicated Model Inference on the Together AI platform",
+          "quote_verified": false
+        },
+        {
+          "claim": "The platform collapses rollouts, A/B tests, shadow experiments and shutdowns into a single operation — adding a deployment and assigning it a routing weight — with a shadow test being a weight-zero deployment receiving mirrored traffic and a stop being min/max replicas set to 0/0.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "framework",
+          "entities": [
+            "Together AI",
+            "A/B testing",
+            "shadow deployment",
+            "canary rollout"
+          ],
+          "conviction": "high",
+          "so_what": "A small orthogonal primitive set means feature velocity is cheap for the vendor and migration cost is low for the customer — a durable product-engineering advantage over bespoke per-feature inference tooling.",
+          "quote": "A shadow experiment is a deployment at weight zero receiving mirrored traffic.",
+          "locator": "Every advanced operation in the platform",
+          "quote_verified": true
+        },
+        {
+          "claim": "Configs are immutable revisions (cr_ IDs) so a deployment's behavior cannot drift from a shared flag change, and every superseded revision remains a tested rollback target.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "causal",
+          "entities": [
+            "Together AI",
+            "config revisions"
+          ],
+          "conviction": "high",
+          "so_what": "Immutability plus certified rollback is an enterprise-procurement checkbox (reproducibility, change control) that hobbyist-grade inference APIs cannot claim.",
+          "quote": "Configs are immutable because cr_ revisions never change",
+          "locator": "Configs are immutable because cr_ revisions",
+          "quote_verified": true
+        },
+        {
+          "claim": "The endpoint's qualified name is passed as the ordinary `model` string in the standard inference API and stays constant through rollouts, hardware swaps and A/B tests.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "thesis",
+          "entities": [
+            "Together AI",
+            "inference API",
+            "endpoints"
+          ],
+          "conviction": "high",
+          "so_what": "This indirection lets Together migrate customers onto newer GPU generations with zero application changes — a quiet lever for refreshing fleet economics and for retaining accounts once client code hardcodes the endpoint name.",
+          "quote": null,
+          "locator": "4. What is the name my clients use?",
+          "quote_verified": false
+        },
+        {
+          "claim": "Deployments are explicitly designed as disposable resources where creation and destruction is routine, which is the operational precondition for treating GPU capacity as elastic rather than as a fixed annual reservation.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "framework",
+          "entities": [
+            "Together AI",
+            "autoscaling",
+            "GPU capacity"
+          ],
+          "conviction": "medium",
+          "so_what": "Watch whether dedicated-capacity revenue shifts toward shorter, more elastic commitments — good for customer TCO, harder for the vendor's utilization planning.",
+          "quote": null,
+          "locator": "A deployment binds one model",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Capacity-aware routing mechanics",
+      "insights": [
+        {
+          "claim": "Routing capacity is computed as weight multiplied by ready replicas, so equal weights produce equal per-replica load rather than equal traffic share — a deployment with 1 replica and one with 3 at equal weight split traffic 25/75.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "framework",
+          "entities": [
+            "Together AI",
+            "traffic split",
+            "autoscaling"
+          ],
+          "conviction": "high",
+          "so_what": "Capacity-relative routing makes autoscaling and traffic shaping one control instead of two, which is the difference between GPU fleets that stay near full utilization and ones that idle behind fixed percentages.",
+          "quote": "Equal weights mean equal per-replica load, not equal traffic share.",
+          "locator": "Weight based traffic split",
+          "quote_verified": true
+        },
+        {
+          "claim": "Naive fixed-percentage routing is explicitly rejected because a deployment pinned at 25% would saturate when scaled down and sit idle when scaled up.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "contrarian",
+          "entities": [
+            "Together AI",
+            "traffic routing",
+            "autoscaling"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete critique of how most naive load balancers in front of LLM fleets behave; utilization is where inference gross margin lives.",
+          "quote": null,
+          "locator": "Autoscaling composes for free",
+          "quote_verified": false
+        },
+        {
+          "claim": "Replicas that are not ready — mid-cold-start or degraded to zero — contribute zero capacity, so traffic automatically drains to healthy deployments and returns proportionally as replicas recover.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "causal",
+          "entities": [
+            "Together AI",
+            "cold start",
+            "reliability"
+          ],
+          "conviction": "high",
+          "so_what": "Cold-start-aware routing is the practical answer to the availability objection against scale-to-zero dedicated inference.",
+          "quote": null,
+          "locator": "Replicas that aren",
+          "quote_verified": false
+        },
+        {
+          "claim": "A live test on two single-H100 deployments with 599 tagged requests per phase measured 47.6/52.4 traffic share at 1:1 replicas and 69.4/30.6 after scaling one side to 2 replicas, versus theoretical 50/50 and 66.7/33.3.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "data_point",
+          "entities": [
+            "Together AI",
+            "NVIDIA H100",
+            "traffic split"
+          ],
+          "conviction": "high",
+          "so_what": "Published measured-versus-expected routing error is rare in vendor docs and is the kind of evidence buyers can use to hold inference providers to SLA claims.",
+          "quote": null,
+          "locator": "Experiment showing capacity-aware routing",
+          "quote_verified": false
+        },
+        {
+          "claim": "Load balancing operates below the deployment level too: within the two-replica deployment the individual pods carried 39.6% and 29.9% of total traffic rather than an exact split.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "data_point",
+          "entities": [
+            "Together AI",
+            "load balancing"
+          ],
+          "conviction": "medium",
+          "so_what": "Roughly 10-point pod-level imbalance means per-replica capacity planning needs headroom; nominal replica counts overstate usable throughput.",
+          "quote": null,
+          "locator": "Within deployment A, its two pods",
+          "quote_verified": false
+        },
+        {
+          "claim": "Three separate percentage systems compose in a fixed order — capacity-relative weight split first, then A/B cohort percents that sum to 100 regardless of replica count, then a rollout's canary step percentage, then cluster selection inside the winning deployment.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "framework",
+          "entities": [
+            "Together AI",
+            "A/B testing",
+            "canary rollout"
+          ],
+          "conviction": "high",
+          "so_what": "Layered routing semantics are the hard part rivals must replicate; it is also the surface where misconfiguration silently skews experiment results.",
+          "quote": null,
+          "locator": "3. Traffic splits vs. A/B member percents",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Hardware and serving economics",
+      "insights": [
+        {
+          "claim": "The certified deployment profile shown for the zai-org GLM-5.2 model runs on 4x NVIDIA B200 with FP4 quantization and TP4 parallelism, indicating Blackwell plus 4-bit as the default serving point for a current frontier open-weights model on Together's platform.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "data_point",
+          "entities": [
+            "NVIDIA B200",
+            "GLM-5.2",
+            "zai-org",
+            "FP4",
+            "tensor parallelism"
+          ],
+          "conviction": "high",
+          "so_what": "Evidence that B200 supply has reached production certification at an independent inference provider and that FP4 is now a shipped default — bullish for Blackwell-cycle demand and for the tokens-per-GPU-hour cost curve falling.",
+          "quote": null,
+          "locator": "Under the hood: choosing a config",
+          "quote_verified": false
+        },
+        {
+          "claim": "The config selector surface exposes accelerator_type across H100, H200 and B200 as an explicit tradeoff of cost versus memory bandwidth versus availability, and accelerator_count of 1/2/4/8 as a model-plus-KV-cache-headroom fit decision.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "framework",
+          "entities": [
+            "NVIDIA H100",
+            "NVIDIA H200",
+            "NVIDIA B200",
+            "KV cache"
+          ],
+          "conviction": "high",
+          "so_what": "Availability is named alongside cost as a first-class GPU selection axis — confirmation that accelerator supply, not just price, still constrains inference capacity planning in mid-2026.",
+          "quote": null,
+          "locator": "the selectors tell you what each recipe optimizes",
+          "quote_verified": false
+        },
+        {
+          "claim": "The core serving tradeoff is framed as latency profiles (small batches, eager scheduling, better time-to-first-token, lower tokens/sec per GPU) versus throughput profiles (larger batches, maximum tokens per GPU-hour, longer individual waits), with interactive chat pointed at latency and offline/batch pipelines at throughput.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "framework",
+          "entities": [
+            "Together AI",
+            "time-to-first-token",
+            "batching"
+          ],
+          "conviction": "high",
+          "so_what": "Unit economics of an AI application are set by which side of this frontier its workload sits on; batch-heavy products can be structurally far cheaper per token than chat products on identical hardware.",
+          "quote": null,
+          "locator": "The optimization axis is the one",
+          "quote_verified": false
+        },
+        {
+          "claim": "Speculative decoding is exposed as a config property because the draft model is part of the config, making it a per-revision toggle rather than a platform-wide setting.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "data_point",
+          "entities": [
+            "speculative decoding",
+            "Together AI",
+            "draft model"
+          ],
+          "conviction": "medium",
+          "so_what": "Speculative decoding is now productized plumbing rather than research; expect it to be assumed in competitive tokens/sec claims.",
+          "quote": null,
+          "locator": "Speculative decoding can be triggered from here",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Benchmark evidence against headline numbers",
+      "insights": [
+        {
+          "claim": "A 60-second closed-loop sweep at concurrency 4/8/16 with 200-token generations showed the Qwen3.5-9B BF16 TP1 profile scaling 362 to 789 to 1,464 tok/s while the Qwen3-VL-8B BF16 TP1 profile went 495 to 243 to 240 tok/s — faster at low concurrency, then collapsing.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "data_point",
+          "entities": [
+            "Qwen3.5-9B",
+            "Qwen3-VL-8B",
+            "BF16",
+            "throughput benchmarking"
+          ],
+          "conviction": "high",
+          "so_what": "Single-point throughput numbers in vendor marketing are close to meaningless; the same hardware can quadruple or halve aggregate throughput depending only on concurrency.",
+          "quote": null,
+          "locator": "To make the profile tradeoff concrete",
+          "quote_verified": false
+        },
+        {
+          "claim": "The better-scaling profile absorbed 4x throughput from concurrency 4 to 16 while its p95 time-to-first-token rose only about 17% to 368 ms, whereas the profile that saturated past concurrency ~4 began stalling a few requests per minute outright.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "data_point",
+          "entities": [
+            "Qwen3.5-9B",
+            "Qwen3-VL-8B",
+            "TTFT",
+            "p95 latency"
+          ],
+          "conviction": "high",
+          "so_what": "Latency headroom under load, not peak tok/s, is the variable that determines whether an inference deployment survives traffic growth — the metric to demand from any provider bake-off.",
+          "quote": null,
+          "locator": "This table is the whole argument for measuring",
+          "quote_verified": false
+        },
+        {
+          "claim": "Testing only at low concurrency actively inverts the correct choice: the profile that wins at concurrency 4 is the one that fails in a high-concurrency production workload.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "contrarian",
+          "entities": [
+            "load testing",
+            "Together AI",
+            "inference benchmarking"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete falsification of how most teams and most published LLM benchmarks are run; treat single-concurrency comparisons between inference vendors as unreliable.",
+          "quote": "This table is the whole argument for measuring",
+          "locator": "This table is the whole argument for measuring",
+          "quote_verified": true
+        },
+        {
+          "claim": "The authors decline to declare a best profile, arguing each is a different point on the serving frontier and that every model has its own curves that must be swept in about an hour of testing.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "thesis",
+          "entities": [
+            "Together AI",
+            "serving frontier",
+            "benchmarking"
+          ],
+          "conviction": "high",
+          "so_what": "If per-model, per-workload sweeps are mandatory, then serving-configuration expertise — not raw GPU access — is the defensible layer in inference, and captive-benchmark marketing loses credibility.",
+          "quote": null,
+          "locator": "Neither profile is",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Product maturity and adoption friction",
+      "insights": [
+        {
+          "claim": "Every command in the documented workflow sits behind a `tg beta` namespace, indicating the dedicated inference control plane is still a beta surface as of this post.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "data_point",
+          "entities": [
+            "Together AI",
+            "CLI",
+            "Dedicated Model Inference"
+          ],
+          "conviction": "medium",
+          "so_what": "Beta-stage APIs mean enterprise GA revenue from this product is likely still ahead, and interface churn is a near-term customer risk.",
+          "quote": null,
+          "locator": "Try it yourself!",
+          "quote_verified": false
+        },
+        {
+          "claim": "A newly created and READY deployment silently returns routing_error until it is added to the endpoint's traffic split, a footgun the CLI hides but that the raw API and SDK path exposes.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "anecdote",
+          "entities": [
+            "Together AI",
+            "SDK",
+            "CLI",
+            "routing_error"
+          ],
+          "conviction": "high",
+          "so_what": "The programmatic path is measurably rougher than the quickstart, which is where platform-team evaluations actually happen — a real onboarding-friction drag on adoption.",
+          "quote": null,
+          "locator": "A brand-new deployment will not get any traffic",
+          "quote_verified": false
+        },
+        {
+          "claim": "Teardown is enforced as drain traffic, then stop, then delete, with the API pushing users toward that order rather than allowing deletion of a deployment still in the traffic split.",
+          "speaker": "Mitali Meratwal, Zain Hasan",
+          "type": "framework",
+          "entities": [
+            "Together AI",
+            "deployment lifecycle"
+          ],
+          "conviction": "medium",
+          "so_what": "Guardrails against self-inflicted outages are a maturity signal for a platform courting production workloads.",
+          "quote": null,
+          "locator": "2. Can I delete a deployment",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 22,
+  "top_entities": [
+    "Together AI",
+    "B200",
+    "H100",
+    "H200",
+    "GLM-5.2",
+    "Qwen3.5-9B",
+    "Qwen3-VL-8B",
+    "FP4",
+    "BF16",
+    "Speculative decoding",
+    "KV-cache",
+    "Dedicated Model Inference"
+  ],
+  "source_meta": {
+    "author": "Mitali Meratwal, Zain Hasan",
+    "word_count": 1659,
+    "paywalled": false
+  }
+}
