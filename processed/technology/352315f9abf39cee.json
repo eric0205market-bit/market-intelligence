@@ -1,0 +1,610 @@
+{
+  "record_id": "352315f9abf39cee",
+  "source_type": "technology",
+  "source_name": "InfoQ",
+  "source_url": "https://www.infoq.com/articles/virtual-threads-after-jdk24/",
+  "title": "Virtual Threads After JDK 24: What Changed for Production Java",
+  "published_date": "2026-07-31",
+  "language": "en",
+  "processed_at": "2026-07-31T14:11:01Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "Tech"
+  ],
+  "gist": "JDK 24's JEP 491 removed the monitor-pinning failure that made Java 21 virtual-thread rollouts risky, so the dominant production risk has shifted from carrier-thread starvation to downstream-resource exhaustion in connection pools, rate limits and file descriptors. Benchmarks on a c7i.2xlarge show virtual threads doubling throughput and cutting p99 latency 64%, while silently defeating ThreadLocal caching by a factor of 2,216x - making JDK 25 LTS plus Scoped Values plus explicit semaphores the new production pattern.",
+  "themes": [
+    {
+      "theme": "JEP 491 and the Residual Pinning Surface",
+      "insights": [
+        {
+          "claim": "JDK 21's dominant virtual-thread failure was carrier-thread exhaustion: a virtual thread entering a synchronized block could not unmount even when it then blocked on I/O, so enough concurrent synchronized entries left the fork-join scheduler with no available carriers and the system stalled.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "causal",
+          "entities": [
+            "JDK 21",
+            "virtual threads",
+            "synchronized",
+            "fork-join scheduler"
+          ],
+          "conviction": "high",
+          "so_what": "Any enterprise still on JDK 21 LTS carries a latent stall risk proportional to synchronized code in its dependency tree - a concrete driver of JDK 25 upgrade demand.",
+          "quote": null,
+          "locator": "The Risk Profile Shifted, It Did Not Disappear",
+          "quote_verified": false
+        },
+        {
+          "claim": "Netflix's JVM Ecosystem team documented this stall across multiple Spring Boot 3 services on Java 21 with embedded Tomcat, where instances stopped serving traffic while the JVM stayed alive, sockets accumulated in CLOSE_WAIT, and jstack showed an apparently idle JVM because virtual thread stacks are omitted from its output.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "anecdote",
+          "entities": [
+            "Netflix",
+            "Spring Boot 3",
+            "Tomcat",
+            "jstack",
+            "Java 21"
+          ],
+          "conviction": "high",
+          "so_what": "The failure mode is invisible to standard tooling, which is precisely why observability vendors and JFR-aware diagnostics gain relevance in Java concurrency migrations.",
+          "quote": null,
+          "locator": "Netflix's JVM Ecosystem team documented exactly this failure",
+          "quote_verified": false
+        },
+        {
+          "claim": "JEP 491 in JDK 24 rearchitected monitor ownership so virtual threads are identified by their own identity rather than their carrier's, letting them unmount inside synchronized blocks, enter Object.wait() and reacquire monitors without pinning, which removes the primary adoption blocker via a pure JDK upgrade.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "thesis",
+          "entities": [
+            "JEP 491",
+            "JDK 24",
+            "Object.wait()",
+            "monitors"
+          ],
+          "conviction": "high",
+          "so_what": "The fix requires no application rewrite, so upgrade friction for enterprises is unusually low - expect faster JDK 24/25 adoption than typical LTS transitions.",
+          "quote": null,
+          "locator": "JEP 491, Synchronize Virtual Threads without Pinning",
+          "quote_verified": false
+        },
+        {
+          "claim": "Residual pinning remains for native method frames (JNI/FFM), class loading and class initializers, and local file I/O on Linux, with native frames dangerous because the native code may hold raw stack pointers that make unmounting unsafe.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "data_point",
+          "entities": [
+            "JNI",
+            "FFM",
+            "Linux",
+            "class loading"
+          ],
+          "conviction": "high",
+          "so_what": "Services with cryptography providers or specialized I/O libraries still need pre-rollout verification, keeping a residual risk premium on JNI-heavy Java estates.",
+          "quote": null,
+          "locator": "The residual pinning cases that remain are narrower",
+          "quote_verified": false
+        },
+        {
+          "claim": "File I/O still pins carriers on Linux because no production-ready io_uring integration exists in the JDK, with kernel-version compatibility and container-runtime support cited on JDK mailing lists as the practical constraints, while out-of-tree Panama-based libraries such as JUring demonstrate roughly four times the read throughput.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "data_point",
+          "entities": [
+            "io_uring",
+            "JUring",
+            "Project Panama",
+            "Linux kernel"
+          ],
+          "conviction": "medium",
+          "so_what": "A 4x measured gap between in-JDK file I/O and io_uring binding marks an open opportunity for JVM runtime vendors and a differentiator for file-heavy Java workloads.",
+          "quote": null,
+          "locator": "File I/O is the more common surprise",
+          "quote_verified": false
+        },
+        {
+          "claim": "The -Djdk.tracePinnedThreads system property from JDK 21 was removed in JDK 24 and replaced by the JFR jdk.VirtualThreadPinned event, which in JDK 25 is enabled by default at a twenty millisecond threshold.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "data_point",
+          "entities": [
+            "JFR",
+            "jdk.VirtualThreadPinned",
+            "JDK 25"
+          ],
+          "conviction": "high",
+          "so_what": "Diagnostics moved from an ad hoc flag into always-on JFR, which pulls virtual-thread health into mainstream APM ingestion paths.",
+          "quote": null,
+          "locator": "To detect residual pinning, configure the JDK Flight Recorder",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "ThreadLocal's Silent Cache Collapse",
+      "insights": [
+        {
+          "claim": "ThreadLocal was designed in 1998 for long-lived pooled platform threads that live for hours or days, but virtual threads are short-lived and never reused across requests, so every new virtual thread gets a fresh ThreadLocalMap and the caching assumption underneath the pattern quietly ceases to hold.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "framework",
+          "entities": [
+            "ThreadLocal",
+            "ThreadLocalMap",
+            "virtual threads"
+          ],
+          "conviction": "high",
+          "so_what": "A 28-year-old API assumption breaks with no compiler error, meaning migration cost lands in code audit rather than in tooling - favouring static-analysis and APM vendors.",
+          "quote": null,
+          "locator": "The ThreadLocal class was designed in 1998",
+          "quote_verified": false
+        },
+        {
+          "claim": "In a controlled sixty-second run at five hundred concurrent users, a SimpleDateFormat ThreadLocal cache initialized 200 times under platform threads and 443,267 times under virtual threads for the identical workload, a 2,216x ratio that produces no exception and surfaces first as unexplained GC pressure.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "data_point",
+          "entities": [
+            "SimpleDateFormat",
+            "ThreadLocal",
+            "garbage collection"
+          ],
+          "conviction": "high",
+          "so_what": "This is the headline number for anyone underwriting virtual-thread migrations: silent 3-orders-of-magnitude allocation regressions that look like generic virtual-thread overhead.",
+          "quote": null,
+          "locator": "Caching That Silently Stops Caching",
+          "quote_verified": false
+        },
+        {
+          "claim": "The same pattern affects JSON serializers, reusable byte buffers, ObjectMapper instances, JDBC-adjacent objects and any library-level cache assuming a small stable population of long-lived threads, so the exposure lives in dependencies, not just first-party code.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "thesis",
+          "entities": [
+            "ObjectMapper",
+            "JSON serializers",
+            "JDBC"
+          ],
+          "conviction": "high",
+          "so_what": "Third-party library behaviour, not application code, is the long tail of virtual-thread migration risk - a driver for dependency-audit tooling.",
+          "quote": null,
+          "locator": "The same pattern appears in JSON serializers",
+          "quote_verified": false
+        },
+        {
+          "claim": "The fastest way to expose the cache-miss failure is to subclass ThreadLocal and increment a Micrometer counter inside initialValue(), turning an invisible allocation regression into a directly observable metric named threadlocal_initializations_total.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "framework",
+          "entities": [
+            "Micrometer",
+            "Prometheus",
+            "Spring Boot Actuator"
+          ],
+          "conviction": "high",
+          "so_what": "A cheap, reusable instrumentation pattern - and a template for the kind of custom metric that makes Micrometer/Prometheus stacks sticky in Java shops.",
+          "quote": null,
+          "locator": "The fastest way to make the cause obvious",
+          "quote_verified": false
+        },
+        {
+          "claim": "The second ThreadLocal failure is context loss: tracing context, security principals and request correlation IDs propagate into the request's virtual thread but read null in children forked via StructuredTaskScope.fork(), which is documented behaviour rather than a regression and fails specifically in production when tracing is most needed.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "causal",
+          "entities": [
+            "InheritableThreadLocal",
+            "StructuredTaskScope",
+            "distributed tracing"
+          ],
+          "conviction": "high",
+          "so_what": "Observability vendors relying on InheritableThreadLocal propagation face correctness gaps under virtual threads - a compatibility item worth checking in APM roadmaps.",
+          "quote": null,
+          "locator": "InheritableThreadLocal Context That Becomes Null in Forked Children",
+          "quote_verified": false
+        },
+        {
+          "claim": "JEP 444 itself warned that virtual threads support ThreadLocal only for backward compatibility and that it should not be used to pool costly resources, and the JDK team removed many internal uses of ThreadLocal from java.base for exactly this reason.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "data_point",
+          "entities": [
+            "JEP 444",
+            "java.base",
+            "ThreadLocal"
+          ],
+          "conviction": "high",
+          "so_what": "The JDK's own codebase already made the migration, which sets the expected direction for framework maintainers downstream.",
+          "quote": null,
+          "locator": "JEP 444, the JEP that introduced virtual threads, warns",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "The Bottleneck Moved Downstream",
+      "insights": [
+        {
+          "claim": "The central thesis is that the main production risk has shifted from carrier-thread starvation to downstream-resource exhaustion, because once virtual threads remove the servlet-thread ceiling, connection pools, rate limits, file descriptors and downstream services become the real concurrency boundaries.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "thesis",
+          "entities": [
+            "connection pools",
+            "rate limits",
+            "file descriptors",
+            "virtual threads"
+          ],
+          "conviction": "high",
+          "so_what": "Virtual-thread adoption redistributes load onto databases and third-party APIs, so it raises rather than lowers demand for downstream capacity and rate-limit management.",
+          "quote": null,
+          "locator": "The New Dominant Failure Mode: The Bottleneck Moved Downstream",
+          "quote_verified": false
+        },
+        {
+          "claim": "In the JDBC benchmark, virtual threads with a pool of fifty delivered 1,539 req/s versus 624 for platform threads with a pool of twenty (+147%) and cut p99 latency from 1,363 ms to 613 ms (-55%), yet both modes returned an essentially identical 37% error rate because both saturated HikariCP.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "data_point",
+          "entities": [
+            "HikariCP",
+            "JDBC",
+            "PostgreSQL"
+          ],
+          "conviction": "high",
+          "so_what": "The identical error rate is the load-bearing result: throughput gains from virtual threads do not translate into reliability gains unless downstream capacity moves too.",
+          "quote": null,
+          "locator": "The JDBC scenario in the companion benchmark",
+          "quote_verified": false
+        },
+        {
+          "claim": "On the ThreadLocal endpoint the headline result was 7,426 req/s versus 3,594 (+107%) and p99 latency of 53 ms versus 147 ms (-64%) with zero errors on both sides, because platform-mode throughput was constrained by the two hundred-thread Tomcat pool queueing work internally.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "data_point",
+          "entities": [
+            "Tomcat",
+            "WireMock",
+            "c7i.2xlarge",
+            "Temurin"
+          ],
+          "conviction": "high",
+          "so_what": "Roughly 2x throughput on I/O-bound endpoints for a one-line config change is a strong ROI case for Java modernization budgets - if the downstream can absorb it.",
+          "quote": null,
+          "locator": "The shape and magnitude of the headline effect",
+          "quote_verified": false
+        },
+        {
+          "claim": "Virtual mode allocates markedly faster and shows an aggressive heap sawtooth with a roughly 4.5 millisecond GC cluster where platform mode stays quiet, so a production rollout should expect higher GC activity proportional to allocation pressure even though GC does not become the new bottleneck.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "data_point",
+          "entities": [
+            "G1GC",
+            "heap",
+            "garbage collection"
+          ],
+          "conviction": "high",
+          "so_what": "Capacity planning for virtual threads must budget extra allocation headroom, which affects instance sizing and therefore cloud spend per service.",
+          "quote": null,
+          "locator": "The takeaway is double-edged",
+          "quote_verified": false
+        },
+        {
+          "claim": "The conceptual inversion is that pool-based concurrency expressed work isolation and resource bounding through the same mechanism, whereas virtual threads decouple them: work isolation becomes unbounded and resource bounding must become an explicit Semaphore at every shared resource, a pattern advocated by Oracle's Nicolai Parlog.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "framework",
+          "entities": [
+            "Semaphore",
+            "Oracle",
+            "Nicolai Parlog",
+            "thread pools"
+          ],
+          "conviction": "high",
+          "so_what": "This is the durable mental model - pool permits, not threads - and it implies application-level refactoring work that framework and platform vendors will race to absorb.",
+          "quote": null,
+          "locator": "The mitigation is the conceptual inversion",
+          "quote_verified": false
+        },
+        {
+          "claim": "Semaphores limit concurrency but do not provide backpressure semantics, so if a downstream resource requires the producer to slow when the consumer falls behind, a semaphore alone will only queue or reject.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "thesis",
+          "entities": [
+            "Semaphore",
+            "backpressure"
+          ],
+          "conviction": "high",
+          "so_what": "Draws the precise boundary where reactive stacks retain a technical moat that virtual threads cannot erode.",
+          "quote": null,
+          "locator": "Note that semaphores limit concurrency",
+          "quote_verified": false
+        },
+        {
+          "claim": "HikariCP has shipped no virtual-thread-specific fix as of mid-2026: the community PR replacing internal synchronized blocks with ReentrantLock was closed because the maintainer chose to wait for JEP 491 rather than maintain a parallel locking strategy, and post-JEP 491 the bottleneck is the connection ceiling, not the lock.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "data_point",
+          "entities": [
+            "HikariCP",
+            "ReentrantLock",
+            "JEP 491",
+            "Logback"
+          ],
+          "conviction": "high",
+          "so_what": "Ecosystem maintainers are deliberately deferring to the JDK rather than forking behaviour, which concentrates the value of the platform upgrade itself.",
+          "quote": null,
+          "locator": "Note also that HikariCP itself has no virtual-thread-specific fix",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Scoped Values, Structured Concurrency and API Maturity",
+      "insights": [
+        {
+          "claim": "Scoped Values, finalized in JDK 25 via JEP 506 after five preview rounds, are immutable within their binding scope, structurally bound to the block that created them and propagate automatically into StructuredTaskScope children, solving both ThreadLocal failure modes at once.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "thesis",
+          "entities": [
+            "JEP 506",
+            "ScopedValue",
+            "JDK 25",
+            "StructuredTaskScope"
+          ],
+          "conviction": "high",
+          "so_what": "Scoped Values are the stable target for tracing and security-context propagation, so instrumentation libraries that adopt them first gain a correctness edge on JDK 25.",
+          "quote": null,
+          "locator": "Scoped Values: Finalized in JDK 25, Worth Adopting Now",
+          "quote_verified": false
+        },
+        {
+          "claim": "Finalization introduced one breaking semantic change: ScopedValue.orElse(null) is no longer permitted, so preview-era code must switch to a non-null default or an isBound() check.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "data_point",
+          "entities": [
+            "ScopedValue",
+            "JDK 25"
+          ],
+          "conviction": "high",
+          "so_what": "A small but real migration tax on early adopters - the kind of detail that determines whether libraries ship JDK 25 support on time.",
+          "quote": null,
+          "locator": "One semantic change came with finalization",
+          "quote_verified": false
+        },
+        {
+          "claim": "Structured Concurrency remains a fifth preview via JEP 505 in JDK 25 and is not yet safe to expose in stable public APIs, with the most significant JDK 25 change - replacing public StructuredTaskScope constructors with the static StructuredTaskScope.open() factory - breaking code written against the JDK 24 preview.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "thesis",
+          "entities": [
+            "JEP 505",
+            "StructuredTaskScope",
+            "JDK 24",
+            "JDK 25"
+          ],
+          "conviction": "high",
+          "so_what": "Library vendors should not build public surface on Structured Concurrency yet; the API churn is a concrete reason enterprise adoption of fan-out patterns lags.",
+          "quote": null,
+          "locator": "Where Structured Concurrency Stands",
+          "quote_verified": false
+        },
+        {
+          "claim": "For caching patterns that genuinely require per-thread reuse, the correct fix is not Scoped Values but retaining a bounded fixed-size ExecutorService on platform threads for that work while keeping virtual threads for the I/O-bound portions of the request.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "framework",
+          "entities": [
+            "ExecutorService",
+            "platform threads",
+            "virtual threads"
+          ],
+          "conviction": "high",
+          "so_what": "Hybrid threading models, not wholesale replacement, are the realistic end state - relevant to how framework defaults will be designed.",
+          "quote": null,
+          "locator": "For caching patterns that genuinely need per-thread reuse",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "The WebFlux versus Spring MVC Decision Filter",
+      "insights": [
+        {
+          "claim": "Setting spring.threads.virtual.enabled=true in Spring Boot 3.2+ does nothing in a WebFlux application because WebFlux runs on Netty's event loop and the property applies to Tomcat and Jetty servlet containers only, which is expected behaviour rather than a bug despite teams concluding virtual threads were broken.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "causal",
+          "entities": [
+            "Spring WebFlux",
+            "Netty",
+            "Spring Boot",
+            "Tomcat",
+            "Jetty"
+          ],
+          "conviction": "high",
+          "so_what": "A widespread misconfiguration that inflates negative sentiment about virtual threads - worth discounting when reading practitioner surveys on adoption.",
+          "quote": null,
+          "locator": "The WebFlux Migration Decision",
+          "quote_verified": false
+        },
+        {
+          "claim": "spring.threads.virtual.enabled remains opt-in and false by default in both Spring Boot 3.5 and 4.0, so enabling virtual threads is still a deliberate decision rather than a quiet default.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "data_point",
+          "entities": [
+            "Spring Boot 3.5",
+            "Spring Boot 4.0"
+          ],
+          "conviction": "high",
+          "so_what": "Because it is opt-in, real-world virtual-thread penetration lags JDK version share - do not infer usage from JDK 25 install base.",
+          "quote": null,
+          "locator": "Note that spring.threads.virtual.enabled remains opt-in",
+          "quote_verified": false
+        },
+        {
+          "claim": "Services that adopted WebFlux purely to survive blocking I/O concurrency have the clearest case to migrate back to Spring MVC on virtual threads, since blocking JDBC, synchronous HTTP clients and standard JPA all scale acceptably on JDK 24+, with Mono<T> collapsing to T and flatMap chains becoming sequential calls.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "thesis",
+          "entities": [
+            "Spring MVC",
+            "Spring WebFlux",
+            "JDBC",
+            "JPA",
+            "Reactor"
+          ],
+          "conviction": "high",
+          "so_what": "A structural headwind for reactive frameworks and R2DBC in mainstream request-response workloads - relevant to Reactor/R2DBC ecosystem investment.",
+          "quote": null,
+          "locator": "Services that chose WebFlux primarily to avoid blocking I/O",
+          "quote_verified": false
+        },
+        {
+          "claim": "The author explicitly refuses the WebFlux-is-obsolete framing, noting the Reactor team has published no migration recommendation and that moving blocking services to MVC is an emerging community practice rather than an endorsed path.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "contrarian",
+          "entities": [
+            "Reactor",
+            "Spring WebFlux",
+            "Spring MVC"
+          ],
+          "conviction": "high",
+          "so_what": "Distinguishes practitioner drift from official direction - the migration wave is bottom-up, which makes its pace harder to forecast from vendor announcements.",
+          "quote": null,
+          "locator": "A Note on the Framing",
+          "quote_verified": false
+        },
+        {
+          "claim": "Server-sent events, WebSocket endpoints and streaming gateways with genuine backpressure needs should keep WebFlux, because Reactor's backpressure model expresses a fast-producer/slow-consumer relationship that blocking I/O cannot and virtual threads do not change.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "framework",
+          "entities": [
+            "server-sent events",
+            "WebSocket",
+            "Kafka",
+            "Reactor"
+          ],
+          "conviction": "high",
+          "so_what": "Reactive stacks retain a defensible niche in streaming and event-driven workloads even as request-response usage erodes.",
+          "quote": null,
+          "locator": "Where to Keep WebFlux",
+          "quote_verified": false
+        },
+        {
+          "claim": "Migrating away from R2DBC on the belief it outperforms JDBC is not supported by evidence, since performance varies by workload, pool configuration and driver, and the author found no public apples-to-apples benchmark settling the question for general request-response workloads.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "contrarian",
+          "entities": [
+            "R2DBC",
+            "JDBC"
+          ],
+          "conviction": "medium",
+          "so_what": "An open evidence gap in the Java data-access debate; whoever publishes a credible benchmark shapes a large migration decision.",
+          "quote": null,
+          "locator": "The database layer requires more thought",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Adoption Sequence and Production Observability",
+      "insights": [
+        {
+          "claim": "JDK 25 is the first LTS to contain both JEP 491's pinning fix and finalized Scoped Values, making it the natural 2026 target for production-conservative teams choosing between JDK 21 LTS and JDK 25 LTS.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "prediction",
+          "entities": [
+            "JDK 25",
+            "JDK 21",
+            "JEP 491",
+            "Scoped Values"
+          ],
+          "conviction": "high",
+          "so_what": "Expect a concentrated enterprise migration to JDK 25 LTS - a demand pulse for JVM vendors, support contracts and Java modernization services.",
+          "quote": null,
+          "locator": "Start on JDK 25 LTS",
+          "quote_verified": false
+        },
+        {
+          "claim": "The recommended rollout sequence is to start on JDK 25, verify the threading model with an isVirtual() health endpoint, audit ThreadLocal use in code and first-tier dependencies, add a Semaphore at each bounded resource, then run JFR pinning events under load before production.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "framework",
+          "entities": [
+            "JFR",
+            "Semaphore",
+            "ThreadLocal",
+            "JDK 25"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete five-step checklist that platform teams can operationalize - the kind of playbook that reduces perceived migration risk and accelerates adoption.",
+          "quote": null,
+          "locator": "A Practical Adoption Sequence",
+          "quote_verified": false
+        },
+        {
+          "claim": "The essential production observability recipe is jdk.VirtualThreadPinned paired with jdk.VirtualThreadSubmitFailed with alerts on either, jcmd Thread.dump_to_file -format=json for carrier-grouped virtual-thread-aware dumps, and a counter on ThreadLocal.initialValue().",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "framework",
+          "entities": [
+            "JFR",
+            "jcmd",
+            "IntelliJ",
+            "Grafana"
+          ],
+          "conviction": "high",
+          "so_what": "Three specific signals map one-to-one to the three failure modes; APM products lacking them will look incomplete for Java 25 estates.",
+          "quote": null,
+          "locator": "Observability Recipe for Virtual Threads in Production",
+          "quote_verified": false
+        },
+        {
+          "claim": "Virtual threads do not improve latency for CPU-bound work, add backpressure semantics, or make slow external services fast, and the scheduler overhead of creating thousands of virtual threads for CPU-bound tasks is pure cost with no corresponding gain.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "thesis",
+          "entities": [
+            "virtual threads",
+            "CPU-bound workloads",
+            "inference"
+          ],
+          "conviction": "high",
+          "so_what": "Services dominated by computation or inference get nothing from this migration - a clean scoping rule that limits the addressable surface of the upgrade story.",
+          "quote": null,
+          "locator": "What Virtual Threads Do Not Change",
+          "quote_verified": false
+        },
+        {
+          "claim": "All numbers derive from a public reproducible benchmark on an AWS EC2 c7i.2xlarge with Ubuntu 24.04, Temurin 25.0.3, Spring Boot 3.4, PostgreSQL 16, WireMock 3.9.1 with a 300 ms delay and JMeter 5.6.3, with identical JVM flags across profiles so only the threading model and pool ceiling differ.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "data_point",
+          "entities": [
+            "AWS EC2",
+            "Temurin",
+            "PostgreSQL",
+            "WireMock",
+            "JMeter"
+          ],
+          "conviction": "high",
+          "so_what": "Reproducibility raises the credibility weight of these figures relative to vendor benchmarks when evaluating the migration case.",
+          "quote": null,
+          "locator": "Methodology: Reproducing the Numbers",
+          "quote_verified": false
+        },
+        {
+          "claim": "The deeper claim is that the previous coupling of work isolation and resource bounding in a single thread pool was an artifact of OS-thread cost rather than a design choice, and the 2026 lift to decouple them is materially smaller than the lift JDK 21 required.",
+          "speaker": "Sandeep Bharadwaj",
+          "type": "thesis",
+          "entities": [
+            "thread pools",
+            "JDK 21",
+            "JDK 25"
+          ],
+          "conviction": "high",
+          "so_what": "Falling migration cost combined with a fixed benefit is what turns a slow-burn platform feature into a broad adoption wave.",
+          "quote": null,
+          "locator": "Conclusion: Where This Leaves Us",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 35,
+  "top_entities": [
+    "JDK 25",
+    "JDK 24",
+    "JDK 21",
+    "Spring Boot",
+    "Spring WebFlux",
+    "Spring MVC",
+    "HikariCP",
+    "Tomcat",
+    "Netflix",
+    "ThreadLocal",
+    "ScopedValue",
+    "PostgreSQL"
+  ],
+  "source_meta": {
+    "author": "Sandeep Bharadwaj",
+    "word_count": 6591,
+    "paywalled": false
+  }
+}
