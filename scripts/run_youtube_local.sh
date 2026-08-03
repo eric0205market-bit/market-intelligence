@@ -115,4 +115,19 @@ for i in 1 2 3; do
   fi
   log "Push attempt $i failed; retrying."
 done
+
+# --- GAP 2: alert on a silent push failure ---------------------------------
+# Collection + local commit can succeed while the push never lands — e.g. a
+# pull --rebase conflict against unpushed local commits: retried 3x, each
+# rebase aborted, then we fall through here. To the user that looks like a
+# no-op run (dashboard/GitHub still show the old origin/main). Detect ANY
+# unpushed-ahead state directly with rev-list rather than parsing push stderr,
+# so it catches every failure shape, not just the one seen before. WARNING,
+# not fatal: the commit is safe locally and self-heals on a later push.
+git fetch origin main --quiet 2>/dev/null || true
+AHEAD="$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)"
+if [ "${AHEAD:-0}" -gt 0 ]; then
+  log "[push-fail] collected+committed OK but push did NOT land — HEAD is ${AHEAD} commit(s) ahead of origin/main after 3 attempts; data safe locally, will self-heal on next successful push."
+  notify "Daily YouTube: collected OK but PUSH FAILED (3 retries) — data committed locally, not on GitHub. Check for unpushed/conflicting commits."
+fi
 log "=== done ==="
