@@ -1,0 +1,531 @@
+{
+  "record_id": "366929845c6abc0a",
+  "source_type": "technology",
+  "source_name": "NVIDIA Developer Blog",
+  "source_url": "https://developer.nvidia.com/blog/co-designing-ai-model-attention-for-fast-interactive-long-context-inference/",
+  "title": "Co-Designing AI Model Attention for Fast, Interactive Long-Context Inference | NVIDIA Technical Blog",
+  "published_date": "2026-07-31",
+  "language": "en",
+  "processed_at": "2026-08-03T12:15:30Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "Tech",
+    "AI"
+  ],
+  "gist": "NVIDIA engineers dissect how three attention design parameters — group size (query heads per KV head), head dimension, and sequence length — govern prefill (compute-bound) and decode (HBM-bound) performance, backed by GEMM-shape math and FP8 kernel measurements. They distill four co-design guidelines: push group size high for decode, use head dimension 128 or 256 to match GPU tiles and TMEM limits, shrink effective KV state via compression/sparse/hybrid architectures like Nemotron 3, and keep tensor parallelism at or below KV head count, falling back to ADP/KVP plus expert parallelism (Wide EP, Helix Parallelism in TensorRT-LLM).",
+  "themes": [
+    {
+      "theme": "Attention now dominates long-context inference cost",
+      "insights": [
+        {
+          "claim": "In DeepSeek-R1 prefill, attention's share of runtime rises from 18% at 4K context to 85% at 128K context, making attention the dominant cost of long-context inference.",
+          "speaker": "Nidhi Bhatia",
+          "type": "data_point",
+          "entities": [
+            "DeepSeek-R1",
+            "attention",
+            "prefill",
+            "long-context inference"
+          ],
+          "conviction": "high",
+          "so_what": "Long-context and agentic serving economics are set by attention, not by the FFN/MoE stack — watch which model vendors redesign attention rather than just buying more GPUs.",
+          "quote": "DeepSeek-R1 prefill time breakdown at 4K, 32K, and 128K context lengths, where the attention share rises from 18% to 85%",
+          "locator": "Figure 1",
+          "quote_verified": true
+        },
+        {
+          "claim": "NVIDIA argues that how attention is designed at the model-architecture level — not merely how the kernel is implemented — now determines inference performance, the premise of AI model co-design.",
+          "speaker": "Nidhi Bhatia",
+          "type": "thesis",
+          "entities": [
+            "NVIDIA",
+            "AI model co-design",
+            "attention",
+            "GPU"
+          ],
+          "conviction": "high",
+          "so_what": "Model architecture is becoming a hardware-utilization decision; labs that co-design with GPU tiling get more tokens per dollar on identical silicon.",
+          "quote": "Because attention now dominates that cost, how it is designed—not just how it is implemented—increasingly determines a model’s inference performance.",
+          "locator": "As agentic and long-context workloads become common",
+          "quote_verified": true
+        },
+        {
+          "claim": "The analysis behind the four attention co-design guidelines is grounded in two sources: analytical GEMM-shape arithmetic and measured prefill/decode kernel data using FP8 for both attention compute and the KV cache.",
+          "speaker": "Nidhi Bhatia",
+          "type": "data_point",
+          "entities": [
+            "FP8",
+            "KV cache",
+            "GEMM",
+            "prefill",
+            "decode"
+          ],
+          "conviction": "high",
+          "so_what": "FP8 KV cache is treated as the measurement baseline, not an experiment — signals FP8 attention is now the default assumption for NVIDIA inference stacks.",
+          "quote": "Every analysis is grounded in two sources: analytical formulas from GEMM-shape arithmetic, and measured data from prefill and decode kernels with FP8 for both attention compute and the KV cache.",
+          "locator": "Every analysis is grounded in two sources",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Prefill and decode are two different hardware problems",
+      "insights": [
+        {
+          "claim": "Prefill processes the whole prompt in parallel producing a large attention GEMM-M of ISL x G and is compute-bound, while decode generates one token at a time with GEMM-M = G and is bound by KV cache reads from HBM.",
+          "speaker": "Nidhi Bhatia",
+          "type": "framework",
+          "entities": [
+            "prefill",
+            "decode",
+            "GEMM",
+            "KV cache",
+            "HBM"
+          ],
+          "conviction": "high",
+          "so_what": "Any inference cost model must price prefill against FLOPs and decode against HBM bandwidth — the two phases respond to different hardware upgrades.",
+          "quote": "Prefill processes the full prompt in parallel, producing large GEMM-M (= ISL × 𝐺) matmuls that are compute-bound.",
+          "locator": "How are prefill and decode two different problems?",
+          "quote_verified": true
+        },
+        {
+          "claim": "Arithmetic intensity (total FLOPs divided by total bytes accessed) decides which roofline ceiling binds: prefill sits well above the ridge point and is compute-bound, decode sits below it and is memory-bound.",
+          "speaker": "Nidhi Bhatia",
+          "type": "framework",
+          "entities": [
+            "arithmetic intensity",
+            "roofline",
+            "prefill",
+            "decode"
+          ],
+          "conviction": "high",
+          "so_what": "The roofline position tells you whether a workload benefits from more FLOPs (new compute SKUs) or more bandwidth (HBM generation) — the split drives which chip generation matters for which customer.",
+          "quote": "Prefill lies well above it and is compute-bound, while decode lies below it and is memory-bound",
+          "locator": "How arithmetic intensity governs compute- versus memory-bound behavior",
+          "quote_verified": true
+        },
+        {
+          "claim": "Speculative decoding raises effective decode GEMM-M to (1+D) x G, where D is the number of draft tokens, and once large enough to fill compute tiles it moves decode from memory-bound toward compute-bound.",
+          "speaker": "Nidhi Bhatia",
+          "type": "causal",
+          "entities": [
+            "speculative decoding",
+            "decode",
+            "GEMM",
+            "draft tokens"
+          ],
+          "conviction": "high",
+          "so_what": "Speculative decoding is effectively a bandwidth-to-compute converter — it makes decode benefit from compute-rich GPUs that would otherwise sit idle.",
+          "quote": "Speculative decoding raises effective GEMM-M to (1+𝐷) × 𝐺, where 𝐷 is the number of draft tokens. Once large enough to fill compute tiles, decode moves toward compute-bound.",
+          "locator": "Note following Figure 4 discussion on group size",
+          "quote_verified": true
+        },
+        {
+          "claim": "With prefix caching, common in agentic and multiturn applications, a new turn can have a short input sequence but attend to a large prefix cache, in which case prefill behaves like decode and becomes memory-bound.",
+          "speaker": "Nidhi Bhatia",
+          "type": "framework",
+          "entities": [
+            "prefix caching",
+            "agentic workloads",
+            "prefill",
+            "decode"
+          ],
+          "conviction": "medium",
+          "so_what": "Agentic multiturn traffic quietly shifts serving load from compute-bound to bandwidth-bound, changing the optimal GPU mix for agent providers versus batch-inference providers.",
+          "quote": "With a short ISL but long prefix cache, prefill behaves like decode.",
+          "locator": "Note: With prefix caching, common in agentic and multiturn apps",
+          "quote_verified": true
+        },
+        {
+          "claim": "FlashAttention avoids materializing the full attention matrix by streaming Q, K and V tiles from HBM to on-chip SRAM and fusing two batched matmuls on Tensor Cores with an online softmax that runs on special-function units.",
+          "speaker": "Nidhi Bhatia",
+          "type": "framework",
+          "entities": [
+            "FlashAttention",
+            "Tensor Cores",
+            "HBM",
+            "SRAM",
+            "softmax"
+          ],
+          "conviction": "high",
+          "so_what": "The kernel splits work across two different on-chip units, so attention performance depends on Tensor Core and special-function-unit balance, not raw FLOPs alone.",
+          "quote": "It streams tiles of 𝑄, 𝐾, and 𝑉 from HBM to on-chip SRAM and fuses three steps into one pass",
+          "locator": "How does the FlashAttention kernel compute attention on GPU?",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Group size is the decode-efficiency lever",
+      "insights": [
+        {
+          "claim": "In decode the attention GEMM-M equals the group size G, typically only 8-16, far below a GPU tile-M of 64 or 128, so most of each tile's parallel capacity is wasted.",
+          "speaker": "Nidhi Bhatia",
+          "type": "data_point",
+          "entities": [
+            "group size",
+            "GEMM",
+            "GPU tile",
+            "decode"
+          ],
+          "conviction": "high",
+          "so_what": "Decode leaves GPU tiles structurally under-filled — the gap is why decode-heavy serving shows poor utilization metrics regardless of software quality.",
+          "quote": "For decode, GEMM-M = 𝐺, usually 8-16, far below a GPU tile-M of 64 or 128, limiting parallel work per tile.",
+          "locator": "GEMM shapes",
+          "quote_verified": true
+        },
+        {
+          "claim": "Doubling the group size (query heads per KV head) doubles decode arithmetic intensity, and raising it from 1 to 8 delivers an 8x gain by cutting memory traffic and improving GPU compute utilization.",
+          "speaker": "Nidhi Bhatia",
+          "type": "causal",
+          "entities": [
+            "group size",
+            "GQA",
+            "arithmetic intensity",
+            "decode"
+          ],
+          "conviction": "high",
+          "so_what": "Group size is a near-free architectural multiplier on decode throughput — a model with G=8 serves tokens far cheaper than an MHA equivalent on the same GPU.",
+          "quote": "Doubling 𝐺 doubles decode arithmetic intensity. Raising 𝐺 from 1 to 8 gives an 8x gain by reducing memory traffic and improving GPU compute utilization.",
+          "locator": "Decode (GEMM-M = G)",
+          "quote_verified": true
+        },
+        {
+          "claim": "Prefill runtime is essentially insensitive to group size: varying it from 1 (MHA) to 64 (MQA) changes prefill runtime by under 1%, and at 32K input length raising it from 8 to 16 improves prefill arithmetic intensity by under 6%.",
+          "speaker": "Nidhi Bhatia",
+          "type": "data_point",
+          "entities": [
+            "MHA",
+            "MQA",
+            "prefill",
+            "group size"
+          ],
+          "conviction": "high",
+          "so_what": "There is no prefill penalty for pushing group size high, so the design tradeoff is purely accuracy versus decode speed — expect models to converge on aggressive GQA/MQA.",
+          "quote": "varying 𝐺 from 1 (MHA) to 64 (MQA) changes prefill runtime by under 1%",
+          "locator": "Prefill (group size section)",
+          "quote_verified": true
+        },
+        {
+          "claim": "Measured decode runtime falls roughly 2x per doubling of group size because halving the number of KV heads halves the data loaded per token.",
+          "speaker": "Nidhi Bhatia",
+          "type": "data_point",
+          "entities": [
+            "decode",
+            "group size",
+            "KV heads"
+          ],
+          "conviction": "high",
+          "so_what": "The 2x-per-doubling rule is a quick way to estimate decode cost differences between announced model architectures.",
+          "quote": "Figure 4 shows decode runtime falls about 2x per doubling of 𝐺 because halving the KV heads halves the data loaded per token.",
+          "locator": "Figure 4 discussion",
+          "quote_verified": true
+        },
+        {
+          "claim": "The 2x-per-doubling decode gain from group size flattens beyond G=16 at 32K KV length because fixed setup/post-processing overhead and the flash-decoding reduction across SMs start to dominate, while a 128K kernel keeps tracking the trend.",
+          "speaker": "Nidhi Bhatia",
+          "type": "data_point",
+          "entities": [
+            "flash-decoding",
+            "SMs",
+            "group size",
+            "KVSL"
+          ],
+          "conviction": "high",
+          "so_what": "Group-size returns are context-length dependent — short-context serving hits diminishing returns much earlier than long-context serving.",
+          "quote": "Beyond 𝐺 = 16, the KVSL = 32K curve flattens.",
+          "locator": "Figure 4 discussion",
+          "quote_verified": true
+        },
+        {
+          "claim": "NVIDIA Nemotron 3 adopted GQA with only two KV heads specifically to make decode more efficient.",
+          "speaker": "Nidhi Bhatia",
+          "type": "data_point",
+          "entities": [
+            "NVIDIA Nemotron 3",
+            "GQA",
+            "KV heads",
+            "decode"
+          ],
+          "conviction": "high",
+          "so_what": "NVIDIA is shipping its own models built to its co-design rules — Nemotron is a reference implementation of what NVIDIA wants the industry to build.",
+          "quote": "Models such as NVIDIA Nemotron 3 adopted GQA with two KV heads, which makes decode more efficient.",
+          "locator": "Decode (GEMM-M = G)",
+          "quote_verified": true
+        },
+        {
+          "claim": "Guideline 1 of the co-design checklist is to choose group size for decode efficiency and push it high, since prefill runtime is flat in group size while decode arithmetic intensity is roughly 2 x G.",
+          "speaker": "Nidhi Bhatia",
+          "type": "framework",
+          "entities": [
+            "group size",
+            "decode",
+            "prefill",
+            "co-design checklist"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete architectural rule to score new model releases against: high group size implies cheaper token generation.",
+          "quote": "Guideline 1: Choose 𝐺 for decode efficiency and push it high.",
+          "locator": "Guideline 1",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Head dimension must align to GPU tiles, not to arithmetic intensity",
+      "insights": [
+        {
+          "claim": "Head dimension does not change attention arithmetic intensity at all, because doubling it doubles both FLOPs and bytes moved, leaving their ratio unchanged — yet measured runtime still rises with head dimension.",
+          "speaker": "Nidhi Bhatia",
+          "type": "causal",
+          "entities": [
+            "head dimension",
+            "arithmetic intensity",
+            "FLOPs"
+          ],
+          "conviction": "high",
+          "so_what": "Roofline reasoning alone misprices head dimension; the real cost comes from tile alignment, a hardware detail invisible in FLOP counts.",
+          "quote": "Doubling Hsz doubles both FLOPs (Equations 2 and 5) and bytes (Equations 3 and 6), leaving their ratio unchanged.",
+          "locator": "Head dimension",
+          "quote_verified": true
+        },
+        {
+          "claim": "Because a partially filled GPU tile costs as much as a full one, a head dimension of 64 still pays for a 128-wide tile, while 512 or more pushes close to the tensor memory (TMEM) capacity limit — leaving 128 and 256 as the only efficient choices.",
+          "speaker": "Nidhi Bhatia",
+          "type": "framework",
+          "entities": [
+            "head dimension",
+            "TMEM",
+            "GPU tile"
+          ],
+          "conviction": "high",
+          "so_what": "A hard, checkable spec: models with Hsz of 64 waste half a tile and models above 256 hit memory limits — screen architectures on this number.",
+          "quote": "A partially filled tile costs as much as a full tile, so Hsz = 64 pays for 128.",
+          "locator": "Matmul (head dimension section)",
+          "quote_verified": true
+        },
+        {
+          "claim": "GPUs move data in 128-byte units, so KV-cache memory access is most efficient when the head dimension is a multiple of 128, mirroring the matmul tile constraint.",
+          "speaker": "Nidhi Bhatia",
+          "type": "data_point",
+          "entities": [
+            "head dimension",
+            "KV cache",
+            "memory access"
+          ],
+          "conviction": "high",
+          "so_what": "Memory-side and compute-side alignment point to the same number, so 128-multiples are a non-negotiable design constraint on NVIDIA hardware.",
+          "quote": "Since the GPU moves data in 128-byte units, memory access, like matmul, is most efficient when Hsz is multiple of 128.",
+          "locator": "Memory (the KV state)",
+          "quote_verified": true
+        },
+        {
+          "claim": "Softmax cost is independent of head dimension because it operates on the attention-score matrix (query tokens x keys), so a wider head amortizes the fixed softmax work and makes prefill less softmax-bound.",
+          "speaker": "Nidhi Bhatia",
+          "type": "causal",
+          "entities": [
+            "softmax",
+            "head dimension",
+            "prefill"
+          ],
+          "conviction": "high",
+          "so_what": "Wider heads shift prefill time from special-function units to Tensor Cores — a lever for making prefill scale with the part of the GPU that is growing fastest.",
+          "quote": "Its cost is independent of Hsz because it operates on attention-score matrix (query tokens × keys), which has no head dimension.",
+          "locator": "Softmax is different",
+          "quote_verified": true
+        },
+        {
+          "claim": "Decode runtime scales with head dimension slightly sublinearly because setup, post-processing and flash-decoding reduction overheads do not scale with head dimension and weigh more heavily on shorter 32K KV-length kernels.",
+          "speaker": "Nidhi Bhatia",
+          "type": "data_point",
+          "entities": [
+            "decode",
+            "head dimension",
+            "flash-decoding",
+            "KVSL"
+          ],
+          "conviction": "medium",
+          "so_what": "Fixed per-kernel overheads distort short-context benchmarks — comparisons published at 32K understate the scaling laws that dominate at 128K.",
+          "quote": null,
+          "locator": "Decode is memory-bound (streaming the KV cache)",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Sequence-length cost is asymmetric between phases",
+      "insights": [
+        {
+          "claim": "Prefill performs ISL-squared work while its KV traffic grows only linearly with input length, so prefill arithmetic intensity rises linearly with context and doubling input length roughly quadruples prefill runtime.",
+          "speaker": "Nidhi Bhatia",
+          "type": "data_point",
+          "entities": [
+            "prefill",
+            "ISL",
+            "arithmetic intensity"
+          ],
+          "conviction": "high",
+          "so_what": "Prefill cost explodes quadratically with context, which is why long-context products price input tokens aggressively or rely on prefix caching.",
+          "quote": "Prefill performs ISL² work (every token attends to every token), while KV traffic grows only proportional to ISL",
+          "locator": "Prefill scales quadratically",
+          "quote_verified": true
+        },
+        {
+          "claim": "Decode scales only linearly with KV length and its arithmetic intensity stays near 2 x G regardless of context, so decode remains memory-bound at every sequence length.",
+          "speaker": "Nidhi Bhatia",
+          "type": "data_point",
+          "entities": [
+            "decode",
+            "KVSL",
+            "arithmetic intensity"
+          ],
+          "conviction": "high",
+          "so_what": "No context length will ever make decode compute-bound on its own — only group size or speculative decoding changes that, which is the structural case for HBM capacity and bandwidth.",
+          "quote": "Arithmetic intensity stays near 2 × 𝐺, well below the ridge point, so decode remains memory-bound at all lengths.",
+          "locator": "Decode scales linearly",
+          "quote_verified": true
+        },
+        {
+          "claim": "At short sequence lengths both phases scale below their ideal rates (under 4x for prefill, under 2x for decode) because fixed setup and post-processing overheads dominate until the sequence is long enough to amortize them.",
+          "speaker": "Nidhi Bhatia",
+          "type": "data_point",
+          "entities": [
+            "prefill",
+            "decode",
+            "sequence length"
+          ],
+          "conviction": "high",
+          "so_what": "Benchmarks run at short context flatter the hardware; true scaling behavior only shows up at long context, so demand comparisons should be length-matched.",
+          "quote": null,
+          "locator": "Figure 6 discussion",
+          "quote_verified": false
+        },
+        {
+          "claim": "Because prefill grows as ISL-squared while decode grows linearly with KV length, the recommended response is to cut effective KV state via KV-cache compression, sparse or sliding-window attention, or hybrid architectures like Nemotron 3 where only some layers carry the growing global KV state.",
+          "speaker": "Nidhi Bhatia",
+          "type": "thesis",
+          "entities": [
+            "KV cache compression",
+            "sparse attention",
+            "sliding-window attention",
+            "Nemotron 3",
+            "hybrid architectures"
+          ],
+          "conviction": "high",
+          "so_what": "Hybrid and sparse-attention architectures are being endorsed by the hardware vendor itself — a directional bet on where frontier model designs go next.",
+          "quote": "Reduce effective KV state through KV-cache compression, sparse or sliding-window attention, or hybrid model architectures (like Nemotron 3) where only some layers carry the growing global KV state.",
+          "locator": "Guideline 3",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "KV head count caps parallelism strategy",
+      "insights": [
+        {
+          "claim": "Tensor parallelism shards attention heads rather than tokens, so only the batch dimension shrinks per GPU while per-GPU GEMM shape and arithmetic intensity stay unchanged.",
+          "speaker": "Nidhi Bhatia",
+          "type": "framework",
+          "entities": [
+            "tensor parallelism",
+            "attention heads",
+            "GEMM",
+            "GPU"
+          ],
+          "conviction": "high",
+          "so_what": "Adding GPUs via TP does not improve per-GPU attention efficiency — it only distributes work, so scaling out does not fix a bad attention design.",
+          "quote": "It shards heads, not tokens.",
+          "locator": "Tensor parallelism splits attention heads across GPUs",
+          "quote_verified": true
+        },
+        {
+          "claim": "Once tensor parallelism exceeds the number of KV heads, a group's query heads span multiple ranks and each rank needs its own copy of the shared KV head, duplicating KV state and adding memory and bandwidth overhead with no benefit.",
+          "speaker": "Nidhi Bhatia",
+          "type": "causal",
+          "entities": [
+            "tensor parallelism",
+            "KV heads",
+            "KV cache",
+            "memory bandwidth"
+          ],
+          "conviction": "high",
+          "so_what": "TP <= KH is a hard scaling ceiling that limits how many GPUs a low-KV-head model can usefully spread attention across.",
+          "quote": "This duplicates KV state, adding memory and bandwidth overhead without benefit",
+          "locator": "TP has a practical limit",
+          "quote_verified": true
+        },
+        {
+          "claim": "Models with very few KV heads, such as Nemotron 3 with two, exhaust tensor parallelism quickly and must instead scale attention with Attention Data Parallelism (sharding requests) or KV Parallelism (sharding long-sequence KV caches), while the FFN scales separately with Expert Parallelism.",
+          "speaker": "Nidhi Bhatia",
+          "type": "thesis",
+          "entities": [
+            "Nemotron 3",
+            "Attention Data Parallelism",
+            "KV Parallelism",
+            "Expert Parallelism",
+            "FFN"
+          ],
+          "conviction": "high",
+          "so_what": "Aggressive GQA buys decode efficiency at the cost of forcing a more complex distributed-serving stack — a moat for whoever ships that stack.",
+          "quote": "Attention Data Parallelism (ADP) shards requests, while KV Parallelism (KVP) shards long-sequence KV caches across GPUs.",
+          "locator": "Models with few KV heads",
+          "quote_verified": true
+        },
+        {
+          "claim": "TensorRT-LLM packages these strategies as Wide EP (attention data parallelism plus expert parallelism for the FFN) and Helix Parallelism (KV parallelism plus expert parallelism), with KV head count determining efficient scaling in both.",
+          "speaker": "Nidhi Bhatia",
+          "type": "data_point",
+          "entities": [
+            "TensorRT-LLM",
+            "Wide EP",
+            "Helix Parallelism",
+            "KV heads",
+            "Expert Parallelism"
+          ],
+          "conviction": "high",
+          "so_what": "NVIDIA's software stack already encodes these parallelism modes, deepening the lock-in between model architecture choices and TensorRT-LLM.",
+          "quote": "TensorRT-LLM combines these as Wide EP (ADP for attention plus EP for the FFN), and Helix Parallelism (KVP for attention plus EP for the FFN). In both cases, KH determines efficient scaling.",
+          "locator": "TensorRT-LLM combines these as Wide EP",
+          "quote_verified": true
+        },
+        {
+          "claim": "The four-point co-design checklist — high group size, head dimension of 128 or 256, reduced effective KV state, and parallelism matched to KV head count — is presented as a way to raise inference speed, throughput and interactivity on the same hardware.",
+          "speaker": "Nidhi Bhatia",
+          "type": "framework",
+          "entities": [
+            "co-design checklist",
+            "group size",
+            "head dimension",
+            "KV state",
+            "throughput"
+          ],
+          "conviction": "high",
+          "so_what": "A compact rubric for evaluating whether a newly announced model will be cheap or expensive to serve before any benchmark exists.",
+          "quote": "These choices can improve GPU utilization, inference speed, throughput, and interactivity on the same hardware.",
+          "locator": "Get started co-designing AI model attention",
+          "quote_verified": true
+        }
+      ]
+    }
+  ],
+  "insight_total": 29,
+  "top_entities": [
+    "NVIDIA",
+    "TensorRT-LLM",
+    "NVIDIA Nemotron 3",
+    "DeepSeek-R1",
+    "FlashAttention",
+    "GQA",
+    "MQA",
+    "KV cache",
+    "HBM",
+    "Tensor Cores",
+    "FP8",
+    "Helix Parallelism"
+  ],
+  "source_meta": {
+    "author": "Nidhi Bhatia",
+    "word_count": 3147,
+    "paywalled": false
+  }
+}

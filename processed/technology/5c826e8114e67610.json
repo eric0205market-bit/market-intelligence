@@ -1,0 +1,370 @@
+{
+  "record_id": "5c826e8114e67610",
+  "source_type": "technology",
+  "source_name": "Together AI Blog",
+  "source_url": "https://www.together.ai/blog/autoscaling-endpoints-for-llm-inference",
+  "title": "Autoscaling endpoints for LLM inference",
+  "published_date": "2026-07-31",
+  "language": "en",
+  "processed_at": "2026-08-03T12:24:08Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "Tech",
+    "AI"
+  ],
+  "gist": "Together AI documents how to autoscale dedicated LLM inference on inference-native metrics, arguing in-flight request count is the only leading signal that actually sees saturation; a replayed-load experiment on a Qwen3.5-9B/H100 deployment shows ttft p95 and gpu_utilization policies never scaled while client p95 sat at 3-5 seconds. Cold starts of 86-145 seconds and the absence of scale-to-zero-with-automatic-wake make min_replicas headroom, not reactive scaling, the real defense against spikes.",
+  "themes": [
+    {
+      "theme": "Why classic autoscaling breaks on LLM serving",
+      "insights": [
+        {
+          "claim": "Dedicated LLM inference billed per replica-minute forces a choice between paying for GPUs idling at 15% utilization to cover peaks and letting p95 collapse the moment traffic exceeds what replicas can batch.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "framework",
+          "entities": [
+            "Together AI",
+            "Dedicated Model Inference",
+            "GPU",
+            "LLM inference"
+          ],
+          "conviction": "high",
+          "so_what": "Replica-minute pricing makes autoscaling policy a direct COGS line for anyone reselling inference.",
+          "quote": "Almost never viable, especially in the current GPU constrained environment.",
+          "locator": "Over- and under-provisioning are both expensive",
+          "quote_verified": true
+        },
+        {
+          "claim": "LLM serving degrades nonlinearly rather than gracefully: a replica at its concurrency limit begins queueing and time-to-first-token can jump from 200ms to 15s.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "causal",
+          "entities": [
+            "LLM inference",
+            "TTFT",
+            "concurrency"
+          ],
+          "conviction": "high",
+          "so_what": "Under-provisioning risk is cliff-shaped, not linear - headroom is worth more than the spreadsheet suggests.",
+          "quote": "a replica at its concurrency limit doesn't get \"a bit slower,\" it starts queueing, and TTFT can blow up from 200ms to 15s.",
+          "locator": "Under-provision - your p95 degrades sharply",
+          "quote_verified": true
+        },
+        {
+          "claim": "GPU utilization is a misleading load signal for inference because a GPU can read 60% utilized while the engine's request queue is already backing up - utilization measures arithmetic intensity, not pressure.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "contrarian",
+          "entities": [
+            "GPU",
+            "gpu_utilization",
+            "inference engine"
+          ],
+          "conviction": "high",
+          "so_what": "Fleet dashboards built on GPU utilization systematically understate saturation and hide real capacity needs.",
+          "quote": "A GPU can read 60% utilized while the engine's request queue is already backing up and utilization is measuring arithmetic intensity, not pressure.",
+          "locator": "CPU-style metrics lie about load",
+          "quote_verified": true
+        },
+        {
+          "claim": "Cold starts of several minutes - node placement, downloading tens of gigabytes of weights, VRAM load and warmup - mean a traffic spike cannot be answered after it arrives, so autoscalers must fire on leading signals.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "causal",
+          "entities": [
+            "cold start",
+            "GPU",
+            "model weights"
+          ],
+          "conviction": "high",
+          "so_what": "Reactive autoscaling cannot protect an inference SLO; capacity shape has to be pre-committed.",
+          "quote": "you can't scale your way out of a spike because by the time it arrives it’s already too late to scale up",
+          "locator": "Cold starts can take several minutes",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Proportional control loop and asymmetric windows",
+      "insights": [
+        {
+          "claim": "Together AI's inference autoscaler is a proportional control loop - desired replicas = ceil(N x observed/target) - damped by timing windows, clamped to replica bounds and then handed to GPU placement, with the traffic split following capacity automatically.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "framework",
+          "entities": [
+            "Together AI",
+            "autoscaling",
+            "GPU placement"
+          ],
+          "conviction": "high",
+          "so_what": "A proportional loop means metric and target choice, not the algorithm, determine behavior - that is where tuning leverage sits.",
+          "quote": null,
+          "locator": "How it works",
+          "quote_verified": false
+        },
+        {
+          "claim": "The recommended window asymmetry for inference autoscaling is eager scale-up and patient scale-down (default scale_down_window 5m), because a false scale-up costs a few replica-minutes while a false scale-down costs a cold start plus user-facing latency.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "framework",
+          "entities": [
+            "scale_up_window",
+            "scale_down_window",
+            "cold start"
+          ],
+          "conviction": "high",
+          "so_what": "The cost function is asymmetric, so symmetric default autoscaling configs are systematically wrong for LLM serving.",
+          "quote": "Up-window mistakes cost dollars while down-window mistakes cost latency and dollars",
+          "locator": "This asymmetric tradeoff of an eager up and patient down",
+          "quote_verified": true
+        },
+        {
+          "claim": "A sawtooth replica count is the diagnostic signature of a scale-down window shorter than the traffic's natural rhythm, and the fix is widening the down-window - trading a few replica-minutes to eliminate repeated cold starts.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "causal",
+          "entities": [
+            "scale_down_window",
+            "cold start",
+            "replica count"
+          ],
+          "conviction": "high",
+          "so_what": "Cheap operational tell: sawtooth replica graphs mean you are paying for cold starts twice over.",
+          "quote": "Bursty traffic + 1-minute down-window = scale down in every trough, cold start in every crest.",
+          "locator": "Why does my replica count look like a sawtooth?",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Metric catalog: leading, trailing and cost-first signals",
+      "insights": [
+        {
+          "claim": "Together AI exposes eight autoscaling metrics split into concurrency-driven (leading), SLO-driven (trailing) and efficiency-driven (cost-first) families, and when several are attached only the first in the list is actually used.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "data_point",
+          "entities": [
+            "Together AI",
+            "inflight_requests",
+            "ttft",
+            "e2e_latency",
+            "gpu_utilization",
+            "token_utilization",
+            "cache_hit_rate"
+          ],
+          "conviction": "high",
+          "so_what": "Multi-metric policies give a false sense of coverage - only the first metric governs behavior.",
+          "quote": null,
+          "locator": "Under the hood: metrics to autoscale on",
+          "quote_verified": false
+        },
+        {
+          "claim": "In-flight request count is the recommended default autoscaling signal because it rises before latency visibly degrades and maps onto how engines batch, with a target of about eight concurrent requests per replica - raised for short-prompt chat that batches well, lowered for long-context coding-agent traffic.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "framework",
+          "entities": [
+            "inflight_requests",
+            "coding agents",
+            "batching"
+          ],
+          "conviction": "high",
+          "so_what": "Target-8 is the anchor; workload prompt length is the variable that should move it.",
+          "quote": null,
+          "locator": "Concurrency-driven (inflight_requests) is a safe default",
+          "quote_verified": false
+        },
+        {
+          "claim": "Per-token autoscaling metrics - ttft, decoding_speed and throughput_per_replica - are only emitted on the streaming path, so deployments whose clients do not stream have no data behind those policies, with e2e_latency the exception.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "data_point",
+          "entities": [
+            "ttft",
+            "decoding_speed",
+            "throughput_per_replica",
+            "e2e_latency"
+          ],
+          "conviction": "high",
+          "so_what": "A non-streaming client base silently disables most latency-based autoscaling policies.",
+          "quote": null,
+          "locator": "per-token metrics need streaming traffic",
+          "quote_verified": false
+        },
+        {
+          "claim": "Latency SLO metrics are trailing indicators - by the time p95 TTFT breaches its threshold users have already noticed - so latency-based policies should be paired with honest headroom in min_replicas, while utilization targets near 100% leave no headroom for arrival bursts at all.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "causal",
+          "entities": [
+            "ttft",
+            "min_replicas",
+            "e2e_latency",
+            "gpu_utilization"
+          ],
+          "conviction": "high",
+          "so_what": "Scaling on an SLO metric guarantees you breach the SLO before you scale; buy headroom instead.",
+          "quote": null,
+          "locator": "SLO-driven metrics (ttft, e2e_latency)",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Cold-start budget and the absence of scale-to-zero",
+      "insights": [
+        {
+          "claim": "The platform offers no scale-to-zero with automatic wake - requests to a stopped deployment return an error rather than triggering a start - so idle shutdown has to be paired with explicit restart windows.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "data_point",
+          "entities": [
+            "Together AI",
+            "min_replicas",
+            "Dedicated Model Inference"
+          ],
+          "conviction": "high",
+          "so_what": "Serverless-style zero-idle economics are unavailable here; budget a floor replica for anything with real callers.",
+          "quote": "There is no scale-to-zero-with-automatic-wake.",
+          "locator": "Idle shutdown and cold starts",
+          "quote_verified": true
+        },
+        {
+          "claim": "Measured cold starts on warm 1xH100 clusters: 86s from create to replica READY for a base catalog Qwen3.5-9B, 145s for a custom fine-tune with fresh 18GB weights, a further 26-40s before the first token is served through routing, about 2.5 minutes for a 1-to-2 replica scale-up and 1-2 minutes to restart from STOPPED.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "data_point",
+          "entities": [
+            "H100",
+            "Qwen3.5-9B",
+            "cold start"
+          ],
+          "conviction": "high",
+          "so_what": "Concrete minutes-scale numbers for sizing headroom and judging whether auto-stop pays off at all.",
+          "quote": null,
+          "locator": "we present what we got across runs on 1×H100 replicas",
+          "quote_verified": false
+        },
+        {
+          "claim": "Auto-stop only pays off when idle gaps are long relative to restart time and the first user after idle tolerates an explicit start or an error-then-retry, restricting it to dev and staging; anything with a p95 SLO or unattended callers should keep min_replicas at 1.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "thesis",
+          "entities": [
+            "min_replicas",
+            "cold start",
+            "p95 latency"
+          ],
+          "conviction": "high",
+          "so_what": "Idle-shutdown savings are structurally unavailable to production inference workloads.",
+          "quote": null,
+          "locator": "Notice that these windows are measured in minutes",
+          "quote_verified": false
+        },
+        {
+          "claim": "When traffic can spike 10x in 90 seconds against a 4-minute cold start, the only defenses are min_replicas headroom or a higher-target policy holding slack capacity - a capacity-shape decision to settle before launch rather than a tuning knob.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "framework",
+          "entities": [
+            "min_replicas",
+            "cold start",
+            "capacity planning"
+          ],
+          "conviction": "high",
+          "so_what": "Spike-to-cold-start ratio is the single number that decides whether autoscaling can protect a service at all.",
+          "quote": "if your traffic can spike 10× in 90 seconds and your cold start is 4 minutes, the only defenses are min_replicas headroom or a higher-target policy that keeps slack capacity up",
+          "locator": "A spike arrives faster than a cold start",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Replayed-load experiment: only the queue signal fired",
+      "insights": [
+        {
+          "claim": "In a controlled replay on a Qwen3.5-9B deployment (1xH100 per replica, bounds 1-3, a sine wave between ~12 and ~48 RPS with two 80 RPS spikes), only the inflight_requests target-8 policy scaled - 1 to 2 to 3 replicas and 26 replica-minutes - while ttft p95 at 300ms and gpu_utilization at 75% never scaled and used 18 replica-minutes each.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "data_point",
+          "entities": [
+            "Qwen3.5-9B",
+            "H100",
+            "inflight_requests",
+            "ttft",
+            "gpu_utilization"
+          ],
+          "conviction": "high",
+          "so_what": "Same load, same hardware, three policies - metric choice alone decided whether capacity ever moved.",
+          "quote": null,
+          "locator": "Autoscaling the same load with various policies",
+          "quote_verified": false
+        },
+        {
+          "claim": "Engine-side TTFT stayed under a 300ms target while client-side p95 ran at 3-5 seconds, because continuous batching absorbs queue pressure into total latency rather than first-token latency - so a TTFT-based policy reads healthy on a saturated system.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "causal",
+          "entities": [
+            "TTFT",
+            "continuous batching",
+            "p95 latency"
+          ],
+          "conviction": "high",
+          "so_what": "TTFT SLOs are blind to the failure mode that actually hurts users on batched inference.",
+          "quote": "continuous batching by the engine absorbs queue pressure into total latency, not first-token latency",
+          "locator": "Only the concurrency signal fired",
+          "quote_verified": true
+        },
+        {
+          "claim": "Short, bursty requests kept the GPU below a 75% utilization bar throughout a saturating load, so the utilization policy never triggered - both the latency and utilization signals looked healthy while the system was saturated.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "causal",
+          "entities": [
+            "gpu_utilization",
+            "GPU",
+            "inflight_requests"
+          ],
+          "conviction": "high",
+          "so_what": "Utilization-based capacity planning under bursty agentic traffic will chronically under-provision.",
+          "quote": "Both policies were reading signals that looked healthy while the system was saturated.",
+          "locator": "gpu_utilization never scaled because short, bursty requests",
+          "quote_verified": true
+        },
+        {
+          "claim": "The scaling run completed 40.6k requests with 536 errors while the two non-scaling runs completed 46.4k and 46.5k requests with 6 and 2 errors respectively, even though the added capacity visibly lowered p95 mid-window.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "data_point",
+          "entities": [
+            "inflight_requests",
+            "ttft",
+            "gpu_utilization"
+          ],
+          "conviction": "medium",
+          "so_what": "Scaling events are not free - the run that added replicas also carried two orders of magnitude more errors.",
+          "quote": null,
+          "locator": "Policy table: Scaled? / Replica-minutes / Requests (errors)",
+          "quote_verified": false
+        },
+        {
+          "claim": "Knowing a single replica's saturation point is prerequisite to picking an autoscaling policy: one replica here served 12-48 RPS at 3-5s p95 without falling over, which is workable for batch-style use and a non-starter against a 500ms SLO.",
+          "speaker": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+          "type": "framework",
+          "entities": [
+            "Qwen3.5-9B",
+            "H100",
+            "p95 latency"
+          ],
+          "conviction": "high",
+          "so_what": "The per-replica saturation curve is the missing input in most inference capacity models.",
+          "quote": "Know your replica's saturation point before selecting a policy.",
+          "locator": "Three lessons from the above runs",
+          "quote_verified": true
+        }
+      ]
+    }
+  ],
+  "insight_total": 20,
+  "top_entities": [
+    "Together AI",
+    "Dedicated Model Inference",
+    "Qwen3.5-9B",
+    "H100",
+    "inflight_requests",
+    "ttft",
+    "gpu_utilization",
+    "token_utilization",
+    "GPU",
+    "LLM serving"
+  ],
+  "source_meta": {
+    "author": "Zain Hasan, SoYoung Park, Nikitha Suryadevara, Ted Cui",
+    "word_count": 2041,
+    "paywalled": false
+  }
+}
