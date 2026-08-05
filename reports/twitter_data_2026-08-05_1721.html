@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  report_type: "TWITTER DATA INTELLIGENCE",
+  collected_at: "2026-08-05T17:21:21Z",
+  date: "2026-08-05 17:21 UTC",
+  input_stats: {
+    total_tweets: 23,
+    unique_authors: 11,
+    tweets_with_images: 12,
+    after_filter: 20
+  },
+  summary: "20 items from 11 authors spanning equity market structure, macro lending, earnings, commodities, geopolitics, credit, and prediction markets. S&P 500 hit a new all-time high above 7,700 — its 25th ATH of 2026 and 121st since the start of 2024 — with breadth data showing only Industrials and Financials at records alongside it. Key earnings: $SHOP +25% pre-market on Q3 revenue guide of low-thirties % (vs consensus +27%); $SPCX full-year capex guidance of $65-67B dramatically beats Street estimate of $45B, with 2027 estimates revised +14% to $110B. Geopolitically, Iran-US-Oman reach a Hormuz route deal valid 2-4 months while US signals readiness to return to earlier pledges. Key numbers: S&P 7,700+; SHOP +25%; SPCX capex $65-67B; Hormuz deal 2-4 months; Super El Niño 87% probability.",
+  topics: [
+    {
+      topic: "Market Data — U.S. Equities",
+      items: [
+        {
+          author: "charliebilello",
+          description: "S&P 500 crossed above 7,700 for the first time — its 8th 100-point milestone of the year. One year ago: 6,300. Five years ago: 4,400. Ten years ago: 2,200.",
+          tweet_url: "https://x.com/charliebilello/status/2085014052078547036",
+          images: ["https://pbs.twimg.com/media/HO9x8fYXMAAu1TW.png"],
+          data_points: ["S&P 500 > 7,700 (first time)", "8th 100-pt milestone of 2026", "+22% YoY", "+75% 5yr", "+250% 10yr"],
+          created_at: "2026-08-05T14:44:22.000Z"
+        },
+        {
+          author: "charliebilello",
+          description: "S&P 500 closed at an all-time high for the first time since June 2 — its 25th ATH of 2026 and 121st all-time high since the start of 2024.",
+          tweet_url: "https://x.com/charliebilello/status/2085006813448048957",
+          images: ["https://pbs.twimg.com/media/HO9tXZOXgAA0-rP.png"],
+          data_points: ["25th ATH of 2026", "121st ATH since Jan 2024", "First ATH since June 2"],
+          created_at: "2026-08-05T14:15:36.000Z"
+        },
+        {
+          author: "sentimentrader",
+          description: "S&P 500 hit a record high with only two sectors at records alongside it: Industrials and Financials. After prior narrow-breadth ATHs like this, S&P was higher 72% of the time over the next 1-2 weeks and averaged +11% one year out.",
+          tweet_url: "https://x.com/sentimentrader/status/2085014211378204879",
+          images: ["https://pbs.twimg.com/media/HO8uXpgacAAeU0s.png"],
+          data_points: ["Only 2 sectors at records (Industrials + Financials)", "S&P higher 72% over next 1-2 wks", "Avg +11% 1yr forward"],
+          created_at: "2026-08-05T14:45:00.000Z"
+        },
+        {
+          author: "sentimentrader",
+          description: "An economic gauge most investors ignore spiked from one of its weakest readings to one of its strongest. In 10 prior occurrences over 58 years, S&P 500 was higher 9 of 10 times one year later — averaging +16.3% gain vs only -1.6% average loss. Max drawdown during the period: 23.4%.",
+          tweet_url: "https://x.com/sentimentrader/status/2085014211344609654",
+          images: ["https://pbs.twimg.com/media/HO7RWWwbsAAa2Ju.jpg"],
+          data_points: ["10 occurrences in 58yr history", "S&P higher 9/10 times 1yr out", "Avg gain +16.3%", "Avg loss -1.6%", "Max drawdown 23.4%"],
+          created_at: "2026-08-05T14:45:00.000Z"
+        },
+        {
+          author: "jasongoepfert",
+          description: "Historical table of S&P 500 ($SPY) largest 4-day gains going into new all-time highs.",
+          tweet_url: "https://x.com/jasongoepfert/status/2084980732720472066",
+          images: ["https://pbs.twimg.com/media/HO9W4QzXgAAqGhA.jpg"],
+          data_points: ["Historical: SPY largest 4-day gains to new ATH"],
+          created_at: "2026-08-05T12:31:58.000Z"
+        },
+        {
+          author: "TaviCosta",
+          description: "Clean breakout chart with link to full list of current breakouts. Caption: \"This is what a clean breakout looks like.\"",
+          tweet_url: "https://x.com/TaviCosta/status/2085034992552251818",
+          images: ["https://pbs.twimg.com/media/HO-IO12XkAAWkgW.jpg"],
+          data_points: ["Breakout confirmed"],
+          created_at: "2026-08-05T16:07:34.000Z"
+        }
+      ]
+    },
+    {
+      topic: "Macro & Lending Conditions",
+      items: [
+        {
+          author: "MichaelKantro",
+          description: "Chart showing commercial bank lending standards easing as cyclical macro data improves. Standard cycle pattern: Fed eases → rates decline → cyclical recovery → commercial banks ease → EPS improve. Easing handoff from central banks to commercial banks is underway.",
+          tweet_url: "https://x.com/MichaelKantro/status/2084970971539108061",
+          images: ["https://pbs.twimg.com/media/HO9ODL2WEAAkgtK.jpg"],
+          data_points: ["Bank lending standards easing", "Cyclical easing-handoff: central → commercial banks"],
+          created_at: "2026-08-05T11:53:11.000Z"
+        },
+        {
+          author: "benjamincowen",
+          description: "GDP-weighted unemployment rate across 16 top economies has been trending down for basically all of 2026 — global labor market is heating back up, which is why long-end yields continue to go higher.",
+          tweet_url: "https://x.com/benjamincowen/status/2085000880995140059",
+          images: ["https://pbs.twimg.com/media/HO9pDItXwAEM9Dd.jpg"],
+          data_points: ["Global unemployment (16 economies) trending down YTD 2026", "Long-end yields rising on hot global labor market"],
+          created_at: "2026-08-05T13:52:02.000Z"
+        },
+        {
+          author: "WarrenPies",
+          description: "Commentary that Fed Chair Warsh (KW) is struggling to control the FOMC committee — framed in response to criticism of reporters covering Fed backroom gossip. Suggests the harder question is why Warsh cannot control the committee.",
+          tweet_url: "https://x.com/WarrenPies/status/2085046146951483706",
+          images: [],
+          data_points: ["Warsh struggling to control FOMC committee"],
+          created_at: "2026-08-05T16:51:54.000Z"
+        }
+      ]
+    },
+    {
+      topic: "Earnings & Corporate",
+      items: [
+        {
+          author: "matthew_sigel",
+          description: "$SPCX full-year capex guidance of $65-67B versus Street estimate of $45B — a massive beat. 2027 Street estimates revised +14% on average to $110B. Company guided flat sequential capex for rest of year; sees 1-year payback on compute capex. Q2 nameplate compute: 1.4GW (up from 1.0GW in Q1).",
+          tweet_url: "https://x.com/matthew_sigel/status/2084967255767498991",
+          images: [],
+          data_points: ["SPCX FY capex guide $65-67B", "Street was at $45B", "2027 est revised to $110B (+14%)", "1-yr payback on compute capex", "Q2 compute: 1.4GW vs 1.0GW in Q1"],
+          created_at: "2026-08-05T11:38:25.000Z"
+        },
+        {
+          author: "matthew_sigel",
+          description: "$SHOP +25% pre-market. Q3 revenue guide: low-thirties percentage growth versus consensus estimate of +27%. AI investments appearing to pay off — growth accelerating while headcount is down 25%.",
+          tweet_url: "https://x.com/matthew_sigel/status/2084963525684838762",
+          images: [],
+          data_points: ["SHOP +25% pre-market", "Q3 revenue guide: low-30s% growth", "Consensus was +27%", "Employees down -25%"],
+          created_at: "2026-08-05T11:23:35.000Z"
+        },
+        {
+          author: "matthew_sigel",
+          description: "$AKER.NO hitting all-time highs. AKER sold Cognite to Schneider Electric for $3.1B EV — a 2x+ markup to Q1 carrying value, generating ~$1.5B in cash proceeds. Stock trades at ~22% discount to Q1 NAV; Nscale alone accounts for ~37% of current market cap.",
+          tweet_url: "https://x.com/matthew_sigel/status/2084976158534160413",
+          images: ["https://pbs.twimg.com/media/HO9St9TXwAAodDa.png"],
+          data_points: ["AKER.NO at ATH", "Cognite sold to Schneider for $3.1B EV (2x+ markup to Q1 BV)", "~$1.5B cash proceeds", "~22% discount to Q1 NAV", "Nscale ~37% of market cap"],
+          created_at: "2026-08-05T12:13:47.000Z"
+        }
+      ]
+    },
+    {
+      topic: "Commodities",
+      items: [
+        {
+          author: "benjamincowen",
+          description: "Seasonal chart: Gold historically bottoms between June and October of midterm years. Chart context suggests the current pullback fits the seasonal pattern; DXY could get one more move higher later this year which may weigh on gold near-term.",
+          tweet_url: "https://x.com/benjamincowen/status/2085002571236733411",
+          images: ["https://pbs.twimg.com/media/HO9qb6NWUAAAmvC.jpg"],
+          data_points: ["Gold seasonal low: June-October of midterm years", "DXY possible final move up later 2026"],
+          created_at: "2026-08-05T13:58:45.000Z"
+        }
+      ]
+    },
+    {
+      topic: "Geopolitical & Energy",
+      items: [
+        {
+          author: "zerohedge",
+          description: "Iran confirms it received diplomatic messages from the US. US stated in messages it is ready to return to its earlier pledges.",
+          tweet_url: "https://x.com/zerohedge/status/2085050723553751509",
+          images: [],
+          data_points: ["Iran confirms US diplomatic messages received", "US signals readiness to return to pledges"],
+          created_at: "2026-08-05T17:10:05.000Z"
+        },
+        {
+          author: "zerohedge",
+          description: "Iran-Oman alternative Hormuz shipping route has been agreed to under a draft US-Oman deal. Iran says the new route will be valid for 2-4 months; Iran warns against US interference.",
+          tweet_url: "https://x.com/zerohedge/status/2085049971049398407",
+          images: [],
+          data_points: ["Iran-Oman Hormuz alternative route agreed", "Valid for 2-4 months", "US-Oman draft deal"],
+          created_at: "2026-08-05T17:07:06.000Z"
+        }
+      ]
+    },
+    {
+      topic: "Fund Performance & Credit",
+      items: [
+        {
+          author: "zerohedge",
+          description: "Citadel gained 6% in July, attributed to the 'Situational Awareness' firesale liquidation event.",
+          tweet_url: "https://x.com/zerohedge/status/2085050476051996785",
+          images: [],
+          data_points: ["Citadel +6% in July"],
+          created_at: "2026-08-05T17:09:06.000Z"
+        },
+        {
+          author: "Schuldensuehner",
+          description: "Deep dive on airBaltic's €380m 14.5% senior secured notes due 2029 (issued at par May 2024): now trading at 40 cents / ~60% yield. Fitch CCC- on Watch Negative, recovery RR4 (31-50%). Cash €28m at year-end 2025 vs €25m minimum covenant. Missed bond reserve top-up June 26; Aug 14 coupon at 16.5% penalty rate. Bondholder re-vote Aug 17. Latvia owns 88% equity but guarantees nothing; A220 fleet is leased so bondholders are left with brand, spare parts, and receivables.",
+          tweet_url: "https://x.com/Schuldensuehner/status/2084890628094120074",
+          images: ["https://pbs.twimg.com/media/HO8DBrEWIAA4YbI.png", "https://pbs.twimg.com/media/HO8DBrLWUAALQqJ.png"],
+          data_points: ["airBaltic €380m 14.5% notes at 40 cents", "~60% yield", "Fitch CCC- Watch Negative", "Recovery RR4: 31-50%", "Cash €28m vs €25m covenant", "Latvia 88% equity, zero guarantee", "Aug 14 coupon at 16.5% penalty rate"],
+          created_at: "2026-08-05T06:33:55.000Z"
+        }
+      ]
+    },
+    {
+      topic: "Prediction Markets",
+      items: [
+        {
+          author: "Polymarket",
+          description: "Michigan Senate race: Republican Mike Rogers' odds surge after Abdul El-Sayed secures the Democratic nomination. El-Sayed (D) still favored at 60%.",
+          tweet_url: "https://x.com/Polymarket/status/2085052250502623561",
+          images: ["https://pbs.twimg.com/media/HO-WjfCX0AE3A7w.jpg", "https://pbs.twimg.com/media/HO-WrFSXEAAgC46.jpg"],
+          data_points: ["El-Sayed (D) favored 60%", "Rogers (R) odds surging post-El-Sayed nomination"],
+          created_at: "2026-08-05T17:16:09.000Z"
+        },
+        {
+          author: "Polymarket",
+          description: "Google DeepMind CEO Demis Hassabis moves to chairman; Koray Kavukcuoglu takes most responsibilities. Polymarket: only 8% chance Google leads the AI race at end of 2026.",
+          tweet_url: "https://x.com/Polymarket/status/2085050190138884363",
+          images: [],
+          data_points: ["Google AI race leadership: 8% prob EOY 2026", "DeepMind CEO transition: Hassabis → chairman"],
+          created_at: "2026-08-05T17:07:58.000Z"
+        },
+        {
+          author: "Polymarket",
+          description: "Meteorologist warns of a coming 'Super El Niño' that could be the strongest in 500-1,000 years. Polymarket: 87% probability of Super El Niño this winter (2026/27).",
+          tweet_url: "https://x.com/Polymarket/status/2085047909838405821",
+          images: [],
+          data_points: ["Super El Niño prob: 87%", "Potentially strongest in 500-1,000 years"],
+          created_at: "2026-08-05T16:58:54.000Z"
+        }
+      ]
+    }
+  ],
+  links: [
+    {
+      author: "zerohedge",
+      url: "https://www.zerohedge.com/markets/citadel-soars-6-july-thanks-situational-awareness-firesale-liquidation",
+      description: "Citadel +6% July — firesale liquidation"
+    },
+    {
+      author: "zerohedge",
+      url: "https://www.zerohedge.com/geopolitical/iran-set-emerge-more-hormuz-leverage-war-under-draft-us-oman-deal",
+      description: "Iran-Oman Hormuz draft deal full article"
+    },
+    {
+      author: "TaviCosta",
+      url: "https://tavicosta.substack.com/p/list-of-breakouts",
+      description: "List of current breakouts"
+    },
+    {
+      author: "sentimentrader",
+      url: "https://users.sentimentrader.com/login/?next=%2Fusers%2Fmodeledge%2Fsp-500-new-high-along-with-two-sectors",
+      description: "Full analysis: narrow breadth ATH"
+    },
+    {
+      author: "sentimentrader",
+      url: "https://users.sentimentrader.com/login/?next=%2Fusers%2Fkaeppelscorner%2Fa-positive-signal-for-the-economy-that-most-investors-are-unaware-of",
+      description: "Full analysis: economy gauge spike"
+    },
+    {
+      author: "Polymarket",
+      url: "https://polymarket.com/event/michigan-senate-election-winner?via=x-afr2",
+      description: "Michigan Senate election market"
+    },
+    {
+      author: "Polymarket",
+      url: "https://polymarket.com/event/which-company-has-best-ai-model-end-of-2026?via=x-afr2",
+      description: "AI race leadership market EOY 2026"
+    },
+    {
+      author: "Polymarket",
+      url: "https://polymarket.com/event/will-there-be-a-super-el-nino-this-winter-202627-20260721221614682/will-there-be-a-super-el-nino-this-winter-202627-20260721221614682?via=x-afr2",
+      description: "Super El Niño winter 2026/27 market"
+    }
+  ],
+  coverage: {
+    authors_covered: 11,
+    authors_total: 11
+  }
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
