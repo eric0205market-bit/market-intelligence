@@ -1,0 +1,297 @@
+{
+  "record_id": "9dcf898a5959a862",
+  "source_type": "technology",
+  "source_name": "Hugging Face Blog",
+  "source_url": "https://huggingface.co/blog/sergiopaniego/trl-openenv-harness-training",
+  "title": "Training a coding agent using the OpenCode harness in remote HF sandboxes with TRL and OpenEnv",
+  "published_date": "2026-08-05",
+  "language": "en",
+  "processed_at": "2026-08-06T20:19:40Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "AI",
+    "Tech"
+  ],
+  "gist": "TRL's new OpenEnv integration RL-trains a coding agent's own unmodified tool loop (via the OpenCode harness) rather than a simulated copy of it, scaling rollouts to one remote Hugging Face sandbox each; a 10-step Qwen3-8B run shows real learning while the same recipe failed on a smaller Qwen3-4B model.",
+  "themes": [
+    {
+      "theme": "Loop-owning training paradigm",
+      "insights": [
+        {
+          "claim": "TRL's OpenEnv integration trains the agent harness 'loop-owning': the harness (e.g. OpenCode) runs its own tool loop exactly as shipped, and TRL only reads back the tokens it produced and trains on those, unlike the usual approach where the trainer itself drives the loop by sampling a turn, parsing tool calls, running them, and feeding results back, which ends up training a copy of the loop rather than the actual harness being run in production.",
+          "speaker": "Sergio Paniego",
+          "type": "framework",
+          "entities": [
+            "TRL",
+            "OpenEnv",
+            "OpenCode"
+          ],
+          "conviction": "high",
+          "so_what": "A methodological distinction that determines whether RL training actually improves the production agent harness or just a simulacrum of it, relevant to anyone evaluating claims of 'agent RL training'.",
+          "quote": "That trains a copy of the loop, not the harness you actually run.",
+          "locator": "Loop-owning: the agent runs, the trainer learns",
+          "quote_verified": true
+        },
+        {
+          "claim": "The architecture is described as agent-agnostic in principle: any agent that runs in a sandbox and talks to the model over a capturable API (currently OpenAI-compatible chat completions) can be trained the same way, not just OpenCode.",
+          "speaker": "Sergio Paniego",
+          "type": "thesis",
+          "entities": [
+            "OpenCode",
+            "TRL",
+            "OpenEnv"
+          ],
+          "conviction": "medium",
+          "so_what": "Signals this is a generalizable training recipe rather than a one-off OpenCode integration, worth watching for application to other coding agents.",
+          "quote": "the architecture is agent-agnostic in principle: any agent that runs in a sandbox and talks to the model over an API whose calls can be captured (today, OpenAI-compatible chat completions) can be trained the same way.",
+          "locator": "intro",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "System architecture: four components",
+      "insights": [
+        {
+          "claim": "The training pipeline has four components: the harness running inside an isolated OpenEnv sandbox session with its own filesystem and processes from a Docker image; a transparent proxy sitting between the harness and the vLLM server that records every model call's token IDs and logprobs per turn so nothing is re-tokenized or guessed; a task-specific hidden-test verifier that inspects the final workspace and returns a reward; and the trainer (TRL), which reconstructs training samples from the recorded turns and runs GRPO.",
+          "speaker": "Sergio Paniego",
+          "type": "framework",
+          "entities": [
+            "TRL",
+            "OpenEnv",
+            "OpenCode",
+            "vLLM",
+            "GRPO"
+          ],
+          "conviction": "high",
+          "so_what": "The transparent-proxy mechanism for capturing real emitted tokens is the key enabler of faithful on-policy RL training on an unmodified third-party agent harness, a reusable pattern for training any tool-using agent.",
+          "quote": "This is the key trick: nothing is re-tokenized or guessed, you train on the real tokens the policy emitted.",
+          "locator": "A transparent proxy that captures tokens",
+          "quote_verified": true
+        },
+        {
+          "claim": "The reward signal is task-specific: coding problems come from the agentica-org/DeepCoder-Preview-Dataset, the agent writes a solution.py file, and the reward is the fraction of hidden tests, never shown to the agent, that the solution passes.",
+          "speaker": "Sergio Paniego",
+          "type": "data_point",
+          "entities": [
+            "agentica-org/DeepCoder-Preview-Dataset",
+            "OpenCode"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete, verifiable-reward setup like unit-test execution is what makes RL training tractable here, a template for other verifiable-domain agent RL setups (e.g. build/test/lint pass rates).",
+          "quote": null,
+          "locator": "A hidden-test verifier for the reward",
+          "quote_verified": false
+        },
+        {
+          "claim": "Loop-owning mode is selected in code by setting harness_adapter=None on the HarnessRolloutWorker, while train_turn_fn=has_tool_call restricts training and reward propagation to actual tool-call/action turns rather than prose turns.",
+          "speaker": "Sergio Paniego",
+          "type": "data_point",
+          "entities": [
+            "TRL",
+            "OpenCode"
+          ],
+          "conviction": "high",
+          "so_what": "A specific, checkable implementation detail for teams evaluating or replicating the training recipe.",
+          "quote": "Setting harness_adapter=None selects loop-owning mode",
+          "locator": "The whole thing is wired with one worker",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Scaling to remote sandboxes",
+      "insights": [
+        {
+          "claim": "To scale rollouts beyond a single machine, each rollout runs in its own remote Hugging Face sandbox selected via a single HFSandboxBackend, using a pre-baked Docker image (ghcr.io/huggingface/openenv-opencode-sandbox:latest) that already contains the harness and proxy, so there is no cold install per rollout and rollouts run concurrently.",
+          "speaker": "Sergio Paniego",
+          "type": "framework",
+          "entities": [
+            "Hugging Face",
+            "OpenCode"
+          ],
+          "conviction": "high",
+          "so_what": "Removes the single-node bottleneck for agent RL training, a path to running thousands of parallel rollouts cheaply, relevant for estimating agent-RL training throughput and cost.",
+          "quote": null,
+          "locator": "One remote sandbox per rollout",
+          "quote_verified": false
+        },
+        {
+          "claim": "Remote rollouts introduce one structural catch: the trainer and vLLM share a node and sync weights over NCCL on localhost, but the remote sandboxes cannot reach localhost, so a second, externally-reachable 'sandbox-vllm-url' (a public vLLM endpoint or a tunnel) is required alongside the internal 'vllm-url'.",
+          "speaker": "Sergio Paniego",
+          "type": "causal",
+          "entities": [
+            "vLLM"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete infrastructure gotcha anyone replicating remote-sandbox agent RL training must solve before it will work at all.",
+          "quote": "the remote sandboxes cannot see localhost, they need to reach the same vLLM from the outside.",
+          "locator": "The one thing to get right",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Economics of remote-sandbox training",
+      "insights": [
+        {
+          "claim": "Remote sandboxes run on the near-free cpu-basic Hugging Face Jobs flavor, about $0.01/hour per instance, so thousands of rollouts stay cheap; the dominant cost is the single GPU job running vLLM and training.",
+          "speaker": "Sergio Paniego",
+          "type": "data_point",
+          "entities": [
+            "Hugging Face"
+          ],
+          "conviction": "high",
+          "so_what": "Quantifies the unit economics of agent-RL training at scale: rollout parallelism is nearly free, so GPU training time is the real line item to budget for.",
+          "quote": "Every remote sandbox runs on the cpu-basic flavor, which is almost free (about $0.01/hour per instance), so thousands of rollouts stay cheap.",
+          "locator": "The cost detail",
+          "quote_verified": true
+        },
+        {
+          "claim": "The entire pipeline (serving vLLM, exposing it via a tunnel, and running the trainer) is packaged into a single Hugging Face Jobs command running on a 2xH200 node: hf jobs uv run --flavor h200x2 --secrets HF_TOKEN --timeout 7200s launcher.py.",
+          "speaker": "Sergio Paniego",
+          "type": "data_point",
+          "entities": [
+            "Hugging Face"
+          ],
+          "conviction": "high",
+          "so_what": "The full setup-plus-training run is reproducible as one cloud job on 2xH200, a concrete hardware/cost benchmark for similar agent-RL projects.",
+          "quote": null,
+          "locator": "Reproduce it",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Operational and security risk",
+      "insights": [
+        {
+          "claim": "Remote sandboxes add real operational overhead a local subprocess does not have: a sandbox can be slow to start, error out mid-run, or be left running after a job ends, and must be actively monitored and cleaned up.",
+          "speaker": "Sergio Paniego",
+          "type": "contrarian",
+          "entities": [
+            "Hugging Face"
+          ],
+          "conviction": "high",
+          "so_what": "A practical warning against underestimating the ops burden of 'just run rollouts remotely', relevant when budgeting engineering time for agent-RL infrastructure, not just compute cost.",
+          "quote": "a sandbox can be slow to start, error out mid-run, or be left running after a run ends.",
+          "locator": "Remote sandboxes need operational care",
+          "quote_verified": true
+        },
+        {
+          "claim": "The demo launcher exposes vLLM to remote sandboxes through a quick public tunnel that is a plain, unauthenticated endpoint, which the author calls convenient for a demo but explicitly unsafe for anything beyond a throwaway run.",
+          "speaker": "Sergio Paniego",
+          "type": "contrarian",
+          "entities": [
+            "vLLM"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete security gap in the reference implementation; anyone deploying this beyond a demo must add access control before running real training jobs.",
+          "quote": "it is a plain, unauthenticated endpoint. For anything beyond a throwaway run, point sandbox-vllm-url at a properly reachable and access-controlled vLLM instead.",
+          "locator": "Exposing vLLM to the sandboxes",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Empirical results: does it learn",
+      "insights": [
+        {
+          "claim": "In a short validation run (Qwen3-8B, 10 GRPO steps, 32 problems, fully remote sandboxes), reward rose from about 0.27 to about 0.71, noisy but trending upward, with reward_std around 0.4 to 0.5, indicating GRPO had a genuine within-group learning signal despite the remote/async setup.",
+          "speaker": "Sergio Paniego",
+          "type": "data_point",
+          "entities": [
+            "Qwen3-8B",
+            "GRPO"
+          ],
+          "conviction": "medium",
+          "so_what": "First empirical proof the loop-owning plus remote-sandbox pipeline actually trains a working policy, not just a working pipeline; this is the number to check when reproducing the recipe.",
+          "quote": "The reward moves up from about 0.27 to 0.71 over the run (noisy, but upward), with reward_std around 0.4 to 0.5",
+          "locator": "Does it learn?",
+          "quote_verified": true
+        },
+        {
+          "claim": "The same remote-sandbox recipe applied to the smaller Qwen3-4B-Instruct-2507 model, which is the reference model that learns well locally (reward ~0.4 to ~0.6 over 110 steps), failed in the remote setting: reward climbed for a few steps then collapsed as the agent degenerated into spamming tool calls without ever solving problems.",
+          "speaker": "Sergio Paniego",
+          "type": "contrarian",
+          "entities": [
+            "Qwen3-4B-Instruct-2507"
+          ],
+          "conviction": "medium",
+          "so_what": "A concrete negative result showing the same training recipe does not transfer model-size-for-model-size between local and remote/async execution, a caution against assuming agent-RL results generalize across infrastructure setups.",
+          "quote": "the reward climbed for a few steps and then collapsed, with the agent spamming tool calls without ever solving.",
+          "locator": "What we tried, and what worked",
+          "quote_verified": true
+        },
+        {
+          "claim": "The author's unconfirmed explanation for the Qwen3-4B failure is a combination of too few training steps, added lag and occasional failed sandboxes from remote/async execution, and the 4B model having a harder time getting an initial foothold on the coding problems than a larger model.",
+          "speaker": "Sergio Paniego",
+          "type": "causal",
+          "entities": [
+            "Qwen3-4B-Instruct-2507",
+            "Qwen3-8B"
+          ],
+          "conviction": "exploratory",
+          "so_what": "Suggests a practical model-size floor for remote/async agent-RL setups: smaller models may need more stable, low-latency training environments to learn at all.",
+          "quote": "we only ran a handful of steps, running rollouts remotely and asynchronously adds lag and the odd failed sandbox, and a 4B has a harder time getting a foothold on these problems in the first place.",
+          "locator": "What we tried, and what worked",
+          "quote_verified": true
+        },
+        {
+          "claim": "Switching the base model from Qwen3-4B-Instruct-2507 to Qwen3-8B was the specific change that made remote-sandbox training work, producing the reward curve (about 0.27 to about 0.71) the whole post is built on.",
+          "speaker": "Sergio Paniego",
+          "type": "data_point",
+          "entities": [
+            "Qwen3-8B",
+            "Qwen3-4B-Instruct-2507"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete, replicable data point for practitioners choosing base model size for remote or asynchronous agent-RL experiments.",
+          "quote": "Moving to Qwen3-8B was what made it click, it solved enough for the reward to have something to climb",
+          "locator": "What we tried, and what worked",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Roadmap toward multi-agent generalization",
+      "insights": [
+        {
+          "claim": "The next planned step is restructuring the integration around 'Harbor', a single integration meant to make a whole matrix of coding agents (Claude Code, Pi, Codex, OpenCode, Cursor) and sandbox backends trainable through the same path, instead of wiring each agent-backend pair by hand.",
+          "speaker": "Sergio Paniego",
+          "type": "prediction",
+          "entities": [
+            "Harbor",
+            "Claude Code",
+            "OpenCode",
+            "Codex",
+            "Cursor"
+          ],
+          "conviction": "medium",
+          "so_what": "A forward-looking signal that RL training support could soon extend to other major coding agents beyond OpenCode, worth tracking for anyone building or evaluating coding-agent RL infrastructure.",
+          "quote": "The next step is a restructuring around Harbor: one integration that makes a whole matrix of coding agents (Claude Code, Pi, Codex, OpenCode, Cursor, ...) and sandbox backends trainable through the same path",
+          "locator": "A first version, and what is coming",
+          "quote_verified": true
+        }
+      ]
+    }
+  ],
+  "insight_total": 16,
+  "top_entities": [
+    "TRL",
+    "OpenEnv",
+    "OpenCode",
+    "Hugging Face",
+    "Qwen3-8B",
+    "Qwen3-4B-Instruct-2507",
+    "vLLM",
+    "GRPO",
+    "Harbor",
+    "agentica-org/DeepCoder-Preview-Dataset"
+  ],
+  "source_meta": {
+    "author": "Sergio Paniego",
+    "word_count": 1620,
+    "paywalled": false
+  }
+}
