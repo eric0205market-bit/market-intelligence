@@ -30,6 +30,18 @@ write no JSON/HTML, commit/push nothing. Output that one line and end the run.
 Continue below ONLY if the worklist has >= 1 article. (This is the Technology
 analog of the freshness gate the cloud routines run first.)
 
+**Permanently unextractable articles.** A raw record that can never produce a
+card (e.g. the extracting model declines the content on policy grounds) would
+otherwise fail every run and re-appear forever, since the worklist is a pure
+raw-minus-processed diff. Park it on the skiplist so it stops blocking:
+
+    python3 scripts/publish_technology.py skip <record_id> --reason "<why>"
+
+Skipped ids live in `processed/technology/_skiplist.json` and are excluded from
+the worklist, which always prints how many it withheld — never silently. Reverse
+with `unskip <record_id>`. Only skip after a genuine extraction failure; a
+skiplist entry is not a triage tool (triage lives in the collector).
+
 ## STEP 1 — FETCH INPUT
 For each worklisted article, read its raw record directly from the LOCAL working
 copy (no git clone — this routine runs in the already-checked-out dedicated clone):
