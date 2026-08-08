@@ -21,6 +21,7 @@ NO network, NO API key, NO external API — pure local file work.
 """
 import datetime
 import glob
+import html
 import json
 import os
 import re
@@ -34,7 +35,12 @@ PROC_DIR = REPO / "processed" / "youtube"
 CONFIG = REPO / "config" / "youtube_sources_full.json"
 RUBRIC = REPO / "routines" / "routine_youtube.md"
 
-DUP_DURATION_TOLERANCE = 3   # seconds; same channel + ~same length => re-upload
+# Same channel + similar length only makes an episode a re-upload CANDIDATE; the
+# transcripts must then actually match. Podcasts run to consistent lengths, so
+# duration alone collides constantly between genuinely different episodes.
+DUP_DURATION_TOLERANCE = 60   # seconds
+DUP_CONTENT_THRESHOLD = 0.5   # 4-gram containment above which two transcripts are the same episode
+DUP_SHINGLE_N = 4
 
 
 def _cfg():
@@ -82,7 +88,7 @@ def _processed_ids():
 
 
 def _processed_sigs():
-    """(channel_name, duration_seconds) of already-processed episodes — for content-dedup."""
+    """(channel_name, duration_seconds, video_id) of already-processed episodes — for content-dedup."""
     sigs = []
     for f in glob.glob(str(PROC_DIR / "*.json")):
         if os.path.basename(f) == QUARANTINE_LOG.name:
@@ -91,8 +97,28 @@ def _processed_sigs():
             d = json.load(open(f))
         except (json.JSONDecodeError, OSError):
             continue
-        sigs.append((d.get("channel_name"), d.get("duration_seconds") or 0))
+        sigs.append((d.get("channel_name"), d.get("duration_seconds") or 0, d.get("video_id")))
     return sigs
+
+
+def _shingles(text):
+    """Normalized n-gram set of a transcript. Tolerant of auto-caption artifacts
+    (HTML entities, stray hyphenation) that differ between two caption tracks of
+    the same episode."""
+    words = re.sub(r"[^a-z0-9 ]", " ", html.unescape(text or "").lower()).split()
+    if len(words) < DUP_SHINGLE_N * 10:
+        return set()
+    return {" ".join(words[i:i + DUP_SHINGLE_N])
+            for i in range(len(words) - DUP_SHINGLE_N)}
+
+
+def _same_content(shingles_a, shingles_b):
+    """True if two transcripts are the same episode. Containment (not Jaccard) so
+    that a truncated or differently-padded caption track still matches."""
+    if not shingles_a or not shingles_b:
+        return False
+    overlap = len(shingles_a & shingles_b) / min(len(shingles_a), len(shingles_b))
+    return overlap >= DUP_CONTENT_THRESHOLD
 
 
 def worklist():
@@ -100,8 +126,10 @@ def worklist():
     min_s = _min_seconds()
     done = _processed_ids()
     sigs = _processed_sigs()
+    raws = _raw_records()
+    by_id = {d["video_id"]: d for d in raws}
     elig = []
-    for d in _raw_records():
+    for d in raws:
         if not d.get("transcript_available"):
             continue
         dur = d.get("duration_seconds") or 0
@@ -109,10 +137,17 @@ def worklist():
             continue
         if d["video_id"] in done:
             continue
-        # content-dedup: same channel + near-identical duration as a processed ep
-        if any(ch == d.get("channel_name") and abs(sec - dur) <= DUP_DURATION_TOLERANCE
-               for ch, sec in sigs):
-            continue
+        # content-dedup of re-uploads: same channel + similar length narrows the
+        # candidates, then the transcripts themselves have to match.
+        candidates = [vid for ch, sec, vid in sigs
+                      if ch == d.get("channel_name")
+                      and abs(sec - dur) <= DUP_DURATION_TOLERANCE
+                      and vid in by_id]
+        if candidates:
+            mine = _shingles(d.get("transcript"))
+            if any(_same_content(mine, _shingles(by_id[vid].get("transcript")))
+                   for vid in candidates):
+                continue
         elig.append(d)
     elig.sort(key=lambda d: -(d.get("duration_seconds") or 0))
     return elig
