@@ -327,7 +327,16 @@ def postprocess_record(d, raw):
 
 def cmd_postprocess(args):
     total = mapped = verified = 0
-    for vid in args.ids:
+    # Accept either positional ids or --ids a,b,c. YouTube ids can start with "-"
+    # (e.g. -sAqBma8mtU), which argparse reads as an option flag, so --ids is the
+    # form callers should prefer.
+    ids = list(args.ids or [])
+    for chunk in (args.id_list or "").split(","):
+        if chunk.strip():
+            ids.append(chunk.strip())
+    if not ids:
+        sys.exit("postprocess: no video ids given (pass them positionally or via --ids a,b,c)")
+    for vid in ids:
         pf = PROC_DIR / f"{vid}.json"
         if not pf.exists():
             print(f"  postprocess: {vid} — no processed file, skip"); continue
@@ -473,7 +482,11 @@ def main():
     sub.add_parser("worklist").set_defaults(fn=cmd_worklist)
     a = sub.add_parser("tier"); a.add_argument("id"); a.set_defaults(fn=cmd_tier)
     a = sub.add_parser("prompt"); a.add_argument("id"); a.set_defaults(fn=cmd_prompt)
-    a = sub.add_parser("postprocess"); a.add_argument("ids", nargs="+"); a.set_defaults(fn=cmd_postprocess)
+    a = sub.add_parser("postprocess")
+    a.add_argument("ids", nargs="*")
+    a.add_argument("--ids", dest="id_list", default=None,
+                   help="comma-separated video ids; use this form for ids starting with '-'")
+    a.set_defaults(fn=cmd_postprocess)
     a = sub.add_parser("publish"); a.add_argument("--date", default=None)
     a.add_argument("--ids", default=None)
     a.add_argument("--force", action="store_true",
