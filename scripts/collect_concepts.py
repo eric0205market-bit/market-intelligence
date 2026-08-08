@@ -48,6 +48,7 @@ import datetime
 import hashlib
 import json
 import re
+import sys
 import time
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -55,6 +56,13 @@ from urllib.parse import urljoin, urlparse
 from playwright.sync_api import sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import publish_concepts as pc  # noqa: E402  -> WORKLIST_DROP_PATHS (known
+# non-article site-furniture pages: team bios, careers, legal/compliance
+# notices, one broken glyph-soup render). SINGLE SOURCE OF TRUTH — the daily
+# worklist filter and this collector both key off the exact same dict in
+# publish_concepts.py; edit that file only, never duplicate the list here.
 
 # --- Paths ------------------------------------------------------------------
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -318,6 +326,18 @@ def is_junk(article):
     if any(term in url for term in JUNK_URL_TERMS):
         return True
     return False
+
+
+def is_known_dropped_path(slug, url):
+    """True if `url` matches a per-source known-non-article path fragment in
+    publish_concepts.WORKLIST_DROP_PATHS — the SAME dict the daily worklist
+    filter uses to skip these once collected. Checked here in Pass 1, BEFORE
+    the page is ever navigated to, so a confirmed non-article URL (team bio,
+    careers, compliance/legal notice, one broken glyph-render page) is never
+    fetched or written to raw/ at all — closing the recurring-junk loop at
+    the source instead of filtering/purging it every cycle downstream."""
+    return any(frag in (url or "").lower()
+               for frag in pc.WORKLIST_DROP_PATHS.get(slug, ()))
 
 
 # --- paywall-teaser detection (deterministic, no LLM) ------------------------
@@ -786,6 +806,7 @@ FUNNEL_KEYS = (
     "degrade_skipped",  # write_source_records() refused to overwrite a better
                         # existing raw file with a worse re-fetch — see the
                         # no-degrade guard there.
+    "dropped_known_path",  # is_known_dropped_path() — never even navigated to
 )
 
 
@@ -873,6 +894,11 @@ def collect_source(page, limiter, source, cutoff_date, errors,
                     is_article = True
             if is_article and url_must and url_must not in link.lower():
                 continue   # per-source scope: outside the allowed host/path
+            if is_article and is_known_dropped_path(slug, link):
+                seen.add(key)   # never re-check this link again THIS run
+                funnel["dropped_known_path"] += 1
+                continue   # confirmed non-article (team bio / careers / legal
+                           # notice / broken render) — never navigated to
             if is_article:
                 seen.add(key)
                 candidates.append(link)
@@ -1402,7 +1428,8 @@ def main():
 
     cols = list(FUNNEL_KEYS)
     labels = ["source", "anchors", "candidates", "visited", "nav_err",
-              "undated", "old", "short", "junk", "kept", "degraded"]
+              "undated", "old", "short", "junk", "kept", "degraded",
+              "known_path"]
     flines = [f"{labels[0]:30}" + "".join(f"{h:>11}" for h in labels[1:]),
               "-" * (30 + 11 * len(cols))]
     for slug in sorted(funnels, key=lambda k: (funnels[k]["kept"], k)):

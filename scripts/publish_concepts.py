@@ -182,11 +182,24 @@ def _looks_like_archive_listing(title, url):
 # become a real Concepts insight article no matter how much prose they carry —
 # confirmed by reading each one's full text before listing it here. Scoped
 # per-source and per-path; extend only after individually verifying a page.
+#
+# SINGLE SOURCE OF TRUTH: scripts/collect_concepts.py imports this SAME dict
+# to skip these URLs at collection time (never fetched/written), so the daily
+# collector stops re-adding them and this filter's job here reverts to a
+# defense-in-depth backstop, not the only thing standing between them and the
+# worklist. Edit here only — never duplicate this list in the collector.
 WORKLIST_DROP_PATHS = {
     "blackrock_investment_institute": (
         "/meet-the-bii-team",
         "/our-approach-to-sustainability",
         "/best-execution-and-order-placement-policy",
+        # ir.blackrock.com stock-quote/chart widget page — a DIFFERENT junk
+        # shape (the scraper caught only the cookie-consent overlay, real
+        # content is a JS chart never rendered to text) than the three
+        # above, already caught by this module's cookie-consent content
+        # signal, but the collector only ports URL-shape signals — listing
+        # the one confirmed-recurring URL here closes it at the source too.
+        "/stock-information/stock-quote-and-chart",
     ),
     "carnegie_endowment": (
         "/employment-opportunities-at-the-carnegie-endowment",
@@ -194,6 +207,18 @@ WORKLIST_DROP_PATHS = {
     "bridgewater_research": (
         "/phishing-and-fraud-awareness-notice",
         "/sustainable-finance-disclosure-regulation-disclosures",
+    ),
+    "anthropic_blog": (
+        # Not a site-furniture page by topic — it's a real-titled feature
+        # page ("The Making of Claude Code") whose content is JS-rendered and
+        # renders as glyph-soup (block-drawing chars) to a text-scraper, not a
+        # URL-shape or genre issue. Listed here anyway (rather than a second,
+        # content-based collector-side check) because it's ONE confirmed-
+        # broken URL, re-collected identically every run — a path exclude is
+        # simpler and safer than teaching the collector a new glyph-density
+        # signal for a single known offender. Still also caught independently
+        # by this module's glyph-soup content signal if ever removed here.
+        "/features/making-of-claude-code",
     ),
 }
 
@@ -359,7 +384,12 @@ def cmd_purge(_args):
         for slug, rid, reason, path in sorted(targets):
             kind = "raw" if (slug, rid, reason, path) in raw_targets else "processed"
             print(f"  [{kind}:{reason}] {slug}/{rid}  {Path(path).relative_to(REPO)}")
-        subprocess.run(["git", "rm", "-q", "--"] + [t[3] for t in targets],
+        # -f: a target can carry uncommitted local changes (e.g. a re-collected
+        # timestamp bump on an already-confirmed-junk record) that plain `git
+        # rm` refuses to touch; every target here already passed the same
+        # structural signal as the filter, so the deletion is intentional
+        # regardless — still fully reversible via git history either way.
+        subprocess.run(["git", "rm", "-f", "-q", "--"] + [t[3] for t in targets],
                         check=True, cwd=REPO)
         print("  -> staged for deletion (git status), not committed here.")
 
