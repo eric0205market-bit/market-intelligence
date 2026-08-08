@@ -7,7 +7,11 @@ routine in routines/routine_technology.md, ONE source per subagent. This script
 provides the surrounding deterministic machinery:
 
   worklist                 list new raw/technology records with no processed card
-                           yet (dedup against processed/technology/<record_id>.json)
+                           yet (dedup against processed/technology/<record_id>.json),
+                           minus anything on the skiplist
+  skip <id...> --reason    never extract these records; they stay off the worklist
+                           (for raw records that can never produce a card)
+  unskip <id...>           put skiplisted records back on the worklist
   postprocess <id...>      set quote_verified on each insight (quote present in
                            the raw article text). Technology has no timestamps.
   publish [--date] [--ids] entity-presence guard -> quarantine topic-mismatch
@@ -20,6 +24,7 @@ Raw layout : raw/technology/<source_slug>/<record_id>.json   (collector output)
 Processed   : processed/technology/<record_id>.json           (one card per source)
 Report      : reports/technology_<YYYY-MM-DD>.html            (NEW-ONLY, this run)
 Quarantine  : processed/technology/_quarantine.json           (non-destructive)
+Skiplist    : processed/technology/_skiplist.json             (never-extract ids)
 
 The routine commits + pushes after publish (same as the YouTube routine); this
 script only renders + rebuilds the dashboard.
@@ -38,6 +43,7 @@ PROC_DIR = REPO / "processed" / "technology"
 TEMPLATE = REPO / "templates" / "technology_report.html"
 REPORTS_DIR = REPO / "reports"
 QUARANTINE_LOG = PROC_DIR / "_quarantine.json"
+SKIPLIST = PROC_DIR / "_skiplist.json"
 
 
 def _norm(s):
@@ -129,13 +135,67 @@ def _processed_ids():
     return ids
 
 
+# --- skiplist ---------------------------------------------------------------
+# Some raw records can never produce a card (e.g. the extracting model declines
+# the content on policy grounds). Without this they fail every run and re-appear
+# in the worklist forever, since the worklist is a pure raw-minus-processed diff.
+# Skipped ids are excluded from the worklist and always reported, never silently.
+def _load_skiplist():
+    """[{record_id, reason, added}, ...] — [] when the file is missing/corrupt."""
+    if not SKIPLIST.exists():
+        return []
+    try:
+        entries = json.load(open(SKIPLIST, encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    return entries if isinstance(entries, list) else []
+
+
+def _skipped_ids():
+    return {e.get("record_id") for e in _load_skiplist() if e.get("record_id")}
+
+
+def cmd_skip(args):
+    entries = _load_skiplist()
+    known = {e.get("record_id") for e in entries}
+    added = []
+    for rid in args.ids:
+        if rid in known:
+            print(f"  skip: {rid} — already on the skiplist")
+            continue
+        if _raw_by_id(rid) is None:
+            print(f"  skip: {rid} — no raw record with that id, refusing")
+            continue
+        entries.append({"record_id": rid, "reason": args.reason,
+                        "added": datetime.datetime.now(datetime.timezone.utc)
+                                 .strftime("%Y-%m-%dT%H:%M:%SZ")})
+        added.append(rid)
+        print(f"  skip: {rid} — added ({args.reason})")
+    if added:
+        SKIPLIST.parent.mkdir(parents=True, exist_ok=True)
+        json.dump(entries, open(SKIPLIST, "w", encoding="utf-8"),
+                  indent=1, ensure_ascii=False)
+    print(f"skiplist: +{len(added)}, {len(entries)} total")
+
+
+def cmd_unskip(args):
+    entries = _load_skiplist()
+    kept = [e for e in entries if e.get("record_id") not in set(args.ids)]
+    removed = len(entries) - len(kept)
+    if removed:
+        json.dump(kept, open(SKIPLIST, "w", encoding="utf-8"),
+                  indent=1, ensure_ascii=False)
+    print(f"skiplist: -{removed}, {len(kept)} total")
+
+
 # --- worklist ---------------------------------------------------------------
 def cmd_worklist(_args):
     done = _processed_ids()
+    skipped = _skipped_ids()
     rows = []
     for f in _raw_files():
         rid = Path(f).stem
-        if rid in done:
+        if rid in done or rid in skipped:
             continue
         try:
             d = json.load(open(f, encoding="utf-8"))
@@ -144,11 +204,21 @@ def cmd_worklist(_args):
         rows.append((rid, d.get("source_slug", ""), d.get("title", ""), f))
     if not rows:
         print("No new Technology articles to extract.")
+        _report_skipped(skipped)
         return
     print(f"{len(rows)} new article(s) to extract:")
     for rid, slug, title, f in rows:
         print(f"  {rid}  [{slug}]  {title[:70]}")
         print(f"      {Path(f).relative_to(REPO)}")
+    _report_skipped(skipped)
+
+
+def _report_skipped(skipped):
+    """Never let the skiplist hide work silently — always say what it withheld."""
+    if not skipped:
+        return
+    print(f"({len(skipped)} record(s) on the skiplist, excluded above — "
+          f"see {SKIPLIST.relative_to(REPO)})")
 
 
 # --- quote verification (postprocess) ---------------------------------------
@@ -447,6 +517,12 @@ def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("worklist").set_defaults(fn=cmd_worklist)
+    a = sub.add_parser("skip", help="exclude raw record(s) from the worklist for good")
+    a.add_argument("ids", nargs="+")
+    a.add_argument("--reason", required=True)
+    a.set_defaults(fn=cmd_skip)
+    a = sub.add_parser("unskip", help="put skiplisted record(s) back on the worklist")
+    a.add_argument("ids", nargs="+"); a.set_defaults(fn=cmd_unskip)
     a = sub.add_parser("postprocess"); a.add_argument("ids", nargs="+"); a.set_defaults(fn=cmd_postprocess)
     a = sub.add_parser("publish")
     a.add_argument("--date", default=None)

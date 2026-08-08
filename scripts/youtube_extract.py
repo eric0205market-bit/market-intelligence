@@ -21,6 +21,7 @@ NO network, NO API key, NO external API — pure local file work.
 """
 import datetime
 import glob
+import html
 import json
 import os
 import re
@@ -34,7 +35,12 @@ PROC_DIR = REPO / "processed" / "youtube"
 CONFIG = REPO / "config" / "youtube_sources_full.json"
 RUBRIC = REPO / "routines" / "routine_youtube.md"
 
-DUP_DURATION_TOLERANCE = 3   # seconds; same channel + ~same length => re-upload
+# Same channel + similar length only makes an episode a re-upload CANDIDATE; the
+# transcripts must then actually match. Podcasts run to consistent lengths, so
+# duration alone collides constantly between genuinely different episodes.
+DUP_DURATION_TOLERANCE = 60   # seconds
+DUP_CONTENT_THRESHOLD = 0.5   # 4-gram containment above which two transcripts are the same episode
+DUP_SHINGLE_N = 4
 
 
 def _cfg():
@@ -82,7 +88,7 @@ def _processed_ids():
 
 
 def _processed_sigs():
-    """(channel_name, duration_seconds) of already-processed episodes — for content-dedup."""
+    """(channel_name, duration_seconds, video_id) of already-processed episodes — for content-dedup."""
     sigs = []
     for f in glob.glob(str(PROC_DIR / "*.json")):
         if os.path.basename(f) == QUARANTINE_LOG.name:
@@ -91,8 +97,28 @@ def _processed_sigs():
             d = json.load(open(f))
         except (json.JSONDecodeError, OSError):
             continue
-        sigs.append((d.get("channel_name"), d.get("duration_seconds") or 0))
+        sigs.append((d.get("channel_name"), d.get("duration_seconds") or 0, d.get("video_id")))
     return sigs
+
+
+def _shingles(text):
+    """Normalized n-gram set of a transcript. Tolerant of auto-caption artifacts
+    (HTML entities, stray hyphenation) that differ between two caption tracks of
+    the same episode."""
+    words = re.sub(r"[^a-z0-9 ]", " ", html.unescape(text or "").lower()).split()
+    if len(words) < DUP_SHINGLE_N * 10:
+        return set()
+    return {" ".join(words[i:i + DUP_SHINGLE_N])
+            for i in range(len(words) - DUP_SHINGLE_N)}
+
+
+def _same_content(shingles_a, shingles_b):
+    """True if two transcripts are the same episode. Containment (not Jaccard) so
+    that a truncated or differently-padded caption track still matches."""
+    if not shingles_a or not shingles_b:
+        return False
+    overlap = len(shingles_a & shingles_b) / min(len(shingles_a), len(shingles_b))
+    return overlap >= DUP_CONTENT_THRESHOLD
 
 
 def worklist():
@@ -100,8 +126,18 @@ def worklist():
     min_s = _min_seconds()
     done = _processed_ids()
     sigs = _processed_sigs()
+    raws = sorted(_raw_records(), key=lambda d: d["video_id"])
+    by_id = {d["video_id"]: d for d in raws}
+    shingle_cache = {}
+
+    def shingles(vid):
+        if vid not in shingle_cache:
+            rec = by_id.get(vid) or {}
+            shingle_cache[vid] = _shingles(rec.get("transcript"))
+        return shingle_cache[vid]
+
     elig = []
-    for d in _raw_records():
+    for d in raws:
         if not d.get("transcript_available"):
             continue
         dur = d.get("duration_seconds") or 0
@@ -109,9 +145,19 @@ def worklist():
             continue
         if d["video_id"] in done:
             continue
-        # content-dedup: same channel + near-identical duration as a processed ep
-        if any(ch == d.get("channel_name") and abs(sec - dur) <= DUP_DURATION_TOLERANCE
-               for ch, sec in sigs):
+        # content-dedup of re-uploads: same channel + similar length narrows the
+        # candidates, then the transcripts themselves have to match. Compared
+        # against already-processed episodes AND against episodes already
+        # accepted this run, so a pair of unextracted re-uploads only costs one
+        # extraction.
+        seen = [(ch, sec, vid) for ch, sec, vid in sigs if vid in by_id]
+        seen += [(e.get("channel_name"), e.get("duration_seconds") or 0, e["video_id"])
+                 for e in elig]
+        candidates = [vid for ch, sec, vid in seen
+                      if ch == d.get("channel_name")
+                      and abs(sec - dur) <= DUP_DURATION_TOLERANCE]
+        if candidates and any(_same_content(shingles(d["video_id"]), shingles(vid))
+                              for vid in candidates):
             continue
         elig.append(d)
     elig.sort(key=lambda d: -(d.get("duration_seconds") or 0))
@@ -281,7 +327,16 @@ def postprocess_record(d, raw):
 
 def cmd_postprocess(args):
     total = mapped = verified = 0
-    for vid in args.ids:
+    # Accept either positional ids or --ids a,b,c. YouTube ids can start with "-"
+    # (e.g. -sAqBma8mtU), which argparse reads as an option flag, so --ids is the
+    # form callers should prefer.
+    ids = list(args.ids or [])
+    for chunk in (args.id_list or "").split(","):
+        if chunk.strip():
+            ids.append(chunk.strip())
+    if not ids:
+        sys.exit("postprocess: no video ids given (pass them positionally or via --ids a,b,c)")
+    for vid in ids:
         pf = PROC_DIR / f"{vid}.json"
         if not pf.exists():
             print(f"  postprocess: {vid} — no processed file, skip"); continue
@@ -427,7 +482,11 @@ def main():
     sub.add_parser("worklist").set_defaults(fn=cmd_worklist)
     a = sub.add_parser("tier"); a.add_argument("id"); a.set_defaults(fn=cmd_tier)
     a = sub.add_parser("prompt"); a.add_argument("id"); a.set_defaults(fn=cmd_prompt)
-    a = sub.add_parser("postprocess"); a.add_argument("ids", nargs="+"); a.set_defaults(fn=cmd_postprocess)
+    a = sub.add_parser("postprocess")
+    a.add_argument("ids", nargs="*")
+    a.add_argument("--ids", dest="id_list", default=None,
+                   help="comma-separated video ids; use this form for ids starting with '-'")
+    a.set_defaults(fn=cmd_postprocess)
     a = sub.add_parser("publish"); a.add_argument("--date", default=None)
     a.add_argument("--ids", default=None)
     a.add_argument("--force", action="store_true",
