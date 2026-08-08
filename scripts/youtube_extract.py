@@ -126,8 +126,16 @@ def worklist():
     min_s = _min_seconds()
     done = _processed_ids()
     sigs = _processed_sigs()
-    raws = _raw_records()
+    raws = sorted(_raw_records(), key=lambda d: d["video_id"])
     by_id = {d["video_id"]: d for d in raws}
+    shingle_cache = {}
+
+    def shingles(vid):
+        if vid not in shingle_cache:
+            rec = by_id.get(vid) or {}
+            shingle_cache[vid] = _shingles(rec.get("transcript"))
+        return shingle_cache[vid]
+
     elig = []
     for d in raws:
         if not d.get("transcript_available"):
@@ -138,16 +146,19 @@ def worklist():
         if d["video_id"] in done:
             continue
         # content-dedup of re-uploads: same channel + similar length narrows the
-        # candidates, then the transcripts themselves have to match.
-        candidates = [vid for ch, sec, vid in sigs
+        # candidates, then the transcripts themselves have to match. Compared
+        # against already-processed episodes AND against episodes already
+        # accepted this run, so a pair of unextracted re-uploads only costs one
+        # extraction.
+        seen = [(ch, sec, vid) for ch, sec, vid in sigs if vid in by_id]
+        seen += [(e.get("channel_name"), e.get("duration_seconds") or 0, e["video_id"])
+                 for e in elig]
+        candidates = [vid for ch, sec, vid in seen
                       if ch == d.get("channel_name")
-                      and abs(sec - dur) <= DUP_DURATION_TOLERANCE
-                      and vid in by_id]
-        if candidates:
-            mine = _shingles(d.get("transcript"))
-            if any(_same_content(mine, _shingles(by_id[vid].get("transcript")))
-                   for vid in candidates):
-                continue
+                      and abs(sec - dur) <= DUP_DURATION_TOLERANCE]
+        if candidates and any(_same_content(shingles(d["video_id"]), shingles(vid))
+                              for vid in candidates):
+            continue
         elig.append(d)
     elig.sort(key=lambda d: -(d.get("duration_seconds") or 0))
     return elig
