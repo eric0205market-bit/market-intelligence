@@ -6,8 +6,19 @@ no LLM. The extraction itself (raw article -> KNOWLEDGE card JSON) is done by th
 Opus subscription routine in routines/routine_concepts.md, ONE source per
 subagent. This script provides the surrounding deterministic machinery:
 
-  worklist                 list new raw/concepts records with no processed card yet
-                           (dedup against processed/concepts/<record_id>.json)
+  worklist [--purge]       list new raw/concepts records with no processed card yet
+                           (dedup against processed/concepts/<record_id>.json).
+                           Structural junk pre-filter skips (not deletes) known
+                           junk shapes; a per-source 100%-junk health check is
+                           printed to stderr. --purge additionally runs `purge`
+                           (below) in the same pass.
+  purge                    deterministic, git-tracked cleanup of the skip-not-
+                           delete gap: git rm's (a) orphaned raw/ records the
+                           worklist filter would skip, and (b) zero-insight
+                           processed/ cards whose underlying record
+                           independently matches a junk signal. Never touches
+                           a record matching no signal (protects thin-but-real
+                           cards). Stages deletions only — does not commit.
   postprocess <id...>      set quote_verified on each insight (quote present in
                            the raw article text). Concepts has no timestamps.
   publish [--date] [--ids] entity-presence guard -> quarantine topic-mismatch
@@ -83,15 +94,22 @@ def _processed_ids():
 
 # --- worklist junk pre-filter ------------------------------------------------
 # STRUCTURAL (theme-agnostic) signal only — catches a raw record that was
-# collected as if it were an article but is actually one of three junk shapes:
-# an archive/listing index page mistaken for a post, a broken glyph-soup
-# extraction (a JS canvas/font render captured instead of real text), or a
-# CAPTCHA/bot-check interstitial. Without this, a record like that never gets a
-# card (an agent correctly refuses it every time) and never gets removed from
-# raw/, so it resurfaces in the worklist FOREVER — one bad source can then
-# quietly block a whole day's extraction (2026-07-10: 14/14 worklisted
-# aswath_damodaran records were 2026-06/07 archive-page leftovers, netting 0
-# cards). Skip-not-delete: raw is untouched, only kept out of THIS list.
+# collected as if it were an article but is actually one of several junk
+# shapes: an archive/listing index page mistaken for a post, a broken
+# glyph-soup extraction (a JS canvas/font render captured instead of real
+# text), a CAPTCHA/bot-check interstitial, a cookie-consent-preference-center
+# capture (a JS widget/chart page where the scraper caught only the cookie
+# overlay), or a known non-article site-furniture page (team-bio, careers,
+# compliance-policy — named per-source, since these are fixed corporate pages
+# that will never become a real Concepts article regardless of word count).
+# Without this, a record like that never gets a card (an agent correctly
+# refuses it every time) and never gets removed from raw/, so it resurfaces in
+# the worklist FOREVER — one bad source can then quietly block a whole day's
+# extraction (2026-07-10: 14/14 worklisted aswath_damodaran records were
+# 2026-06/07 archive-page leftovers, netting 0 cards; 2026-08-07:
+# blackrock_investment_institute's "Stock Quote & Chart" cookie-consent-only
+# page slipped through this same filter before the cookie-consent signal
+# existed). Skip-not-delete: raw is untouched, only kept out of THIS list.
 #
 # Deliberately NOT a bare word-count floor — tested against the live corpus
 # and rejected: genuinely short-but-complete articles (a 152-word CFR "In
@@ -100,8 +118,14 @@ def _processed_ids():
 # overlapping the word range real junk (paywall teasers, cookie-gate pages)
 # also occupies at this source mix. Any length threshold either fails to catch
 # the junk or clips proven-good short content — length alone can't tell them
-# apart here. Verified 0 false positives for the three signals below across
-# all 509 currently-processed (proven-real) cards.
+# apart here. Same reasoning killed a candidate "video-player-widget
+# vocabulary" signal for World Economic Forum video pages (2026-08-07): real,
+# successfully-extracted WEF video-blurb cards sit at 253-290 words with the
+# identical player-chrome boilerplate as a genuine zero-insight WEF video
+# stub — the chrome is a fixed page template present on EVERY WEF video page,
+# real or thin, so it carries no discriminating signal here. Verified 0 false
+# positives for every signal below across all 757 currently-processed,
+# non-zero-insight (proven-real) cards.
 _GLYPH_RE = re.compile(r"[▀-▟]")   # Unicode block-drawing chars —
 # a glyph-soup extraction is near-entirely these; real article text has none.
 _GLYPH_DENSITY_MIN = 0.15
@@ -110,6 +134,36 @@ _BOT_CHECK_RE = re.compile(
     r"unusual traffic|are you a human|verify you.?re (a person|human)|"
     r"captcha|access denied|please enable javascript and cookies|"
     r"checking your browser", re.I)
+
+# Cookie-consent-only capture: the scraper caught a cookie/consent-preference
+# overlay instead of the real page content (a JS-rendered stock-quote/chart
+# widget, in the incident that prompted this). Density alone is NOT enough —
+# real articles that happen to render a cookie banner alongside genuine prose
+# (e.g. IISS product pages, ~3% cookie-word density) sit close to the same
+# density as true junk; the reliable structural tell is WHERE the consent
+# block starts: real content ALWAYS opens before it in a real page (170-280+
+# words of substance first, IISS-verified); pure junk opens WITH it (word 0).
+_COOKIE_MARKER_RE = re.compile(
+    r"manage your cookies|privacy preference center|cookie notice|"
+    r"manage consent preferences|this website uses cookies", re.I)
+_COOKIE_WORD_RE = re.compile(r"\bcookies?\b", re.I)
+_COOKIE_DENSITY_MIN = 0.02
+_COOKIE_PRECEDING_WORDS_MAX = 60   # real content before the marker, in words
+
+
+def _looks_like_cookie_consent(text):
+    if not text:
+        return False
+    words = text.split()
+    if not words:
+        return False
+    density = len(_COOKIE_WORD_RE.findall(text)) / len(words)
+    if density < _COOKIE_DENSITY_MIN:
+        return False
+    m = _COOKIE_MARKER_RE.search(text)
+    if not m:
+        return False
+    return len(text[:m.start()].split()) <= _COOKIE_PRECEDING_WORDS_MAX
 
 
 def _looks_like_archive_listing(title, url):
@@ -121,21 +175,57 @@ def _looks_like_archive_listing(title, url):
     return title.strip().rstrip("/") == url.strip().rstrip("/")
 
 
+# Per-source known non-article site-furniture pages, by URL path fragment —
+# same design as the backfill extractor's WORKLIST_DROP_PATHS (theme-agnostic:
+# keys off URL shape, not content). These are fixed corporate pages (team
+# bios, careers postings, compliance/legal policy documents) that will never
+# become a real Concepts insight article no matter how much prose they carry —
+# confirmed by reading each one's full text before listing it here. Scoped
+# per-source and per-path; extend only after individually verifying a page.
+WORKLIST_DROP_PATHS = {
+    "blackrock_investment_institute": (
+        "/meet-the-bii-team",
+        "/our-approach-to-sustainability",
+        "/best-execution-and-order-placement-policy",
+    ),
+    "carnegie_endowment": (
+        "/employment-opportunities-at-the-carnegie-endowment",
+    ),
+    "bridgewater_research": (
+        "/phishing-and-fraud-awareness-notice",
+        "/sustainable-finance-disclosure-regulation-disclosures",
+    ),
+}
+
+
+def _looks_like_known_nonarticle_path(slug, url):
+    path = (url or "").lower()
+    return any(frag in path for frag in WORKLIST_DROP_PATHS.get(slug, ()))
+
+
 def _worklist_junk_reason(d):
-    """'archive-listing' | 'glyph-soup' | 'bot-check' | None for a raw record
-    about to be offered in the daily worklist."""
+    """'archive-listing' | 'glyph-soup' | 'bot-check' | 'cookie-consent' |
+    'known-path' | None for a raw record about to be offered in the daily
+    worklist (or, when re-applied at purge time, for an already-processed
+    zero-insight card's own stored title/source_url/text)."""
     text = d.get("text") or ""
-    if _looks_like_archive_listing(d.get("title") or "", d.get("source_url") or ""):
+    title = d.get("title") or ""
+    url = d.get("source_url") or ""
+    if _looks_like_archive_listing(title, url):
         return "archive-listing"
+    if _looks_like_known_nonarticle_path(d.get("source_slug", ""), url):
+        return "known-path"
     if text and (len(_GLYPH_RE.findall(text)) / len(text)) > _GLYPH_DENSITY_MIN:
         return "glyph-soup"
     if _BOT_CHECK_RE.search(text[:500]):
         return "bot-check"
+    if _looks_like_cookie_consent(text):
+        return "cookie-consent"
     return None
 
 
 # --- worklist ---------------------------------------------------------------
-def cmd_worklist(_args):
+def cmd_worklist(args):
     done = _processed_ids()
     rows = []
     dropped = {}                       # junk reason -> count
@@ -177,6 +267,10 @@ def cmd_worklist(_args):
     if dropped:
         print("\nworklist pre-filter skipped (not deleted): "
               + ", ".join(f"{k}={n}" for k, n in sorted(dropped.items())), file=sys.stderr)
+
+    if getattr(args, "purge", False):
+        cmd_purge(args)
+
     if not rows:
         print("No new Concepts articles to extract.")
         return
@@ -184,6 +278,96 @@ def cmd_worklist(_args):
     for rid, slug, title, f in rows:
         print(f"  {rid}  [{slug}]  {title[:70]}")
         print(f"      {Path(f).relative_to(REPO)}")
+
+
+# --- purge (the skip-not-delete gap) -----------------------------------------
+def _zero_insight_processed():
+    """(rid, card, path) for every processed/concepts card with 0 insights —
+    the class of record that got fully extracted (a card exists) but the
+    agent correctly found nothing: same underlying junk shapes the worklist
+    filter now catches BEFORE extraction, just not purged after the fact."""
+    out = []
+    for f in glob.glob(str(PROC_DIR / "*.json")):
+        if Path(f).name.startswith("_"):
+            continue
+        try:
+            card = json.load(open(f, encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        n = sum(len(t.get("insights") or []) for t in (card.get("themes") or []))
+        if n == 0:
+            out.append((Path(f).stem, card, f))
+    return out
+
+
+def cmd_purge(_args):
+    """Deterministically remove on-disk orphaned junk, using the EXACT SAME
+    structural signals as the worklist filter (_worklist_junk_reason) — never
+    a bespoke purge-only rule. Two targets:
+
+      1. raw/concepts/ records not yet processed that the filter would skip —
+         these sit forever under skip-not-delete with no other way off disk.
+      2. processed/concepts/ zero-insight cards whose underlying record
+         independently matches a junk signal — confirmed junk that already
+         got carded before this filter existed, not merely thin-but-real
+         content (a card is checked against its own raw record when the raw
+         file still exists, or its own stored title/source_url when raw was
+         already removed by an earlier manual purge — sufficient for the
+         URL-shape signals: archive-listing, known-path).
+
+    A zero-insight card that matches NO signal is left untouched and reported
+    separately — e.g. a genuine thin-but-real article the extractor
+    under-called is not junk and must never be purged just for being short.
+
+    git rm, never a bare unlink: every deletion is staged, reversible, and
+    shows up in `git status` for the normal commit flow to pick up (this
+    script never commits on its own)."""
+    done = _processed_ids()
+    raw_targets = []
+    for f in _raw_files():
+        rid = Path(f).stem
+        if rid in done:
+            continue
+        try:
+            d = json.load(open(f, encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        reason = _worklist_junk_reason(d)
+        if reason:
+            raw_targets.append((d.get("source_slug", ""), rid, reason, f))
+
+    processed_targets, protected = [], []
+    for rid, card, pf in _zero_insight_processed():
+        raw = _raw_by_id(rid)
+        probe = raw if raw is not None else {
+            "title": card.get("title"), "source_url": card.get("source_url"),
+            "source_slug": "", "text": "",
+        }
+        reason = _worklist_junk_reason(probe)
+        slug = (raw or {}).get("source_slug") or card.get("source_name", "")
+        if reason:
+            processed_targets.append((slug, rid, reason, pf))
+        else:
+            protected.append((slug, rid, card.get("title", "")[:60]))
+
+    targets = raw_targets + processed_targets
+    if not targets:
+        print("purge: nothing on disk matches a structural junk signal.")
+    else:
+        print(f"\npurge: removing {len(targets)} confirmed-junk record(s) via git rm "
+              f"({len(raw_targets)} raw, {len(processed_targets)} processed):")
+        for slug, rid, reason, path in sorted(targets):
+            kind = "raw" if (slug, rid, reason, path) in raw_targets else "processed"
+            print(f"  [{kind}:{reason}] {slug}/{rid}  {Path(path).relative_to(REPO)}")
+        subprocess.run(["git", "rm", "-q", "--"] + [t[3] for t in targets],
+                        check=True, cwd=REPO)
+        print("  -> staged for deletion (git status), not committed here.")
+
+    if protected:
+        print(f"\npurge: {len(protected)} zero-insight card(s) matched NO junk "
+              f"signal — left in place (thin-but-real, not junk):")
+        for slug, rid, title in sorted(protected):
+            print(f"  [kept] {slug}/{rid}  {title}")
 
 
 # --- quote verification (postprocess) ---------------------------------------
@@ -463,7 +647,12 @@ def main():
     import argparse
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("worklist").set_defaults(fn=cmd_worklist)
+    a = sub.add_parser("worklist")
+    a.add_argument("--purge", action="store_true",
+                    help="also purge on-disk junk matching a structural signal "
+                         "(orphaned raw records + zero-insight processed cards)")
+    a.set_defaults(fn=cmd_worklist)
+    sub.add_parser("purge").set_defaults(fn=cmd_purge)
     a = sub.add_parser("postprocess"); a.add_argument("ids", nargs="+"); a.set_defaults(fn=cmd_postprocess)
     a = sub.add_parser("publish")
     a.add_argument("--date", default=None)
