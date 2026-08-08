@@ -100,7 +100,7 @@ The repository is already cloned and you are at its root (the local dedicated cl
 
 ```
 IDS=<id1,id2,...>                       # the episodes you just wrote
-python3 scripts/youtube_extract.py postprocess ${IDS//,/ }
+python3 scripts/youtube_extract.py postprocess --ids "$IDS"
 python3 scripts/youtube_extract.py publish --date "$(date -u +%F)" --ids "$IDS"
 git add processed/youtube reports/youtube_*.html index.html
 git commit -m "youtube insights: +N episode(s) ($(date -u +%F))"
