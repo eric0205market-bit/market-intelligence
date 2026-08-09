@@ -33,7 +33,7 @@ These are SHARED across the KNOWLEDGE track (Concepts/Technology/Society hit the
 - **`MIN_TEXT_LEN=100`** — dead constant kept as a "legacy backstop", zero active references. Delete. (Dead code comes back to life: `_card_status()` was dead in three streams and that was the hole.)
 - **`LOOKBACK_DAYS=7`** is the script default on manual run without `--days` (the workflow always sends `--days 10`). The script docstring shows a flagless invocation → the window silently narrows.
 - **Source `iea`:** 22 articles → 0 when the window narrows. Lead on an IP block; no direct evidence.
-- **`routines/youtube_extraction_routine.md`** — untracked file from another stream sitting in the worktree.
+- **`routines/youtube_extraction_routine.md`** — untracked file sitting in the worktree. **RESOLVED (Aug-09), and it was NOT harmless:** this was a stripped hand-written YouTube routine (no entity-guard, no quarantine, prose publish) that the owner had been pasting into Claude Code INSTEAD of the full `routine_youtube.md` — so YouTube extraction ran guard-off for a period. File removed; full routine restored in use. Corpus impact benign (Jul-10 audit: 0/2508). See the MODULE_REGISTRY Aug-09 items. Lesson: an "untracked stray file" finding deserves a look at what it IS, not just a delete.
 
 ### Added 2026-07-10 (Society backfill quality debts — collector-side, owner chats)
 - **heavy_sitemap recency-sort bug:** `walk_sitemap_recent()` sorts sub-maps by date but NOT articles within them before the cap → "150 newest" are not newest (Brookings recorded 0 of 150, all out-of-window 2013–2024). Affects any heavy_sitemap stream (Concepts/Technology think-tank backfills too).
