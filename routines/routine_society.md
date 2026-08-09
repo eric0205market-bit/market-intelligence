@@ -183,8 +183,18 @@ git commit -m "society insights: +N article(s) ($(date -u +%F))"
 for i in 1 2 3; do git push origin main && break; git pull --rebase origin main; done
 ```
 
-Do NOT render, commit, or push by hand beyond these commands — `publish_society.py
-publish` does the rendering and dashboard rebuild deterministically.
+Do NOT render or PUSH by hand beyond these commands — `publish_society.py
+publish` does the rendering and dashboard rebuild deterministically. Local
+progress commits during a long extraction are permitted — see the section below.
+
+## PROGRESS SAVING during long extraction — LOCAL commits only
+On long runs you MAY save progress with LOCAL git commits, to protect against the shared clone's
+`git pull --rebase` silently discarding uncommitted processed/ files.
+- LOCAL ONLY: `git add processed/society/ && git commit -m 'society insights: progress (local)'`
+- NEVER push these. NEVER run `publish_society.py` for them.
+- PUSH happens exactly ONCE, at the final step after publish — the single `+N article(s)` commit above.
+Why: each push regenerates index.html and requests a Pages build; a burst overruns Pages' hourly build
+limit and fails the site's builds. Local commits protect the work without touching deploy.
 
 ### STOP ON LIMIT
 If a subscription usage limit is hit mid-run, STOP CLEANLY: publish whatever cards

@@ -107,7 +107,16 @@ git commit -m "youtube insights: +N episode(s) ($(date -u +%F))"
 for i in 1 2 3; do git push origin main && break; git pull --rebase origin main; done
 ```
 
-Do NOT render, commit, or push by hand beyond these commands — `youtube_extract.py publish` does the rendering and dashboard rebuild deterministically. (The whole worklist → extract → publish pipeline is also wrapped in `bash scripts/extract_youtube_local.sh` for the headless `claude -p` path; this routine is the manual/interactive path the script delegates to when no headless CLI is present.)
+Do NOT render or PUSH by hand beyond these commands — `youtube_extract.py publish` does the rendering and dashboard rebuild deterministically. Local progress commits during a long extraction are permitted — see the section below. (The whole worklist → extract → publish pipeline is also wrapped in `bash scripts/extract_youtube_local.sh` for the headless `claude -p` path; this routine is the manual/interactive path the script delegates to when no headless CLI is present.)
+
+## PROGRESS SAVING during long extraction — LOCAL commits only
+On long runs you MAY save progress with LOCAL git commits, to protect against the shared clone's
+`git pull --rebase` silently discarding uncommitted processed/ files.
+- LOCAL ONLY: `git add processed/youtube/ && git commit -m 'youtube insights: progress (local)'`
+- NEVER push these. NEVER run `youtube_extract.py publish` for them.
+- PUSH happens exactly ONCE, at the final step after publish — the single `+N episode(s)` commit above.
+Why: each push regenerates index.html and requests a Pages build; a burst overruns Pages' hourly build
+limit and fails the site's builds. Local commits protect the work without touching deploy.
 
 ### STOP ON LIMIT
 If a subscription usage limit is hit mid-run, STOP CLEANLY: publish whatever episodes were already fully drafted (run STEP 3 for those ids), report what finished, and end. The next run resumes automatically — the STEP 0 worklist re-lists only the still-unprocessed episodes via the dedup. NEVER fall back to the paid API.
