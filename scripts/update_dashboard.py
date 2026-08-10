@@ -42,13 +42,17 @@ REPORT_TYPES = {
 FALLBACK_COLOR = "#64748b"
 FALLBACK_ICON = "📄"
 
-# Rhythm groups, rendered in this order (pulse → research). Each renders as a
-# bordered container with the group's own Latest/Previous rows. Membership is
-# config-driven via each stream's "group" above — adding a slow stream is one
-# REPORT_TYPES line, no markup changes here.
+# Content-type groups, rendered in this order (pulse → research → knowledge).
+# Each renders as a bordered container with the group's own Latest/Previous
+# rows. Membership is config-driven via each stream's "group" above — adding
+# a stream is one REPORT_TYPES line, no markup changes here. Grouping is by
+# CONTENT TYPE, not publishing rhythm — streams within a group can run on
+# very different cadences (e.g. twitter_bank_research is 2x/day, other
+# "research" streams are daily to weekly), so no group carries a rhythm claim
+# in its caption.
 GROUPS = [
-    {"key": "pulse",    "label": "⚡ PULSE",    "caption": "· intraday · 2–3×/day"},
-    {"key": "research", "label": "📑 RESEARCH", "caption": "· daily to weekly"},
+    {"key": "pulse",    "label": "⚡ PULSE",    "caption": ""},
+    {"key": "research", "label": "📑 RESEARCH", "caption": ""},
     {"key": "knowledge", "label": "🧠 KNOWLEDGE", "caption": "· deep-dives · transcripts & insights", "color": "#059669"},
 ]
 DEFAULT_GROUP = "pulse"
@@ -156,11 +160,13 @@ def render_top_section(reports):
             gcolor = group.get("color")
             grp_style = f' style="border-top:3px solid {gcolor}"' if gcolor else ""
             lbl_style = f' style="color:{gcolor}"' if gcolor else ""
+            caption_html = (f'<span class="group-caption">{group["caption"]}</span>'
+                            if group.get("caption") else "")
             blocks.append(
                 f'<div class="group"{grp_style}>'
                 f'<div class="group-head">'
                 f'<span class="group-label"{lbl_style}>{group["label"]}</span>'
-                f'<span class="group-caption">{group["caption"]}</span></div>'
+                f'{caption_html}</div>'
                 f'{"".join(rows)}</div>'
             )
     return "".join(blocks)
