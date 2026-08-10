@@ -122,6 +122,33 @@ def log(msg):
     print(f"[{ts}] {msg}", flush=True)
 
 
+def write_collection_health(status, reason_or_tweet_count, api_calls,
+                            script="collect_twitter"):
+    """Write data/twitter/latest/_collection_health.json so a silent
+    zero-tweet run (e.g. the GetXAPI credit outage on 2026-08-08) is visible
+    to anything checking freshness, instead of only showing up as a stale
+    collected_at three routine-runs later. `reason_or_tweet_count` is the
+    failure reason string for status="fail", or the int tweet count for
+    status="ok". `script` names the caller (collect_bank_research.py reuses
+    this via `ct.write_collection_health(..., script="collect_bank_research")`
+    rather than duplicating the schema)."""
+    payload = {
+        "script": script,
+        "status": status,
+        "checked_at": datetime.datetime.now(datetime.timezone.utc)
+                              .strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "api_calls_made": api_calls,
+    }
+    if status == "ok":
+        payload["collected_at"] = payload["checked_at"]
+        payload["tweet_count"] = reason_or_tweet_count
+    else:
+        payload["reason"] = reason_or_tweet_count
+    LATEST_DIR.mkdir(parents=True, exist_ok=True)
+    (LATEST_DIR / "_collection_health.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def chunked(seq, size):
     for i in range(0, len(seq), size):
         yield seq[i:i + size]
@@ -772,10 +799,15 @@ def main():
     # Don't overwrite good data with an empty collection (e.g. total API
     # failure). Exit without writing data/twitter/latest/ or any output, so
     # the workflow finds nothing to commit and main keeps the last good data.
+    # DO write a health marker and exit non-zero, though — a silent exit 0
+    # here is what let the 2026-08-08 GetXAPI outage collect zero tweets for
+    # days while every downstream routine kept publishing from stale data
+    # with no visible failure anywhere.
     if len(deduped) == 0:
         log("No tweets collected — skipping all writes to preserve existing "
             "data/twitter/latest/. Exiting without changes.")
-        sys.exit(0)
+        write_collection_health("fail", "zero tweets collected", api_calls)
+        sys.exit(1)
 
     watchlist_count = sum(1 for t in deduped if t["source"] == "watchlist")
     research_count = sum(1 for t in deduped if t["source"] == "research_search")
@@ -915,6 +947,8 @@ def main():
 
     split_files = ([f"tweets_{c}.json" for c in SPLIT_CATEGORIES]
                    + [f"tweets_for_routine_{c}.json" for c in ROUTINE_CATEGORIES])
+
+    write_collection_health("ok", len(deduped), api_calls)
 
     log("=== Twitter Collection Complete ===")
     log(f"Total: {len(deduped)} tweets")
