@@ -75,8 +75,16 @@ LOOKBACK_DAYS = 3             # daily stream: only keep articles within this win
 PAGE_TIMEOUT_MS = 10_000      # 10s per page navigation
 SOURCE_TIMEOUT_S = 120        # 120s wall-clock budget per source (--budget overrides)
 INDEX_PHASE_S = 60            # cap index-page crawling so articles get budget too
+# wide_sweep sources carry many index_urls (currently only a16z: one page per
+# vertical) instead of the usual single index_url, so the index-crawl phase
+# alone needs far more time before any article gets visited. Same idea as the
+# Institutional collector's bank_bulge tier.
+WIDE_SWEEP_SOURCE_TIMEOUT_S = 420
+WIDE_SWEEP_INDEX_PHASE_S = 180
 PAGE_DELAY_S = 2              # polite delay between page visits
-MAX_INDEX_PAGES = 10          # don't crawl more than this many index pages/source
+MAX_INDEX_PAGES = 15          # don't crawl more than this many index pages/source
+                               # (raised from 10 for a16z's 12-URL wide sweep;
+                               # every other Concepts source still carries one)
 MAX_ARTICLES_PER_SOURCE = 30  # safety cap so one source can't run away
 MIN_IMAGE_WIDTH = 200         # skip icons/logos below this width
 DEFAULT_VIEWPORT = {"width": 1366, "height": 900}
@@ -822,9 +830,15 @@ def collect_source(page, limiter, source, cutoff_date, errors,
     slug = source["source_slug"]
     name = source.get("name", slug)
     funnel = {k: 0 for k in FUNNEL_KEYS}
-    # Concepts sources carry a single index_url; wrap it into the URL list the
-    # institutional crawl logic expects.
-    urls = [source["index_url"]] if source.get("index_url") else []
+    # Concepts sources normally carry a single index_url; wrap it into the URL
+    # list the institutional crawl logic expects. A source may instead carry
+    # `index_urls` (a list) to sweep several listing pages as ONE source —
+    # used by a16z, which has no single complete listing but a real, dated,
+    # server-rendered page per vertical (AI, Enterprise, Infra, ...). Every
+    # url in the list shares this source's slug/funnel/no-degrade-guard, so
+    # the health check and dashboard still see exactly one "a16z_blog" row.
+    urls = source.get("index_urls") or (
+        [source["index_url"]] if source.get("index_url") else [])
     if not urls:
         log(f"  {slug}: no index_url — skipping")
         if funnels is not None:
@@ -857,6 +871,20 @@ def collect_source(page, limiter, source, cutoff_date, errors,
     # libertystreeteconomics.newyorkfed.org vs the www.newyorkfed.org nav). Does
     # NOT affect the shared looks_like_article detector or any other source.
     url_must = (source.get("url_must_contain") or "").lower()
+    # Optional PER-SOURCE exclusion: drop candidate links whose path contains
+    # any of these fragments even though they otherwise look like an article —
+    # used to keep a source scoped to text articles when its own site mixes in
+    # other content types at sibling paths (a16z publishes podcasts at
+    # /podcast/... and deal announcements at /announcement/..., both of which
+    # pass looks_like_article's hyphenated-slug heuristic; Concepts is
+    # text-only, so both are excluded here rather than fetched and dropped).
+    exclude_terms = tuple(t.lower() for t in source.get("exclude_path_terms") or ())
+    # Optional PER-SOURCE override of the per-run "articles kept" safety cap —
+    # used for a one-off wide/backfill run (e.g. `--days 60` recovering a
+    # multi-vertical gap) where the normal 30-kept cap would silently truncate
+    # a legitimate large batch. Config default (MAX_ARTICLES_PER_SOURCE)
+    # applies to every source that doesn't set this.
+    max_articles = source.get("max_articles", MAX_ARTICLES_PER_SOURCE)
     start = time.monotonic()
     seen = {norm_url(u) for u in urls}   # don't treat index pages as articles
     candidates = []
@@ -894,6 +922,9 @@ def collect_source(page, limiter, source, cutoff_date, errors,
                     is_article = True
             if is_article and url_must and url_must not in link.lower():
                 continue   # per-source scope: outside the allowed host/path
+            if is_article and exclude_terms and any(t in link.lower() for t in exclude_terms):
+                seen.add(key)   # a known other-content-type path — never re-check this run
+                continue   # e.g. a16z /podcast/ or /announcement/ — out of scope, not an error
             if is_article and is_known_dropped_path(slug, link):
                 seen.add(key)   # never re-check this link again THIS run
                 funnel["dropped_known_path"] += 1
@@ -919,8 +950,8 @@ def collect_source(page, limiter, source, cutoff_date, errors,
     # reusing the shared `page` that just harvested the index.
     fresh_ctx = bool(source.get("fresh_context_per_article")) and browser is not None
     for article_url in candidates:
-        if len(records) >= MAX_ARTICLES_PER_SOURCE:
-            log(f"  {slug}: hit per-source article cap ({MAX_ARTICLES_PER_SOURCE})")
+        if len(records) >= max_articles:
+            log(f"  {slug}: hit per-source article cap ({max_articles})")
             break
         if over_budget():
             log(f"  {slug}: source time budget reached while reading articles")
@@ -959,8 +990,20 @@ def collect_source(page, limiter, source, cutoff_date, errors,
             continue
 
         text = data.get("text", "")
+        title = data.get("title", "")
+        # Optional PER-SOURCE title-prefix exclusion — for content types that
+        # aren't distinguishable by URL path alone. a16zcrypto's deal
+        # announcements (e.g. "Investing in Ornn: A Market for Compute") live
+        # at the same /posts/article/... path as real editorial pieces, unlike
+        # a16z.com's /announcement/... path (handled by exclude_path_terms), so
+        # this is only knowable after the fetch, by title.
+        title_excludes = tuple(source.get("exclude_title_prefixes") or ())
+        if title_excludes and title.startswith(title_excludes):
+            junk += 1
+            funnel["dropped_junk"] += 1
+            continue
         # is_junk reads url/title/text; build the minimal shape it expects.
-        if is_junk({"url": article_url, "title": data.get("title", ""), "text": text}):
+        if is_junk({"url": article_url, "title": title, "text": text}):
             junk += 1
             if too_short(text):
                 funnel["dropped_short"] += 1
@@ -1279,11 +1322,16 @@ def main():
     )
     args = parser.parse_args()
 
-    def budget_for(_source):
-        """Per-source (budget_s, index_phase_s). Concepts has no bank_bulge
-        tier, so every source gets the same budget; --budget overrides the total
-        and scales the index phase to keep the same share."""
-        base_total, base_index = SOURCE_TIMEOUT_S, INDEX_PHASE_S
+    def budget_for(source):
+        """Per-source (budget_s, index_phase_s). wide_sweep sources (currently
+        only a16z, sweeping 12 index_urls) get the larger WIDE_SWEEP_* budget,
+        same idea as the Institutional collector's bank_bulge tier; every other
+        source gets the normal budget. --budget overrides the total and scales
+        the index phase to keep the same share."""
+        if source.get("wide_sweep"):
+            base_total, base_index = WIDE_SWEEP_SOURCE_TIMEOUT_S, WIDE_SWEEP_INDEX_PHASE_S
+        else:
+            base_total, base_index = SOURCE_TIMEOUT_S, INDEX_PHASE_S
         if args.budget:
             return args.budget, round(args.budget * base_index / base_total)
         return base_total, base_index
