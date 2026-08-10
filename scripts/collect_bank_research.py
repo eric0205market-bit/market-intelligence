@@ -104,6 +104,18 @@ def main():
         seen[tid] = t
     tweets = list(seen.values())
 
+    # Don't overwrite good data with an empty collection — a zero-tweet run
+    # (e.g. the 2026-08-08 GetXAPI credit outage) used to write a fresh-
+    # timestamped empty envelope over the last good tweets_bank_research.json,
+    # which defeated the downstream 24h freshness gate (it looked fresh while
+    # carrying nothing). Write neither output file and exit non-zero instead.
+    if len(tweets) == 0:
+        ct.log("No bank-research tweets collected — skipping writes to "
+               "preserve existing tweets_bank_research.json. Exiting without changes.")
+        ct.write_collection_health("fail", "zero tweets collected", api_calls,
+                                   script="collect_bank_research")
+        sys.exit(1)
+
     by_bank = {}
     for t in tweets:
         for b in t["banks"]:
