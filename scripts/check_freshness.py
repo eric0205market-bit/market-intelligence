@@ -2,7 +2,7 @@
 """Freshness gate for Twitter routines. Exit 0 if all given data files are fresh
 (collected_at within --max-age-hours of now UTC), exit 1 otherwise. Run BEFORE
 generating any report; on non-zero exit the routine must STOP and publish nothing."""
-import argparse, json, sys
+import argparse, json, os, sys
 from datetime import datetime, timezone
 
 def parse_dt(s):
@@ -20,6 +20,13 @@ def main():
     a = ap.parse_args()
     now = datetime.now(timezone.utc); max_age = a.max_age_hours * 3600; ok = True
     for p in a.files:
+        # Explicit existence guard, checked before attempting to read: a
+        # missing input must fail loudly and unambiguously as a missing file,
+        # never be swallowed into a generic parse error and never treated as
+        # a pass. (This is the same "missing == FAIL, not skip" principle the
+        # routines now apply to the gate command itself failing to run.)
+        if not os.path.exists(p):
+            print(f"FRESHNESS GATE FAILED — missing input {p}"); ok = False; continue
         try:
             with open(p) as f: d = json.load(f)
         except Exception as e:
