@@ -3,22 +3,19 @@
 # Trigger: 2x/day after collection
 
 ## STEP 0 — FRESHNESS GATE (MANDATORY, RUN FIRST)
-Before anything else, verify the input is from the current collection cycle:
-
-    python3 scripts/check_freshness.py data/twitter/latest/tweets_shitpost.json --max-age-hours 6
-
-If it exits non-zero / prints "FRESHNESS GATE FAILED": STOP. Generate nothing, write no JSON/HTML, commit/push nothing. Output a one-line abort note including the script's message, then end the run. Continue to the steps below ONLY if the gate PASSES.
-
-## STEP 1: FETCH DATA
-
-Clone the repository and read the data file:
+Clone the repository FIRST, before running the gate — the gate command needs the script to be on disk:
 
 ```bash
 git clone https://github.com/eric0205market-bit/market-intelligence.git
 cd market-intelligence
+python3 scripts/check_freshness.py data/twitter/latest/tweets_shitpost.json --max-age-hours 6
 ```
 
-Read the file: `data/twitter/latest/tweets_shitpost.json`
+If it exits non-zero / prints "FRESHNESS GATE FAILED": STOP. Generate nothing, write no JSON/HTML, commit/push nothing. Output a one-line abort note including the script's message, then end the run. If the gate command itself fails to run for any reason (missing file, interpreter error, non-zero exit of any kind), treat that as FAILED and abort. Never proceed on an inconclusive gate. Continue to the steps below ONLY if the gate PASSES.
+
+## STEP 1: READ DATA
+
+Read the data file (the repo is already cloned from STEP 0): `data/twitter/latest/tweets_shitpost.json`
 
 This is your input — a JSON array of tweets from SHITPOST accounts. Read the ENTIRE file contents. Do not skip, truncate, or summarize the JSON.
 

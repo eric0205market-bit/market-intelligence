@@ -3,22 +3,19 @@
 # Trigger: 2x/day after collection
 
 ## STEP 0 — FRESHNESS GATE (MANDATORY, RUN FIRST)
-Before anything else, verify the input is from the current collection cycle:
-
-    python3 scripts/check_freshness.py data/twitter/latest/tweets_for_routine_alpha_1.json data/twitter/latest/tweets_for_routine_alpha_2.json --max-age-hours 6
-
-If it exits non-zero / prints "FRESHNESS GATE FAILED": STOP. Generate nothing, write no JSON/HTML, commit/push nothing. Output a one-line abort note including the script's message, then end the run. Continue to the steps below ONLY if the gate PASSES.
-
-## STEP 1: FETCH DATA
-
-Clone the repository and read BOTH alpha data files:
+Clone the repository FIRST, before running the gate — the gate command needs the script to be on disk:
 
 ```bash
 git clone https://github.com/eric0205market-bit/market-intelligence.git
 cd market-intelligence
+python3 scripts/check_freshness.py data/twitter/latest/tweets_for_routine_alpha_1.json data/twitter/latest/tweets_for_routine_alpha_2.json --max-age-hours 6
 ```
 
-Read these 2 files and combine their tweets arrays into one:
+If it exits non-zero / prints "FRESHNESS GATE FAILED": STOP. Generate nothing, write no JSON/HTML, commit/push nothing. Output a one-line abort note including the script's message, then end the run. If the gate command itself fails to run for any reason (missing file, interpreter error, non-zero exit of any kind), treat that as FAILED and abort. Never proceed on an inconclusive gate. Continue to the steps below ONLY if the gate PASSES.
+
+## STEP 1: READ DATA
+
+Read BOTH alpha data files (the repo is already cloned from STEP 0):
 
 * `data/twitter/latest/tweets_for_routine_alpha_1.json` (authors A-L)
 * `data/twitter/latest/tweets_for_routine_alpha_2.json` (authors M-Z)

@@ -1,6 +1,6 @@
 # CLOUD ROUTINE — TWITTER BANK RESEARCH DIGEST
 # Model: Sonnet 4.6
-# Trigger: 2x/week (fixed cadence)
+# Trigger: 2x/day, after each collection
 # Catalog, not analysis — group bank/strategist research, image-first.
 
 ## STEP 0 — FRESHNESS GATE (FIRST, MANDATORY)
@@ -13,7 +13,7 @@ cd market-intelligence
 python3 scripts/check_freshness.py data/twitter/latest/tweets_bank_research.json --max-age-hours 24
 ```
 
-If the gate prints `FRESHNESS GATE FAILED` or exits non-zero, **STOP**: do not read the data file, do not render, do not push. Output a single line: "ABORT — bank-research data stale (>24h); publishing nothing." Continue only on `FRESHNESS GATE PASSED.`
+If the gate prints `FRESHNESS GATE FAILED` or exits non-zero, **STOP**: do not read the data file, do not render, do not push. Output a single line: "ABORT — bank-research data stale (>24h); publishing nothing." If the gate command itself fails to run for any reason (missing file, interpreter error, non-zero exit of any kind), treat that as FAILED and abort. Never proceed on an inconclusive gate. Continue only on `FRESHNESS GATE PASSED.`
 
 ## STEP 1 — SELECT RESEARCH ITEMS (key filter)
 
