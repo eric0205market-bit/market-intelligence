@@ -124,14 +124,21 @@ def log(msg):
 
 def write_collection_health(status, reason_or_tweet_count, api_calls,
                             script="collect_twitter"):
-    """Write data/twitter/latest/_collection_health.json so a silent
+    """Write data/twitter/latest/_collection_health_<script>.json so a silent
     zero-tweet run (e.g. the GetXAPI credit outage on 2026-08-08) is visible
     to anything checking freshness, instead of only showing up as a stale
     collected_at three routine-runs later. `reason_or_tweet_count` is the
     failure reason string for status="fail", or the int tweet count for
     status="ok". `script` names the caller (collect_bank_research.py reuses
     this via `ct.write_collection_health(..., script="collect_bank_research")`
-    rather than duplicating the schema)."""
+    rather than duplicating the schema).
+
+    ONE FILE PER SCRIPT, not a shared _collection_health.json — collect_twitter
+    and collect_bank_research run in the same workflow but are independent
+    collectors; a shared file meant whichever ran second (bank_research)
+    silently overwrote the other's status, so main could read
+    status:fail/script:collect_bank_research even on a run where
+    collect_twitter succeeded cleanly."""
     payload = {
         "script": script,
         "status": status,
@@ -145,7 +152,7 @@ def write_collection_health(status, reason_or_tweet_count, api_calls,
     else:
         payload["reason"] = reason_or_tweet_count
     LATEST_DIR.mkdir(parents=True, exist_ok=True)
-    (LATEST_DIR / "_collection_health.json").write_text(
+    (LATEST_DIR / f"_collection_health_{script}.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
