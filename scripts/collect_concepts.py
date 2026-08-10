@@ -1199,6 +1199,149 @@ def collect_source_rss(source, cutoff_date, collected_at, funnels=None,
     return records
 
 
+WP_API_MAX_PAGES = 20   # hard cap on paginated fetches per run — a WordPress
+                         # REST API page is 50 posts, so this bounds a single
+                         # source to 1000 posts/run regardless of --days.
+
+
+def collect_source_wp_api(source, cutoff_date, collected_at, funnels=None,
+                          timeout_s=30):
+    """Return fresh-article RECORDS for a `fetch_mode: wp_api` source. Pages
+    through a WordPress REST API posts endpoint (source["wp_api_url"], e.g.
+    https://example.com/wp-json/wp/v2/posts) — no Playwright, no per-article
+    navigation, no HTML scraping at all. `content.rendered` carries the FULL
+    article body already (confirmed per-source before wiring this up — this
+    fetch_mode must NEVER be used for a site whose REST API only exposes
+    excerpts). Used for sites that are JS-SPA client-rendered (so a headless
+    browser gets an empty shell) but whose open, unauthenticated WP REST API
+    serves complete posts directly (e.g. Sequoia Capital: sequoiacap.com is
+    Next.js/JS-only, but /wp-json/wp/v2/posts returns full HTML content with
+    real publish dates). Pages newest-first (WP default order); stops once a
+    page's oldest post is older than cutoff_date, or WP_API_MAX_PAGES is hit.
+    Never raises; same record shape as collect_source() so it flows through
+    write_source_records() unchanged."""
+    import ssl
+    import urllib.error
+    import urllib.request
+
+    slug = source["source_slug"]
+    name = source.get("name", slug)
+    funnel = {k: 0 for k in FUNNEL_KEYS}
+    api_url = source.get("wp_api_url")
+    if not api_url:
+        log(f"  {slug}: fetch_mode=wp_api but no wp_api_url — skipping")
+        if funnels is not None:
+            funnels[slug] = funnel
+        return []
+
+    try:
+        import certifi
+        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        ssl_ctx = ssl.create_default_context()
+
+    paywalled = bool(source.get("paywalled", False))
+    category = source.get("category", "")
+    stype = source.get("type", "")
+    records = []
+    skipped_old = junk = 0
+    sep = "&" if "?" in api_url else "?"
+
+    for page in range(1, WP_API_MAX_PAGES + 1):
+        req = urllib.request.Request(
+            f"{api_url}{sep}per_page=50&page={page}&orderby=date&order=desc",
+            headers={"User-Agent": USER_AGENT})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s, context=ssl_ctx) as resp:
+                raw = resp.read()
+        except (urllib.error.URLError, OSError, TimeoutError) as exc:
+            if page == 1:
+                log(f"  WARN {slug}: wp_api fetch failed — {type(exc).__name__}: {exc}")
+            break  # WP 400s past the last page — a mid-run failure just stops paging
+        try:
+            posts = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            if page == 1:
+                log(f"  WARN {slug}: wp_api parse failed — {exc}")
+            break
+        if not isinstance(posts, list) or not posts:
+            break
+        funnel["anchors_found"] += len(posts)
+
+        page_had_recent = False
+        for post in posts:
+            link = (post.get("link") or "").strip()
+            if not link:
+                continue
+            funnel["candidates"] += 1
+
+            date_str = post.get("date") or post.get("date_gmt")
+            pub_date = parse_date(date_str) if date_str else None
+
+            funnel["visited"] += 1   # no separate navigate step; the API call IS the fetch
+
+            if pub_date is not None and pub_date < cutoff_date:
+                skipped_old += 1
+                funnel["dropped_old"] += 1
+                continue
+            page_had_recent = True
+
+            title = _html_to_text((post.get("title") or {}).get("rendered", ""))
+            text = _html_to_text((post.get("content") or {}).get("rendered", ""))
+
+            if is_junk({"url": link, "title": title, "text": text}):
+                junk += 1
+                if too_short(text):
+                    funnel["dropped_short"] += 1
+                else:
+                    funnel["dropped_junk"] += 1
+                continue
+
+            records.append({
+                "record_id": url_hash(link),
+                "source_slug": slug,
+                "source_name": name,
+                "source_url": link,
+                "category": category,
+                "type": stype,
+                "paywalled": paywalled,
+                "title": title,
+                "published_date": pub_date.isoformat() if pub_date else "",
+                "language": "en",
+                "author": "",   # WP REST author names need an auth'd _embed
+                                 # this API 401s on — extraction falls back to
+                                 # source_name per the schema rule.
+                "word_count": len(text.split()),
+                "text": text,
+                "teaser": looks_like_teaser(text),
+                "image_urls": [],
+                "collected_at": collected_at,
+            })
+
+        if not page_had_recent:
+            break   # newest-first order: a page with nothing in-window means
+                    # every later page is even older — stop paging
+
+    total_undated = sum(1 for r in records if not r["published_date"])
+    if total_undated > 5:
+        capped, seen_undated = [], 0
+        for r in records:
+            if not r["published_date"]:
+                seen_undated += 1
+                if seen_undated > 5:
+                    funnel["dropped_undated"] += 1
+                    continue
+            capped.append(r)
+        records = capped
+
+    funnel["kept"] = len(records)
+    if funnels is not None:
+        funnels[slug] = funnel
+    log(f"  {slug}: {len(records)} new (wp_api: {funnel['anchors_found']} posts scanned, "
+        f"{skipped_old} old, {junk} junk)")
+    return records
+
+
 def skip_reason_for(source, allow_residential=False):
     """Why this source is not Playwright-collected, or None to collect it.
     `collect: false` defers a source entirely; `paywalled: true` sources can't be
@@ -1437,6 +1580,9 @@ def main():
                 if source.get("fetch_mode") == "rss":
                     found = collect_source_rss(source, cutoff_date, collected_at,
                                                funnels=funnels)
+                elif source.get("fetch_mode") == "wp_api":
+                    found = collect_source_wp_api(source, cutoff_date, collected_at,
+                                                  funnels=funnels)
                 else:
                     found = collect_source(page, limiter, source, cutoff_date, errors,
                                            collected_at, budget_s=src_budget,
