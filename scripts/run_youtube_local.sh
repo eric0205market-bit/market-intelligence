@@ -97,8 +97,29 @@ git add -- raw/youtube state/youtube_seen.json 2>/dev/null || true
 if git diff --cached --quiet; then
   log "No new YouTube data to commit."
 else
-  git commit -q -m "data: youtube collection $(date -u '+%Y-%m-%d %H:%M')"
-  log "Committed new collection data."
+  if git commit -q -m "data: youtube collection $(date -u '+%Y-%m-%d %H:%M')"; then
+    log "Committed new collection data."
+  else
+    log "[commit-fail] git commit FAILED — new data staged but NOT committed."
+  fi
+
+  # --- GAP 3: alert when the commit above didn't actually happen -----------
+  # 2026-08 incident: a stuck unmerged conflict from an unrelated earlier
+  # rebase blocked `git commit` entirely for days. Nothing got committed, so
+  # HEAD was never ahead of origin/main and GAP-2's rev-list check below
+  # stayed silent throughout, while this script logged "Committed new
+  # collection data." unconditionally (now fixed above — that line only
+  # prints when the commit actually succeeded). Two checks, most specific
+  # cause first, so we never double-notify for the same root cause:
+  UNMERGED_LS="$(git ls-files --unmerged)"
+  UNMERGED_PORCELAIN="$(git status --porcelain | grep -E '^(UU|AA|DD|AU|UA|DU|UD) ')"
+  if [ -n "$UNMERGED_LS" ] || [ -n "$UNMERGED_PORCELAIN" ]; then
+    log "[conflict-block] git BLOCKED by unresolved merge conflict — new transcripts staged but NOT committed/pushed. Needs manual conflict resolution."
+    notify "Daily YouTube: git BLOCKED by unresolved merge conflict — new transcripts staged but NOT committed/pushed. Needs manual conflict resolution."
+  elif ! git diff --cached --quiet; then
+    log "[staged-not-committed] new YouTube data is still staged after the commit step — commit silently failed for an unknown reason. Data safe on disk, not yet in git history."
+    notify "Daily YouTube: commit silently failed — new data staged but not committed. Check the log."
+  fi
 fi
 
 # Integrate latest main and push. --autostash preserves any unrelated edits in
