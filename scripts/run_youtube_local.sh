@@ -10,9 +10,11 @@
 # the Actions collectors use.
 #
 # Runs against the Dropbox working copy (unified repo). Path is resolved
-# relative to this script's location — no hardcoded paths. Working-tree edits
-# are preserved via --autostash; only raw/youtube and state/youtube_seen.json
-# are ever staged or committed. Idempotent and safe to re-run.
+# relative to this script's location — no hardcoded paths. Only raw/youtube
+# and state/youtube_seen.json are ever staged or committed; the pull/rebase
+# step below deliberately does NOT use --autostash (see the comment there) —
+# it refuses to run at all if the shared tree has unrelated uncommitted
+# changes, rather than stashing/popping them. Idempotent and safe to re-run.
 #
 # Schedule it with the launchd plist in this repo (see SETUP below), or invoke
 # it by hand:  bash scripts/run_youtube_local.sh
@@ -81,8 +83,7 @@ git config user.email "actions@github.com" >/dev/null 2>&1
 
 # Ensure we are on main, but NEVER `git reset --hard`: this script may run in the
 # browsable working copy, so it must not discard the user's edits. We touch ONLY
-# our own output paths (raw/youtube, state) and integrate via rebase --autostash,
-# which parks any unrelated working changes and restores them afterward.
+# our own output paths (raw/youtube, state).
 git fetch origin main --quiet || { log "FATAL: git fetch failed"; exit 1; }
 git checkout main --quiet 2>/dev/null || git checkout -b main --quiet
 
@@ -122,10 +123,22 @@ else
   fi
 fi
 
-# Integrate latest main and push. --autostash preserves any unrelated edits in
-# the working tree (the browsable copy); no hard reset, ever.
+# Integrate latest main and push. Deliberately NO --autostash: this clone also
+# serves as the browsable working copy AND the concepts-extraction clone, so
+# it routinely has unrelated uncommitted files sitting in it (concepts
+# leftovers, in-progress edits, etc.) that have nothing to do with this run.
+# --autostash used to silently stash those, rebase, then pop — and twice in
+# 3 days (2026-08-11, 2026-08-13) the pop collided with a newer origin/main
+# version of one of those unrelated files and left it in an unmerged state,
+# blocking every future commit here until someone manually resolved it. A
+# plain `pull --rebase` simply REFUSES to start when the tree is dirty with
+# anything (ours or not) instead of stashing/popping — no hard reset, ever,
+# and no risk of leaving another module's files in a conflicted state. Our
+# own data is already safely committed above by the time this runs, so a
+# refusal here just means the push retries below fail cleanly; GAP 2 catches
+# and reports that (commit safe locally, self-heals once the tree is clean).
 for i in 1 2 3; do
-  if ! git pull --rebase --autostash origin main --quiet 2>>"$LOG"; then
+  if ! git pull --rebase origin main --quiet 2>>"$LOG"; then
     log "pull --rebase failed (attempt $i); aborting rebase and retrying."
     git rebase --abort 2>/dev/null || true
     continue

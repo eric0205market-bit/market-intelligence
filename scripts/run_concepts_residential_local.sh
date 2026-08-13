@@ -32,9 +32,11 @@
 # SAFETY: `collect_concepts.py --ids <slugs>` only touches the named sources
 # (see main()'s --ids filter) — this NEVER runs the full 47-source daily
 # sweep, so it can't double-collect or interfere with the 10:00 UTC cloud cron.
-# Only raw/concepts and its _runs/<date> log are ever staged or committed —
-# same --autostash/no-hard-reset discipline as run_youtube_local.sh, so any
-# unrelated working-tree edits in the Dropbox browsable copy are preserved.
+# Only raw/concepts and its _runs/<date> log are ever staged or committed.
+# Deliberately NO --autostash on the pull below (see the comment there,
+# matching the same fix in run_youtube_local.sh) — no hard reset, ever, and
+# no stashing/popping of unrelated working-tree edits in the Dropbox
+# browsable copy either.
 #
 # SETUP (one time, NOT done automatically by this script):
 #   cp config/com.marketintel.concepts-residential.plist ~/Library/LaunchAgents/
@@ -71,7 +73,7 @@ git config user.email "actions@github.com" >/dev/null 2>&1
 
 # Same non-destructive integration discipline as run_youtube_local.sh: never
 # `git reset --hard` (this repo may be the owner's browsable working copy),
-# only touch our own output paths, integrate via rebase --autostash.
+# only touch our own output paths.
 git fetch origin main --quiet || { log "FATAL: git fetch failed"; exit 1; }
 git checkout main --quiet 2>/dev/null || git checkout -b main --quiet
 
@@ -89,8 +91,18 @@ else
   log "Committed new residential collection data."
 fi
 
+# Deliberately NO --autostash: this clone also serves as the browsable
+# working copy AND the concepts-extraction clone, so it routinely has
+# unrelated uncommitted files sitting in it. --autostash used to silently
+# stash those, rebase, then pop — and the pop has twice collided with a
+# newer origin/main version of one of those unrelated files, leaving it in
+# an unmerged state that blocked every future commit here (same bug fixed
+# in run_youtube_local.sh). A plain `pull --rebase` simply refuses to start
+# when the tree is dirty with anything, instead of stashing/popping it. Our
+# own data is already safely committed above, so a refusal here just means
+# the push retries below fail cleanly and self-heal once the tree is clean.
 for i in 1 2 3; do
-  if ! git pull --rebase --autostash origin main --quiet 2>>"$LOG"; then
+  if ! git pull --rebase origin main --quiet 2>>"$LOG"; then
     log "pull --rebase failed (attempt $i); aborting rebase and retrying."
     git rebase --abort 2>/dev/null || true
     continue
