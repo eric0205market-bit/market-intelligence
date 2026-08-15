@@ -1,0 +1,277 @@
+{
+  "record_id": "032c50c694ff571d",
+  "source_type": "technology",
+  "source_name": "Anyscale / Ray Blog",
+  "source_url": "https://www.anyscale.com/blog/nvidia-gb300-nvlink-domain-aware-placement-groups-ray",
+  "title": "Maximizing the Power of NVIDIA GB300 NVL72: NVLink Domain-Aware Placement Groups in Ray",
+  "published_date": "2026-08-13",
+  "language": "en",
+  "processed_at": "2026-08-15T12:00:00Z",
+  "processor": "claude-code-sub-opus",
+  "tags": ["Tech", "AI"],
+  "gist": "Anyscale is adding NVLink Domain-Aware Placement Groups to Ray so scheduling units match NVIDIA GB200/GB300 NVL72 racks (72 Blackwell GPUs, 36 Grace CPUs, 1,800 GB/s all-to-all per GPU) rather than 8-GPU nodes. NVIDIA's GEAR lab measured 1.13x faster training iterations on a 512-GPU VLA pre-training run purely from rack-aware actor placement, plus rack-preserving fault recovery — evidence that on rack-scale hardware a meaningful slice of delivered FLOPs is now unlocked by orchestration software, not silicon.",
+  "themes": [
+    {
+      "theme": "Rack replaces node as the compute unit",
+      "insights": [
+        {
+          "claim": "NVIDIA GB200 NVL72 and GB300 NVL72 connect a full rack of 72 Blackwell GPUs and 36 Grace CPUs at 1,800 GB/s of all-to-all bandwidth per GPU, so the whole rack behaves as a single accelerator rather than as a network of servers.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "data_point",
+          "entities": ["NVIDIA", "GB200 NVL72", "GB300 NVL72", "Blackwell", "Grace CPU", "NVLink"],
+          "conviction": "high",
+          "so_what": "The purchasing and scheduling unit for frontier AI shifts from the 8-GPU server to the rack, which reshapes datacenter design, power density and how cloud capacity is sold.",
+          "quote": "connecting a full rack of 72 Blackwell GPUs and 36 Grace CPUs with 1,800 GB/s of all-to-all bandwidth per GPU, effectively enabling all GPUs to work together as one",
+          "locator": "Multi-Node NVLink Scale-up: NVIDIA GB300 NVL72",
+          "quote_verified": false
+        },
+        {
+          "claim": "The prior generation topology — DGX H100/H200 packing 8 GPUs per node over NVLink/SXM and using InfiniBand or RoCE between nodes — is explicitly framed as the baseline that rack-scale NVLink displaces for communication-bound workloads.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "framework",
+          "entities": ["NVIDIA DGX H100", "DGX H200", "NVLink", "SXM", "InfiniBand", "RoCE"],
+          "conviction": "high",
+          "so_what": "Watch demand mix shift from scale-out fabrics (InfiniBand/RoCE ports per GPU) toward scale-up NVLink content as NVL72-class racks proliferate.",
+          "quote": "Traditional GPU servers like the NVIDIA DGX H100 and DGX H200 pack 8 GPUs into a single node connected by NVLink over SXM, with communication between nodes generally using InfiniBand or RoCE.",
+          "locator": "Multi-Node NVLink Scale-up: NVIDIA GB300 NVL72",
+          "quote_verified": false
+        },
+        {
+          "claim": "The advantage of GB200/GB300 NVL72 is claimed only for workloads where collective communication and memory transfer dominate, not for compute-bound work generally.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "thesis",
+          "entities": ["GB200 NVL72", "GB300 NVL72", "NVIDIA"],
+          "conviction": "high",
+          "so_what": "A workload-dependent moat: buyers running embarrassingly parallel inference gain less from NVL72 pricing premiums than buyers running large-collective training or disaggregated serving.",
+          "quote": "For workloads where collective communications and memory transfer dominate, the GB200 and GB300 NVL72 are industry leading.",
+          "locator": "Multi-Node NVLink Scale-up: NVIDIA GB300 NVL72",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Orchestration lag behind rack-scale silicon",
+      "insights": [
+        {
+          "claim": "Ray placement groups historically reasoned only about accelerator type per individual node (e.g. Hopper vs Blackwell) and had no notion of cross-node dependencies, meaning the scheduler could not express the topology that NVL72 hardware exposes.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "causal",
+          "entities": ["Ray", "Anyscale", "NVIDIA Hopper", "NVIDIA Blackwell", "placement groups"],
+          "conviction": "high",
+          "so_what": "Confirms an orchestration gap between shipped rack-scale hardware and the software that schedules it — a window where scheduler vendors capture value and where deployed GPU fleets underperform spec.",
+          "quote": "Previously Ray placement groups did not understand cross-node dependencies.",
+          "locator": "Introducing Ray NVLink Domain-Aware Placement Groups",
+          "quote_verified": false
+        },
+        {
+          "claim": "Before this feature, requesting STRICT_PACK of 18 bundles of 4 GPUs and 2 CPUs each would simply fail to schedule because Ray interpreted it as a demand for one 72-GPU node, a concrete illustration that node-level packing semantics break at rack scale.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "data_point",
+          "entities": ["Ray", "STRICT_PACK", "GB300 NVL72"],
+          "conviction": "high",
+          "so_what": "Buyers of NVL72 capacity should audit whether their scheduler can even express rack-local groups before assuming they will realize the advertised interconnect benefit.",
+          "quote": "it would not be scheduled because you would actually be requesting a single node which has 72 GPUs!",
+          "locator": "For example, if you tried to STRICT_PACK",
+          "quote_verified": false
+        },
+        {
+          "claim": "The existing workaround — tagging each rack with a custom label such as ray.io/gpu-domain=rack-7 and pinning bundles with bundle_label_selector — is manual and composes badly with autoscaling and fault tolerance, so operators were trading elasticity for locality.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "causal",
+          "entities": ["Ray", "bundle_label_selector", "autoscaling", "GB300 NVL72"],
+          "conviction": "high",
+          "so_what": "Manual rack pinning implies stranded capacity and lower effective utilization in current GB300 fleets — a hidden cost line that topology-aware schedulers can recover.",
+          "quote": "This is manual and it doesn’t compose well with autoscaling or fault-tolerance.",
+          "locator": "The previous workaround was to assign",
+          "quote_verified": false
+        },
+        {
+          "claim": "The new interface is a declarative topology_strategy map on the placement group API, e.g. {ray.io/node-id: \"PACK\", ray.io/gpu-domain: \"STRICT_PACK\"}, which makes hardware topology a first-class, portable scheduling constraint instead of site-specific labels.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "framework",
+          "entities": ["Ray", "topology_strategy", "placement_group API", "Anyscale"],
+          "conviction": "high",
+          "so_what": "A portable topology abstraction lets the same training code move between clouds and rack generations, strengthening Ray/Anyscale as the neutral layer above heterogeneous GPU estates.",
+          "quote": "topology_strategy = {ray.io/node-id: \"PACK\", ray.io/gpu-domain: \"STRICT_PACK\"}",
+          "locator": "To address this, we’re introducing NVLink Domain awareness",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Measured payoff: NVIDIA GEAR VLA run",
+      "insights": [
+        {
+          "claim": "In a controlled A/B on NVIDIA GEAR's Vision Language Action pre-training, the topology-aware run achieved 1.13x faster iterations per second than the identical run without domain-aware placement — a ~13% throughput gain from scheduling alone, with no hardware change.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "data_point",
+          "entities": ["NVIDIA GEAR", "GB300 NVL72", "Ray", "VLA training"],
+          "conviction": "high",
+          "so_what": "Roughly 13% of training throughput on rack-scale GPUs is a software line item, not a silicon one — that is real dollars per GPU-hour and a moat for orchestration layers.",
+          "quote": "The second run achieved 1.13x faster iterations per second than the first.",
+          "locator": "Real World Example: Large Scale Distributed VLA training on GB300",
+          "quote_verified": false
+        },
+        {
+          "claim": "The benchmark ran at a credible production scale — 512 GPUs across 128 nodes, structured as 8 groups of 64 GPUs (16 nodes each) — rather than a toy cluster.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "data_point",
+          "entities": ["NVIDIA GEAR", "GB300", "Ray"],
+          "conviction": "high",
+          "so_what": "Scale of the test makes the 1.13x figure usable as a planning assumption for GB300 fleet ROI models, though it is vendor-run and single-workload.",
+          "quote": "Each run used 512 GPUs (128 nodes), composed of 8 groups of 64 GPUs (16 nodes).",
+          "locator": "Real World Example: Large Scale Distributed VLA training on GB300",
+          "quote_verified": false
+        },
+        {
+          "claim": "The mechanism behind the speedup is that badly placed actors spend more time exchanging data with placement-group peers during collectives like all_reduce, whereas rack-local actors use NVLink GPU-to-GPU memory sharing — locating the bottleneck in communication, not compute.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "causal",
+          "entities": ["NVLink", "all_reduce", "Ray", "GB300"],
+          "conviction": "high",
+          "so_what": "Communication-bound training means interconnect locality, not FLOPs, is the marginal constraint — favoring vendors selling scale-up fabric and software that exploits it.",
+          "quote": "In run one, GPUs spend more time exchanging data with their placement group peers (for example during collective operations like all_reduce).",
+          "locator": "Why is the performance better in run two?",
+          "quote_verified": false
+        },
+        {
+          "claim": "Anyscale explicitly frames the 1.13x as a floor rather than a ceiling, saying further opportunities remain to exploit GB300 hardware capabilities more effectively.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "prediction",
+          "entities": ["Anyscale", "Ray", "GB300"],
+          "conviction": "medium",
+          "so_what": "Expect successive software-only performance uplifts on already-installed GB300 racks, which raises effective capacity without new capex and can soften near-term GPU demand per unit of output.",
+          "quote": "However, this is just the beginning, as further opportunities remain to make even more effective use of the GB300’s unique hardware capabilities.",
+          "locator": "Real World Example: Large Scale Distributed VLA training on GB300",
+          "quote_verified": false
+        },
+        {
+          "claim": "Domain-aware placement also unlocks NVIDIA SHARP in-network collective acceleration, meaning locality is a precondition for a second layer of communication optimization rather than a standalone gain.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "causal",
+          "entities": ["NVIDIA SHARP", "NVLink", "all_reduce", "Ray"],
+          "conviction": "medium",
+          "so_what": "Gains compound: schedulers that get locality right can then stack in-network acceleration, widening the gap versus topology-blind orchestrators.",
+          "quote": "it also allows us to take better advantage of new features to accelerate collective communications such as NVIDIA SHARP",
+          "locator": "Optimized networking performance",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Fault tolerance as topology preservation",
+      "insights": [
+        {
+          "claim": "Ray now preserves topology intent through cluster churn: on node failure or maintenance it replaces the node from the same NVLink Domain when capacity exists, rather than silently fragmenting the job across racks and quietly degrading throughput.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "framework",
+          "entities": ["Ray", "NVLink Domain", "Anyscale"],
+          "conviction": "high",
+          "so_what": "Silent post-failure fragmentation is a plausible cause of unexplained throughput decay in long training runs — a diligence question for anyone underwriting GPU cluster efficiency claims.",
+          "quote": "Ray will replace the node from the same NVLink Domain when capacity exists rather than silently fragmenting the workload across racks.",
+          "locator": "Application-aware fault tolerance",
+          "quote_verified": false
+        },
+        {
+          "claim": "When same-domain capacity is unavailable Ray queues the bundle for rescheduling, and only if the entire bundle set goes down does it automatically select a new NVLink Domain — an availability-versus-locality tradeoff that biases toward locality.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "framework",
+          "entities": ["Ray", "NVLink Domain", "placement groups"],
+          "conviction": "medium",
+          "so_what": "Operators need spare capacity headroom per rack (the GEAR run left 2 spares per domain) or jobs stall waiting for local slots — a utilization tax to model in cluster economics.",
+          "quote": "If capacity does not exist, the bundle is queued for rescheduling unless the entire set of bundles goes down where a new NVLink Domain is automatically selected for use.",
+          "locator": "Application-aware fault tolerance",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Inference and RL as the wider market",
+      "insights": [
+        {
+          "claim": "Disaggregated inference that splits prefill and decode workers needs those workers inside the same NVLink Domain so KV cache and intermediate state travel the fastest path, making rack-aware scheduling an inference-serving requirement and not just a training optimization.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "thesis",
+          "entities": ["disaggregated inference", "prefill", "decode", "KV cache", "NVLink", "GB300"],
+          "conviction": "medium",
+          "so_what": "Inference is the larger and faster-growing spend pool; rack-scale locality requirements there extend NVL72-class hardware demand well beyond frontier training labs.",
+          "quote": "it is especially important that these workers land within the same NVLink Domain so they can exchange KV cache and intermediate state over the fastest available path",
+          "locator": "Other Use-cases for Rack-Aware Scheduling",
+          "quote_verified": false
+        },
+        {
+          "claim": "Reinforcement learning pipelines have heterogeneous phases — training, rollout, evaluation — with different communication patterns, so the right model is selective colocation: pin weight-exchanging policy trainers to one domain while letting Ray scatter communication-light components.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "framework",
+          "entities": ["reinforcement learning", "Ray", "NVLink Domain"],
+          "conviction": "medium",
+          "so_what": "Mixed-criticality placement means clusters can be provisioned with tiered interconnect rather than uniformly premium fabric, a cost lever for RL-heavy shops.",
+          "quote": "RL workloads have many phases: training, rollout, and evaluation, each with different communication patterns.",
+          "locator": "Other Use-cases for Rack-Aware Scheduling",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Roadmap and current limits",
+      "insights": [
+        {
+          "claim": "The feature ships supporting only STRICT_PACK today, with STRICT_SPREAD (placing bundles on deliberately separate racks) still on the roadmap — so anti-affinity and blast-radius control are not yet expressible.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "data_point",
+          "entities": ["Ray", "STRICT_PACK", "STRICT_SPREAD"],
+          "conviction": "high",
+          "so_what": "V1 scope limits how far the reliability story goes today; incremental releases are the near-term catalyst for Ray/Anyscale adoption on rack-scale fleets.",
+          "quote": "NVLink Domain-Aware Placement Groups currently only support STRICT_PACK.",
+          "locator": "What's Next?",
+          "quote_verified": false
+        },
+        {
+          "claim": "Anyscale states the topology model is flat today and plans nested topologies reflecting that racks sit inside datacenters inside availability zones, signaling a move toward hierarchy-aware scheduling across multi-rack and multi-region estates.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "prediction",
+          "entities": ["Anyscale", "Ray", "nested topologies", "availability zones"],
+          "conviction": "medium",
+          "so_what": "Hierarchical topology awareness is the precondition for efficient cross-datacenter training, the next scaling frontier once single-site power limits bind.",
+          "quote": "In reality, infrastructure is usually hierarchical where racks live within datacenters, which live within availability zones, and so on.",
+          "locator": "What's Next?",
+          "quote_verified": false
+        },
+        {
+          "claim": "The stated primary goal is to raise NVLink Domain awareness into the Ray application layer, with more GPU-locality visibility and placement tooling promised over the next few releases — an admission that operators currently lack visibility into where their GPUs actually sit.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "thesis",
+          "entities": ["Ray", "Anyscale", "NVLink Domain", "GPU locality"],
+          "conviction": "medium",
+          "so_what": "Observability of interconnect locality is an emerging product category; poor visibility today means reported cluster efficiency figures deserve scepticism.",
+          "quote": "we aim to provide even more visibility and tools to understand GPU locality and optimize placement for maximum performance and interconnect efficiency",
+          "locator": "What's Next?",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Corporate signal",
+      "insights": [
+        {
+          "claim": "Anyscale, the commercial steward of Ray, has signed a definitive agreement to join Nscale, per a linked item on the same page — placing the leading AI-workload orchestration layer inside a GPU cloud provider.",
+          "speaker": "Joshua Lee, Anyscale / Ray Blog",
+          "type": "anecdote",
+          "entities": ["Anyscale", "Nscale", "Ray"],
+          "conviction": "low",
+          "so_what": "Vertical integration of orchestration software into neocloud capacity is a consolidation signal; watch whether Ray topology features stay neutral across clouds or tilt toward Nscale hardware.",
+          "quote": "Anyscale signs definitive agreement to join Nscale",
+          "locator": "Recommended content",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 20,
+  "top_entities": ["NVIDIA GB300 NVL72", "GB200 NVL72", "Ray", "Anyscale", "NVLink", "NVIDIA Blackwell", "Grace CPU", "NVIDIA GEAR", "NVIDIA SHARP", "InfiniBand", "Nscale", "DGX H100"],
+  "source_meta": {
+    "author": "https://www.anyscale.com/blog?author=joshua-lee",
+    "word_count": 1495,
+    "paywalled": false
+  }
+}
