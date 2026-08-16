@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Shitpost Radar</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #d97706;
+  --accent-bg: #fffbeb;
+  --accent-2: #b45309;
+  --bull: #16a34a;
+  --bear: #dc2626;
+  --neutral: #9a9590;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 16px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* VOLUME (one-liner) */
+.volume { background: var(--surface); border: 1px solid var(--border);
+          border-left: 4px solid var(--accent); border-radius: 6px;
+          padding: 10px 14px; margin-bottom: 16px;
+          font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
+          color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.volume strong { color: var(--text); font-weight: 600; }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SECTIONS */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #fef3c7; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px; min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; }
+.section.open .section-body { display: block; }
+
+/* TICKER ROWS */
+.ticker-row { display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+              border-bottom: 1px solid var(--border-light); flex-wrap: wrap; }
+.ticker-row:last-child { border-bottom: none; }
+.ticker-row.is-new { border-left: 3px solid var(--accent); background: var(--accent-bg); }
+.ticker-sym { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600;
+              min-width: 72px; }
+.ticker-mentions { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+                   color: var(--text-3); min-width: 70px; }
+.new-pill { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600;
+            background: var(--accent); color: #fff; padding: 1px 6px; border-radius: 3px;
+            text-transform: uppercase; letter-spacing: .05em; }
+.sentiment { display: flex; gap: 10px; font-family: 'IBM Plex Mono', monospace;
+             font-size: 12px; color: var(--text-2); }
+.sentiment .pair { display: inline-flex; align-items: center; gap: 4px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-bull    { background: var(--bull); }
+.dot-bear    { background: var(--bear); }
+.dot-neutral { background: var(--neutral); }
+.ticker-who { flex: 1 1 100%; font-size: 12.5px; color: var(--text-2);
+              padding-left: 4px; }
+.ticker-who .who-item { margin-right: 10px; }
+.ticker-who .who-item .ctx { color: var(--text-3); font-style: italic; }
+.ticker-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.ticker-author:hover { text-decoration: underline; }
+
+/* OUTLIER CARDS */
+.outlier-card { background: var(--surface); border: 1px solid var(--border);
+                border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.outlier-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+                flex-wrap: wrap; }
+.outlier-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.outlier-author:hover { text-decoration: underline; }
+.outlier-tag { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600;
+               background: var(--accent-bg); color: var(--accent-2); padding: 2px 6px;
+               border-radius: 3px; text-transform: uppercase; letter-spacing: .04em;
+               border: 1px solid var(--accent); }
+.outlier-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.outlier-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                color: var(--accent); text-decoration: none; }
+.outlier-link:hover { text-decoration: underline; }
+.outlier-summary { font-size: 13.5px; line-height: 1.6; color: var(--text);
+                   white-space: pre-wrap; word-wrap: break-word; }
+
+/* THUMBS */
+.thumbs { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.thumb { height: 100px; border: 1px solid var(--border); border-radius: 4px;
+         cursor: zoom-in; background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .outlier-card { margin: 8px 10px; }
+  .ticker-row { gap: 8px; }
+  .ticker-sym { min-width: 56px; font-size: 14px; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Shitpost Radar</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="volume" id="volume"></div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "SHITPOST RADAR",
+  "collected_at": "2026-08-16T05:20:58Z",
+  "volume": {
+    "total_tweets": 77,
+    "active_authors": 20,
+    "total_authors": 217,
+    "silent_authors": 197
+  },
+  "tickers": [
+    {
+      "ticker": "EWY",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 1,
+      "bear": 0,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "$EWY right at the 50dma.\n\n$SMH"
+        }
+      ]
+    },
+    {
+      "ticker": "SMH",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 1,
+      "bear": 0,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "$EWY right at the 50dma.\n\n$SMH right at the 50dma...."
+        }
+      ]
+    },
+    {
+      "ticker": "SOXX",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 1,
+      "bear": 0,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "a.\n\n$SMH right at the 50dma.\n\n$SOXX right at the 5..."
+        }
+      ]
+    },
+    {
+      "ticker": "MU",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 1,
+      "bear": 0,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": ".\n\n$SOXX right at the 50dma.\n\n$MU right at the 50d..."
+        }
+      ]
+    },
+    {
+      "ticker": "SNDK",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 1,
+      "bear": 0,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "ma.\n\n$MU right at the 50dma.\n\n$SNDK right at the 5..."
+        }
+      ]
+    },
+    {
+      "ticker": "DLO",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 1,
+      "bear": 0,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "SixSigmaCapital",
+          "context": "rounded\n\n@stevemano101 I own $DLO\n\nNot really too ..."
+        }
+      ]
+    },
+    {
+      "ticker": "ANSEM",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "CryptoKaleo",
+          "context": "seeing @blknoiz06 win.\n\nSend $ANSEM to billions."
+        }
+      ]
+    },
+    {
+      "ticker": "ADOL",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "R89Capital",
+          "context": "Adolf Rexler is highly offensi"
+        }
+      ]
+    },
+    {
+      "ticker": "ETH",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "gmoneyNFT",
+          "context": "ethereum:0xa0df17b5ac76ababa36"
+        }
+      ]
+    }
+  ],
+  "outliers": [
+    {
+      "author": "SixSigmaCapital",
+      "author_name": "SixSigmaCapital",
+      "usual_length": 628,
+      "this_length": 1482,
+      "summary": "@KaneCapz long term buy and hold, I dont really add or trim it\n\n@ZhongXina420_69 \"Trading around a core\" sums up my stra...",
+      "tweet_url": "https://x.com/SixSigmaCapital/status/2088787446318116984",
+      "images": [],
+      "tweet_full": "@KaneCapz long term buy and hold, I dont really add or trim it\n\n@ZhongXina420_69 \"Trading around a core\" sums up my strategy succinctly\n\n@joespfeifer the question?\n\n@TradeIdeasFlow tricky to answer but some that come to mind immediately are:\n@SayNoToTrading \n@mellowrk_lion \n@WisemanCap \n@earnings_guy \n@WisemanCap\n\n@KaneCapz realised can't get wealthy being a doctor (here in the UK anyway) startd learning about markets and got hooked. 6-10hours a day since. \n\nI do very little clinical work now so I have time. \n\nBut back when I was working full time, I would mainly do my research nights and weekends\n\n@kxc99999 think decent time to just be sensible with risk\n\n@dixit1978 I would say I only have 3 I would never sell\nGOOGL AMZN MSFT\n\n@oreoyan after mid term year drawdown is -18%, which we didnt get \n\nHowever, historically the low for the year tends to be late Q2 or early Q3. so it is possible we have already had the low\n\n@dixit1978 COST is a solid one. perfect LT candidate\n\n@joespfeifer I try to limit value stocks/battleground to no more than 2-3 in the portfolio. that does tend to help keep it rounded\n\n@stevemano101 I own $DLO\n\nNot really too interested in swing trading right now given core book is working very well\n\nBut it looks to me lots of inverse head and shoulder type set ups forming in AI/semis \n\nSNDK through SMA 50 looks solid \nAAOI on sma 50 retest etc \nSoftware names have to be on radar given the wday buyout interest\n\n@kris2727 Possibly SNDK thru SMA 50"
+    },
+    {
+      "author": "CryptoKaleo",
+      "author_name": "K A L E O",
+      "usual_length": 168,
+      "this_length": 714,
+      "summary": "@lettuceisms Appreciate it!\n\n@swandogs Thanks, Swanny!\n\n@dumbgayretard Ty sir\n\n@Cointainer_Life @gainzy222 One day he’ll...",
+      "tweet_url": "https://x.com/CryptoKaleo/status/2088787390378742254",
+      "images": [],
+      "tweet_full": "@lettuceisms Appreciate it!\n\n@swandogs Thanks, Swanny!\n\n@dumbgayretard Ty sir\n\n@Cointainer_Life @gainzy222 One day he’ll get there haha\n\n@ASvanevik Thanks, man!\n\n@ByzGeneral Thanks man!\n\n@mattmedved Appreciate it my man\n\n@damskotrades Thanks my man\n\n@ZeroHedge_ Ty sir\n\n@j0hnwang Appreciate it John!\n\n@AltcoinSherpa Thanks bro!\n\n@moonbirds Thank you birbs\n\n@luo_zi97366 Thank you!\n\n@Sellingvol She got it for me as a gift for my birthday 🤝\n\nAll that matters\n\n@Tyler_Did_It Thanks sir\n\n@PostyXBT Appreciate it Posty!\n\n@barneytheboi 🤝\n\n@Punk_2070 Thanks my man! Still appreciate hanging with y’all in Miami!\n\n@Suu766 Thank you!\n\n@thepeengwin Thanks, Al!\n\n@smilinglllama Appreciate it!\n\n@sas0xatch Thanks Sasquatch!"
+    },
+    {
+      "author": "KeyboardMonkey3",
+      "author_name": "Keyboard Monkey -KBM-",
+      "usual_length": 166,
+      "this_length": 541,
+      "summary": "Aspire to have a longer hold time than 4 minutes, not be sponsored, not wear chrome hearts, not play Solana like tourney...",
+      "tweet_url": "https://x.com/KeyboardMonkey3/status/2088847845730189487",
+      "images": [],
+      "tweet_full": "Aspire to have a longer hold time than 4 minutes, not be sponsored, not wear chrome hearts, not play Solana like tourney, not rent, not take private jet pics, not pretend to be a trader, not have broccoli hair, not eat well done steak, not dev, not bundle, not push fake narratives \n\nWas hanging with celebs and athletes before it was cool and not “aura farming” it.  Can trade laps around you youngins.  \n\nYall don’t know what’s real anymore.  This is real, go plant a seed in something. \n\n-Washed Unc\n\n@hunterorrell @gmoneyNFT Yeah book it"
+    },
+    {
+      "author": "SixSigmaCapital",
+      "author_name": "SixSigmaCapital",
+      "usual_length": 628,
+      "this_length": 538,
+      "summary": "My buys in the \"Leopold sell off\" were:\nNew positions in AMKR at 45 and CRDO 180's \nAdded to SKHY 140-124 CRWV__REPORT_DATA__lt;70 , C...",
+      "tweet_url": "https://x.com/SixSigmaCapital/status/2088781543615390056",
+      "images": [],
+      "tweet_full": "My buys in the \"Leopold sell off\" were:\nNew positions in AMKR at 45 and CRDO 180's \nAdded to SKHY 140-124 CRWV__REPORT_DATA__lt;70 , CIFR 16-17's and critical mineral plays. \n\nThe one I wanted to add but poor execution was LITE. \n\nHas been a solid bounce in the others\n\nthis market has mostly given plenty of opportunities to buy stocks at good spots if one is patient so not in a rush... but not a huge amount I am currently interested in\n\n@SayNoToTrading Nice looking forward! Enjoy your weekend sir\n\n@SayNoToTrading Also, those $42 buys look great !"
+    },
+    {
+      "author": "R89Capital",
+      "author_name": "Rex",
+      "usual_length": 194,
+      "this_length": 534,
+      "summary": "I actually love Solana, it's the best network in crypto by far. Nothing else is even close. \n\nIt's infuriating how dogsh...",
+      "tweet_url": "https://x.com/R89Capital/status/2088753292604256444",
+      "images": [],
+      "tweet_full": "I actually love Solana, it's the best network in crypto by far. Nothing else is even close. \n\nIt's infuriating how dogshit SOL is and how poorly the L1 token value capture thesis worked out.\n\n@bschizojew A jewish friend of mine made the token lmao\n\n@Pattyice @bschizojew One of my friends launched ADOLF REXLER like 20 months ago, and he shared it in the chat today, so I aped it with like $600 and then for some reason it exploded lol \n\nI sold $10k worth, and still have 15% of the supply.. Letting it ride.\n\n@Pattyice @bschizojew 😂"
+    },
+    {
+      "author": "R89Capital",
+      "author_name": "Rex",
+      "usual_length": 194,
+      "this_length": 427,
+      "summary": "Imagine diligently holding SOL for years through hell, to have the creator say they should infinitely inflate it and dum...",
+      "tweet_url": "https://x.com/R89Capital/status/2088744383093060057",
+      "images": [],
+      "tweet_full": "Imagine diligently holding SOL for years through hell, to have the creator say they should infinitely inflate it and dump it to fund acquisitions that don't benefit you lol \n\nI'd full stack hitler\n\n@xqtyrs I've fsh'd lots of things\n\n@Fred__42069 @xqtyrs Lol I didn't full stack hitler that one. I just partial stack hitlered it.\n\n@dddemono7ogy @xqtyrs I won't it's pretty funny\n\n@999kelzeNN @xqtyrs I dunno how I didn't make it"
+    },
+    {
+      "author": "SixSigmaCapital",
+      "author_name": "SixSigmaCapital",
+      "usual_length": 628,
+      "this_length": 419,
+      "summary": "@steve2bacon @RanierisEcho I think when something is going up it can get hard to want to sell (plus taxes etc) and then ...",
+      "tweet_url": "https://x.com/SixSigmaCapital/status/2088777458132648440",
+      "images": [],
+      "tweet_full": "@steve2bacon @RanierisEcho I think when something is going up it can get hard to want to sell (plus taxes etc) and then when its falling it's hard to take a loss especialy given this market has cotinuously V shaped lol\n\n@Adonis_Stergiou @steve2bacon @RanierisEcho yes sir. Thats why this game is good, as long as we are honest with ourselves and keep improving, one can keep getting better and better.\n\nit's never easy!"
+    },
+    {
+      "author": "Mr_Derivatives",
+      "author_name": "Heisenberg",
+      "usual_length": 259,
+      "this_length": 417,
+      "summary": "$EWY right at the 50dma.\n\n$SMH right at the 50dma.\n\n$SOXX right at the 50dma.\n\n$MU right at the 50dma.\n\n$SNDK right at t...",
+      "tweet_url": "https://x.com/Mr_Derivatives/status/2088814499247816948",
+      "images": [],
+      "tweet_full": "$EWY right at the 50dma.\n\n$SMH right at the 50dma.\n\n$SOXX right at the 50dma.\n\n$MU right at the 50dma.\n\n$SNDK right at the 50dma.\n\nGonna be a fun week to trade these again. \n\nWill the 50dma act as a springboard for further gains or will the 50dma cap current gains and we see some sell pressure?\n\nOne thing is for sure, price don’t just hover around the 50dma for long. Expect volatility around major moving averages."
+    },
+    {
+      "author": "gmoneyNFT",
+      "author_name": "gmoney",
+      "usual_length": 135,
+      "this_length": 415,
+      "summary": "@Scott_eth @yungdoteth lol no you wouldn’t\n\n@Scott_eth @yungdoteth If it were true the biggest hedge funds in the world ...",
+      "tweet_url": "https://x.com/gmoneyNFT/status/2088686026092957959",
+      "images": [],
+      "tweet_full": "@Scott_eth @yungdoteth lol no you wouldn’t\n\n@Scott_eth @yungdoteth If it were true the biggest hedge funds in the world would post their positions in real time.  There’s nothing stopping them from doing it. They try to remain below reported thresholds so people can’t track them for as much as possible.\n\n@yungdoteth @Scott_eth It’s all relative tho.  As you make more money you trade bigger and need more liquidity"
+    },
+    {
+      "author": "DeeZe",
+      "author_name": "DeeZe ⛳🏌️‍♂️",
+      "usual_length": 134,
+      "this_length": 391,
+      "summary": "@lulumeservey I sleep on -5, wife likes +3 to +5\n\nIt makes any bed that isn’t ours an unideal experience 🫠\n\nwe bought o...",
+      "tweet_url": "https://x.com/DeeZe/status/2088704907033387487",
+      "images": [],
+      "tweet_full": "@lulumeservey I sleep on -5, wife likes +3 to +5\n\nIt makes any bed that isn’t ours an unideal experience 🫠\n\nwe bought ours in 2020, cat put a hole in it, they replaced it for free, cat put another hole in it a couple years later, they gave us 50% off the new cover \n\nwe started out on the pod 2, so were fine with the upgrade, new cover seems to use way less water and is more durable/comfy"
+    },
+    {
+      "author": "R89Capital",
+      "author_name": "Rex",
+      "usual_length": 194,
+      "this_length": 385,
+      "summary": "Could trillions of dollars flow into BTC pushing it to $1,000,000 per coin? I guess it's theoretically possible. \n\nDoes ...",
+      "tweet_url": "https://x.com/R89Capital/status/2088739038979346943",
+      "images": [],
+      "tweet_full": "Could trillions of dollars flow into BTC pushing it to $1,000,000 per coin? I guess it's theoretically possible. \n\nDoes anyone actually give enough of a fuck about BTC, and are they willing to allocate to a massive underperformer during a historic run in equities? No, they don't and they're not.\n\n@nicoxbt_ Literally no one gives a fuck about that outside of a tiny bubble on this app"
+    },
+    {
+      "author": "KeyboardMonkey3",
+      "author_name": "Keyboard Monkey -KBM-",
+      "usual_length": 166,
+      "this_length": 265,
+      "summary": "https://t.co/ZVGTTfZLGE is at 1.3 https://t.co/CShWB5aKU0\n\n@Dollartree_1 @RambleGG @yeet There is no doubt that you guys...",
+      "tweet_url": "https://x.com/KeyboardMonkey3/status/2088796244957073668",
+      "images": [
+        "https://pbs.twimg.com/media/HPzlHKCXEAA5D_R.jpg"
+      ],
+      "tweet_full": "https://t.co/ZVGTTfZLGE is at 1.3 https://t.co/CShWB5aKU0\n\n@Dollartree_1 @RambleGG @yeet There is no doubt that you guys have best lines a ton of time, so I have to also highlight when we do.  Respect always of to Duel and we both have our strengths and weaknesses."
+    },
+    {
+      "author": "gainzy222",
+      "author_name": "gainzy",
+      "usual_length": 125,
+      "this_length": 217,
+      "summary": "kids these days have ai wiping their asses for them\n\nwhen i was ur age we had to catch a bird and pluck a feather just s...",
+      "tweet_url": "https://x.com/gainzy222/status/2088857850806211043",
+      "images": [],
+      "tweet_full": "kids these days have ai wiping their asses for them\n\nwhen i was ur age we had to catch a bird and pluck a feather just so we could make a quill to go use as a pen\n\ngo look up what a quill is on ur stupid chatgpt fable"
+    },
+    {
+      "author": "R89Capital",
+      "author_name": "Rex",
+      "usual_length": 194,
+      "this_length": 213,
+      "summary": "You guys ever think about how assets often have three huge drives and then roll the fuck over? https://t.co/x6UiHOeaZx\n\n...",
+      "tweet_url": "https://x.com/R89Capital/status/2088793826018140626",
+      "images": [
+        "https://pbs.twimg.com/media/HPzi2iWW4AAd95X.jpg"
+      ],
+      "tweet_full": "You guys ever think about how assets often have three huge drives and then roll the fuck over? https://t.co/x6UiHOeaZx\n\n@coasty_sol Lol, look.. I'm not dumping it. Diamond hands over here. Hopefully it moons more."
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'ticker-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- volume ----------
+function renderVolume(v) {
+  if (!v || typeof v !== 'object') {
+    document.getElementById('volume').innerHTML = '<span>no volume data</span>';
+    return;
+  }
+  const parts = [];
+  if (v.total_tweets   != null) parts.push(`<strong>${v.total_tweets}</strong> tweets`);
+  if (v.active_authors != null && v.total_authors != null) {
+    parts.push(`<strong>${v.active_authors}/${v.total_authors}</strong> authors active`);
+  } else if (v.active_authors != null) {
+    parts.push(`<strong>${v.active_authors}</strong> authors active`);
+  }
+  if (v.silent_authors != null) parts.push(`<strong>${v.silent_authors}</strong> silent`);
+  document.getElementById('volume').innerHTML = parts.join('<span style="color:var(--text-3)">·</span>')
+    || '<span>—</span>';
+}
+
+// ---------- tickers ----------
+function renderTickerWho(who) {
+  if (!who || !who.length) return '';
+  return `<div class="ticker-who">` + who.map(w => {
+    const name = w.author || w.author_username || '';
+    const ctx = w.context ? `<span class="ctx">${escapeHtml(w.context)}</span>` : '';
+    return `<span class="who-item filterable" data-author="${escapeAttr(name).toLowerCase()}">${authorTag(name)} ${ctx}</span>`;
+  }).join('') + `</div>`;
+}
+
+function renderTicker(t) {
+  const isNew = t.is_new ? ' is-new' : '';
+  const bull = t.bull ?? 0, bear = t.bear ?? 0, neutral = t.neutral ?? 0;
+  const mentions = (t.mentions != null) ? t.mentions : (bull + bear + neutral);
+  return `
+    <div class="ticker-row${isNew}">
+      <div class="ticker-sym">${escapeHtml(t.ticker || '?')}</div>
+      <div class="ticker-mentions">${mentions} mention${mentions === 1 ? '' : 's'}</div>
+      ${t.is_new ? '<span class="new-pill">new</span>' : ''}
+      <div class="sentiment">
+        <span class="pair"><span class="dot dot-bull"></span>${bull}</span>
+        <span class="pair"><span class="dot dot-bear"></span>${bear}</span>
+        <span class="pair"><span class="dot dot-neutral"></span>${neutral}</span>
+      </div>
+      ${renderTickerWho(t.who)}
+    </div>`;
+}
+
+// ---------- outliers ----------
+function renderThumbs(images) {
+  if (!images || !images.length) return '';
+  return `<div class="thumbs">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="thumb" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderOutlier(o) {
+  const author = o.author || o.author_username || '';
+  const usual = o.usual_length, current = o.this_length;
+  const tag = (usual != null && current != null)
+    ? `<span class="outlier-tag">usual ${usual} · this ${current}</span>` : '';
+  const time = relativeTime(o.created_at);
+  const link = o.tweet_url
+    ? `<a class="outlier-link" href="${escapeAttr(o.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  return `
+    <div class="outlier-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="outlier-head">
+        <span class="outlier-author" onclick="filterAuthor('${escapeAttr(author)}')">@${escapeHtml(author)}</span>
+        ${tag}
+        ${time ? `<span class="outlier-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      <div class="outlier-summary">${escapeHtml(o.summary || '')}</div>
+      ${renderThumbs(o.images)}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+  renderVolume(d.volume);
+
+  const tickersBody = (d.tickers || []).map(renderTicker).join('')
+                   || '<div class="empty">No tickers.</div>';
+  const outliersBody = (d.outliers || []).map(renderOutlier).join('');
+
+  const sections = [
+    renderSection('A', 'Tickers', tickersBody, (d.tickers || []).length),
+    outliersBody ? renderSection('B', 'Outliers', outliersBody, (d.outliers || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No data.</div>';
+
+  // Auto-open all sections (compact dashboard — show everything).
+  document.querySelectorAll('.section').forEach(s => s.classList.add('open'));
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
