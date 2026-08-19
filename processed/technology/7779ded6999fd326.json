@@ -1,0 +1,190 @@
+{
+  "record_id": "7779ded6999fd326",
+  "source_type": "technology",
+  "source_name": "Anyscale / Ray Blog",
+  "source_url": "https://www.anyscale.com/blog/ray-serve-async-inf-in-practice",
+  "title": "Async inference in practice: a video-indexing service on Ray Serve | Anyscale",
+  "published_date": "2026-08-18",
+  "language": "en",
+  "processed_at": "2026-08-19T12:30:00Z",
+  "processor": "claude-code-sub-opus",
+  "tags": ["Tech", "AI"],
+  "gist": "Anyscale builds a video-indexing service on Ray Serve's async inference feature (queue-backed, queue-depth autoscaled) and stress-tests it against Amazon SageMaker Async Inference on identical 4x T4 hardware. Under a 20-minute flood of ~67,000 requests, Ray Serve reached a full fleet in ~155s vs SageMaker's ~589s and released idle capacity in ~5s vs ~104s, with both platforms dropping zero requests.",
+  "themes": [
+    {
+      "theme": "Async inference design rationale",
+      "insights": [
+        {
+          "claim": "Async inference decouples request scheduling from computation: the client submits a job and gets an id immediately, the work goes onto a message queue, a worker pool autoscaled to queue depth processes it in the background, and the client polls for the result.",
+          "speaker": "Harshit Agarwal",
+          "type": "framework",
+          "entities": ["Ray Serve", "async inference"],
+          "conviction": "high",
+          "so_what": "This is the reference pattern for long-running model calls; teams serving minutes-long inference should evaluate queue-backed designs over synchronous HTTP.",
+          "quote": "The client submits a job and gets an id back right away, the work goes onto a message queue,  a pool of workers, autoscaled to the queue depth, processes it in the background, and the client polls for the result.",
+          "locator": "Async inference solves these problems",
+          "quote_verified": false
+        },
+        {
+          "claim": "Holding a synchronous HTTP connection open for model calls lasting seconds to minutes makes services less reliable, because a traffic burst piles onto a slow fleet and causes client or intermediary timeouts, and a long-held connection has more exposure to a dropped packet or failed hop.",
+          "speaker": "Harshit Agarwal",
+          "type": "causal",
+          "entities": ["async inference"],
+          "conviction": "high",
+          "so_what": "Frames the reliability failure mode that justifies async inference for long-running GenAI workloads like transcription and video/image generation.",
+          "quote": "a connection held open for minutes has much more exposure to a dropped packet or a failed hop.",
+          "locator": "A quick recap: what async inference is for",
+          "quote_verified": false
+        },
+        {
+          "claim": "Ray Serve exposes async inference through @task_consumer / @task_handler decorators, a TaskProcessorConfig pointing at a self-run broker like Redis or RabbitMQ with at-least-once delivery, retries, and dead-letter routing, enqueue_task_sync for submitting work, and an AsyncInferenceAutoscalingPolicy that scales the worker pool on queue depth.",
+          "speaker": "Harshit Agarwal",
+          "type": "framework",
+          "entities": ["Ray Serve", "Redis", "RabbitMQ", "TaskProcessorConfig", "AsyncInferenceAutoscalingPolicy"],
+          "conviction": "high",
+          "so_what": "The primitives are broker-agnostic and self-hosted, a differentiator versus fully managed queues for teams wanting portability.",
+          "quote": null,
+          "locator": "The pieces Ray Serve provides, in brief",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Video-indexing service architecture",
+      "insights": [
+        {
+          "claim": "The demo video-indexing service takes an S3 URI, returns a task id immediately, and in the background downloads the video, splits it into frames with ffmpeg, embeds the frames with SigLIP on a GPU, and writes the vectors back to S3, a pipeline that can take tens of minutes per request.",
+          "speaker": "Harshit Agarwal",
+          "type": "anecdote",
+          "entities": ["Ray Serve", "S3", "ffmpeg", "SigLIP", "GPU"],
+          "conviction": "high",
+          "so_what": "A concrete, reproducible reference architecture for multimodal embedding pipelines that infra buyers can map to their own workloads.",
+          "quote": null,
+          "locator": "The application: a video-indexing service",
+          "quote_verified": false
+        },
+        {
+          "claim": "The service comprises three independently autoscaling deployments: a CPU IndexingIngress that enqueues and returns a task id, a CPU VideoIndexConsumer that autoscales on queue depth and chunks video with ffmpeg, and a GPU VideoEncoder holding the SigLIP network that scales on its own GPU load.",
+          "speaker": "Harshit Agarwal",
+          "type": "framework",
+          "entities": ["Ray Serve", "SigLIP", "ffmpeg", "GPU", "CPU"],
+          "conviction": "high",
+          "so_what": "Separating CPU chunking from GPU encoding, each on its own scaling signal, is a cost-efficiency pattern that managed single-container endpoints cannot replicate.",
+          "quote": null,
+          "locator": "The application, comprises of three deployments",
+          "quote_verified": false
+        },
+        {
+          "claim": "Ray Serve passes intermediate tensors between the CPU consumer and GPU encoder by reference through its shared object store, whereas exposing them as separate SageMaker endpoints would force those tensors to travel between endpoints over the network passed by value.",
+          "speaker": "Harshit Agarwal",
+          "type": "contrarian",
+          "entities": ["Ray Serve", "Amazon SageMaker"],
+          "conviction": "high",
+          "so_what": "Pass-by-reference is a structural performance advantage of Ray's object store over stitching managed endpoints together; a key differentiator in multi-stage pipelines.",
+          "quote": "the intermediate tensors would have to travel between the two endpoints over the network, passed by value, whereas Ray Serve passes them by reference through its shared object store.",
+          "locator": "SageMaker does not support deploying these two components",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Load test results",
+      "insights": [
+        {
+          "claim": "Under a 20-minute flood at a sustained 50 RPS with periodic spikes to 100 RPS, roughly 5-10x higher than a 4-GPU fleet can process and totaling about 67,000 video requests, Ray Serve automatically scaled GPU replicas from 1 to the configured maximum of 4 and back down to 1 with no fixed fleet and no manual tuning.",
+          "speaker": "Harshit Agarwal",
+          "type": "data_point",
+          "entities": ["Ray Serve", "GPU"],
+          "conviction": "high",
+          "so_what": "Demonstrates queue-depth autoscaling holding up at 5-10x overload, the core reliability claim buyers stress-test.",
+          "quote": null,
+          "locator": "Behavior under load",
+          "quote_verified": false
+        },
+        {
+          "claim": "All ~67,000 video requests were accepted, queued, and eventually processed with zero failed requests and an empty dead-letter queue throughout the sustained overload.",
+          "speaker": "Harshit Agarwal",
+          "type": "data_point",
+          "entities": ["Ray Serve"],
+          "conviction": "high",
+          "so_what": "Zero drops under sustained overload is the headline reliability proof point for the at-least-once delivery design.",
+          "quote": "The dead-letter queue remained empty throughout the test, indicating that no requests were dropped or failed during the sustained overload.",
+          "locator": "Zero failed requests",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Ray Serve vs Amazon SageMaker benchmark",
+      "insights": [
+        {
+          "claim": "On identical 4x NVIDIA T4 hardware and the same flood, Ray Serve reached a full 4-GPU fleet from cold in about 155 seconds versus SageMaker Async Inference's about 589 seconds, and released idle capacity in about 5 seconds versus SageMaker's about 104 seconds.",
+          "speaker": "Harshit Agarwal",
+          "type": "data_point",
+          "entities": ["Ray Serve", "Amazon SageMaker", "NVIDIA T4"],
+          "conviction": "high",
+          "so_what": "Faster scale-down directly cuts idle GPU cost; the ~20x scale-down gap is a concrete TCO argument against the managed alternative.",
+          "quote": null,
+          "locator": "Comparing against a managed alternative: Amazon SageMaker",
+          "quote_verified": false
+        },
+        {
+          "claim": "SageMaker's scale-down was bounded by its CloudWatch metrics being standard-resolution, so alarms on ApproximateBacklogSize cannot evaluate more frequently than once every 60 seconds, whereas Ray Serve polls queue depth directly and reacts in seconds.",
+          "speaker": "Harshit Agarwal",
+          "type": "causal",
+          "entities": ["Amazon SageMaker", "CloudWatch", "Ray Serve"],
+          "conviction": "high",
+          "so_what": "Identifies the platform-level constraint (60s CloudWatch resolution) behind SageMaker's slower reactivity, a hard limit buyers cannot tune away.",
+          "quote": "Faster scaling isn’t possible because these metrics are standard-resolution metric, so CloudWatch alarms cannot evaluate it more frequently than once every 60 seconds.",
+          "locator": "A note on the SageMaker setup",
+          "quote_verified": false
+        },
+        {
+          "claim": "Ray Serve autoscaling required a single policy block while matching SageMaker's behavior required two Application Auto Scaling step policies each tied to a CloudWatch alarm, though both platforms dropped zero tasks and had near-identical p50 ack latency under load (12.8 ms vs 11.8 ms).",
+          "speaker": "Harshit Agarwal",
+          "type": "data_point",
+          "entities": ["Ray Serve", "Amazon SageMaker", "CloudWatch"],
+          "conviction": "high",
+          "so_what": "Operational simplicity, not raw acknowledgment latency, is where Ray Serve differentiates; both are equally reliable at ingest.",
+          "quote": null,
+          "locator": "Ray Serve was easier to set up",
+          "quote_verified": false
+        },
+        {
+          "claim": "End-to-end per-request latency was dominated by queue waiting rather than the roughly 1-2 second base processing time (download, ffmpeg, embedding, S3 write), and because Ray Serve started new replicas sooner, its requests spent less time queued and finished earlier than SageMaker's.",
+          "speaker": "Harshit Agarwal",
+          "type": "causal",
+          "entities": ["Ray Serve", "Amazon SageMaker", "ffmpeg", "S3"],
+          "conviction": "high",
+          "so_what": "Faster scale-up translates directly into lower user-facing latency under bursty load, linking autoscaling responsiveness to end-user experience.",
+          "quote": null,
+          "locator": "End-to-end latency",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Portability and fit",
+      "insights": [
+        {
+          "claim": "Because async inference is built into Ray Serve, the same application can run on any cloud, on-premises, or even on a laptop without code changes, with request queuing, reliable processing, and queue-size autoscaling from minimal configuration.",
+          "speaker": "Harshit Agarwal",
+          "type": "thesis",
+          "entities": ["Ray Serve"],
+          "conviction": "high",
+          "so_what": "Multi-cloud and on-prem portability is Ray Serve's positioning against cloud-locked managed inference services.",
+          "quote": "the same application can run on any cloud, on-premises, or even on a laptop without code changes.",
+          "locator": "When async inference is the right fit",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 13,
+  "top_entities": ["Ray Serve", "Amazon SageMaker", "NVIDIA T4", "SigLIP", "ffmpeg", "S3", "CloudWatch", "Redis", "RabbitMQ", "GPU", "Anyscale"],
+  "source_meta": {
+    "author": "https://www.anyscale.com/blog?author=harshit-agarwal",
+    "word_count": 2089,
+    "paywalled": false
+  }
+}
