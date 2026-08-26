@@ -1,0 +1,231 @@
+{
+  "record_id": "4ba961fdef7c1d56",
+  "source_type": "technology",
+  "source_name": "Anyscale / Ray Blog",
+  "source_url": "https://www.anyscale.com/blog/fp8-reinfinforcement-learning-in-skyrl",
+  "title": "FP8 Reinforcement Learning in SkyRL: Preserving Policy Consistency Across Training and Rollout | Anyscale",
+  "published_date": "2026-08-25",
+  "language": "en",
+  "processed_at": "2026-08-26T15:24:52Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "Tech",
+    "AI"
+  ],
+  "gist": "SkyRL's new FP8 training/rollout path fixes a subtle bug where independently quantizing weights in the trainer and the vLLM rollout engine silently changes the policy being trained on; by transferring the trainer's exact FP8 weights and scales directly to vLLM (on-policy weight sync), SkyRL tracks BF16 convergence while cutting end-to-end RL step time by up to 23% and per-GPU trainer memory by up to 42%.",
+  "themes": [
+    {
+      "theme": "Why naive FP8 breaks reinforcement learning",
+      "insights": [
+        {
+          "claim": "Enabling FP8 independently in the trainer (Transformer Engine's per-tensor delayed-scaling recipe in Megatron) and the rollout engine (vLLM's quantization='fp8') causes training to become unstable within just 70 steps on a Qwen3.5-4B DAPO run: reward stalls below the BF16 baseline, policy entropy collapses toward zero, the importance-sampling ratio sticks near 0.75 instead of 1.0, and the PPO clip ratio runs more than an order of magnitude above the BF16 run.",
+          "speaker": "Jinghan Yao et al.",
+          "type": "data_point",
+          "entities": [
+            "SkyRL",
+            "vLLM",
+            "Megatron",
+            "Qwen3.5"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete, reproducible failure signature for anyone attempting naive FP8 RL -- these four diagnostics (reward, entropy, IS ratio, clip ratio) are a checklist to detect this exact bug in other RL stacks.",
+          "quote": null,
+          "locator": "When independent quantization breaks policy consistency",
+          "quote_verified": false
+        },
+        {
+          "claim": "The root cause is at the weight-synchronization boundary: the original bridge dequantizes the trainer's FP8 weights to BF16 and discards the trainer's block-scale metadata, then vLLM independently re-quantizes those BF16 values into a different FP8 representation, composing two lossy transforms with independently chosen scales -- so the rollout engine ends up sampling from a policy the trainer never actually held ('off-policy weight sync').",
+          "speaker": "Jinghan Yao et al.",
+          "type": "causal",
+          "entities": [
+            "SkyRL",
+            "vLLM",
+            "Megatron"
+          ],
+          "conviction": "high",
+          "so_what": "Identifies the exact mechanism (metadata loss at sync, not FP8 itself) responsible for RL instability -- directly applicable to anyone else building or evaluating FP8 RL pipelines with a trainer/inference engine split.",
+          "quote": null,
+          "locator": "When independent quantization breaks policy consistency",
+          "quote_verified": false
+        },
+        {
+          "claim": "The mean relative error between the trainer's and rollout engine's independently-derived FP8 weights measures 0.038 -- about 1.4x the quantization error either representation has on its own relative to the BF16 checkpoint -- meaning the disagreement introduced between the two engines is larger than either engine's own precision loss.",
+          "speaker": "Jinghan Yao et al.",
+          "type": "contrarian",
+          "entities": [
+            "SkyRL"
+          ],
+          "conviction": "high",
+          "so_what": "A counterintuitive and quantified finding: in mixed FP8 RL, the cross-engine inconsistency is a bigger error source than the quantization itself, reframing where engineering effort should go.",
+          "quote": "the mean relative error between the trainer and rollout FP8 weights is 0.038. This is approximately 1.4x the quantization error of either representation relative to the BF16 checkpoint",
+          "locator": "When independent quantization breaks policy consistency",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "The fix: on-policy weight sync (OPWS)",
+      "insights": [
+        {
+          "claim": "SkyRL's redesigned sync path (on-policy weight sync, OPWS) transfers the trainer's exact FP8 payload and block scales directly to vLLM instead of re-quantizing, making trainer and rollout weights bitwise identical immediately after synchronization.",
+          "speaker": "Jinghan Yao et al.",
+          "type": "causal",
+          "entities": [
+            "SkyRL",
+            "vLLM"
+          ],
+          "conviction": "high",
+          "so_what": "The core engineering fix: eliminates the composed double-quantization error entirely by construction rather than tuning around it.",
+          "quote": null,
+          "locator": "On-Policy FP8 weight sync",
+          "quote_verified": false
+        },
+        {
+          "claim": "With OPWS, the remaining mean absolute per-token train-rollout log-probability gap on a 400-step Qwen3.5-9B run stays flat between 0.02 and 0.03 (about 3x the gap seen between two BF16 engine paths, a practical floor from kernel differences alone), whereas a BF16 trainer paired with an independently FP8-quantizing rollout engine starts with a larger gap and exceeds 0.05 by step 400, continuing to grow.",
+          "speaker": "Jinghan Yao et al.",
+          "type": "data_point",
+          "entities": [
+            "SkyRL"
+          ],
+          "conviction": "high",
+          "so_what": "Quantifies both that OPWS bounds the sync-induced error near a hardware-floor level and that the naive alternative keeps degrading over the course of training rather than stabilizing.",
+          "quote": null,
+          "locator": "On-Policy FP8 weight sync",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Convergence and performance results",
+      "insights": [
+        {
+          "claim": "With OPWS enabled, FP8 reward and pass@8 curves track BF16 closely over 400 DAPO steps on both Qwen3.5-9B dense (8xH100) and Qwen3.5-35B-A3B MoE (8xB200), across both the blockwise (Hopper) and MXFP8 (Blackwell) quantization recipes.",
+          "speaker": "Jinghan Yao et al.",
+          "type": "data_point",
+          "entities": [
+            "SkyRL",
+            "Qwen3.5",
+            "NVIDIA Hopper",
+            "NVIDIA Blackwell"
+          ],
+          "conviction": "high",
+          "so_what": "Establishes that the fix doesn't just stabilize training but reaches parity with BF16 on the actual RL objective, not just on numerical proxies.",
+          "quote": null,
+          "locator": "Experimental scope",
+          "quote_verified": false
+        },
+        {
+          "claim": "End-to-end RL step time improves by up to approximately 19% on 8xH100/Qwen3.5-9B and 23% on 8xB200/Qwen3.5-35B-A3B, but the gain comes almost entirely from rollout/decode -- the training phase itself is close to time-neutral (45.6s to 44.0s) because FP8's GPU compute savings (GEMM time 14.2s to 10.9s, NCCL all-gather 9.8s to 6.4s) were initially offset by host-side overhead deriving block scales and maintaining transposed FP8 representations across 64 microbatches, which dispatch optimizations reduced from 52.9s to 16.9s.",
+          "speaker": "Jinghan Yao et al.",
+          "type": "causal",
+          "entities": [
+            "SkyRL",
+            "NVIDIA Hopper",
+            "NVIDIA Blackwell"
+          ],
+          "conviction": "high",
+          "so_what": "A crucial nuance for anyone modeling FP8 RL cost savings: the headline speedup is a rollout-side, memory-bandwidth story, not a uniform training speedup, and host-side dispatch overhead is a real tax that needs explicit optimization to unlock the GPU-side gains.",
+          "quote": null,
+          "locator": "Performance analysis",
+          "quote_verified": false
+        },
+        {
+          "claim": "FP8 parameter storage (fp8_param) cuts per-GPU trainer weight memory by 39% for Qwen3.5-9B dense (8.3 to 5.1 GiB) and by 42% for the Qwen3.5-35B-A3B MoE model (12.1 to 7.0 GiB) -- a larger win for MoE because its routed experts hold most of the parameters and are almost entirely quantizable -- freeing HBM that can be redirected to longer contexts, larger microbatches, or wider rollout batches.",
+          "speaker": "Jinghan Yao et al.",
+          "type": "data_point",
+          "entities": [
+            "SkyRL",
+            "Qwen3.5"
+          ],
+          "conviction": "high",
+          "so_what": "A direct capacity/cost lever: MoE-heavy RL workloads benefit disproportionately from FP8 parameter storage, which should factor into hardware sizing decisions for MoE-based RL training.",
+          "quote": null,
+          "locator": "Performance analysis",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Scale-format robustness and hardware gaps",
+      "insights": [
+        {
+          "claim": "Blackwell tensor cores only support coarser power-of-two block scaling versus Hopper's full-precision FP32 scale option, raising a real concern that RL's characteristically small weight updates could be systematically suppressed by the coarser grid -- but measured long-horizon cumulative FP8 weight displacement tracks the FP32 master weights' displacement almost 1:1 under both formats, showing updates are not being lost even though single-step cosine similarity between an update and its FP8 storage change looks low.",
+          "speaker": "Jinghan Yao et al.",
+          "type": "contrarian",
+          "entities": [
+            "SkyRL",
+            "NVIDIA Blackwell"
+          ],
+          "conviction": "medium",
+          "so_what": "Addresses a specific, plausible worry about Blackwell's coarser quantization with actual long-horizon data rather than leaving it as an assumption -- relevant to anyone deciding whether Blackwell's hardware-enforced pow-2 scaling is 'good enough' for RL.",
+          "quote": null,
+          "locator": "Deep dive: FP8 quantization with FP32 and power-of-two block scales",
+          "quote_verified": false
+        },
+        {
+          "claim": "In matched 200-step DAPO runs, the power-of-two scale format carries a persistently higher train-rollout log-probability gap than FP32 scales (0.034 versus 0.026) yet shows no material difference in reward or pass@8 outcomes -- indicating a larger sync-consistency gap does not automatically translate into worse learning at this scale.",
+          "speaker": "Jinghan Yao et al.",
+          "type": "contrarian",
+          "entities": [
+            "SkyRL"
+          ],
+          "conviction": "medium",
+          "so_what": "A useful caveat against over-indexing purely on the log-probability-gap metric as a proxy for RL training quality.",
+          "quote": null,
+          "locator": "Deep dive: FP8 quantization with FP32 and power-of-two block scales",
+          "quote_verified": false
+        },
+        {
+          "claim": "fp8_param (FP8 primary weight storage) currently only works with Hopper's blockwise FP8 tensor format via Transformer Engine's replace_raw_data integration with Megatron's distributed optimizer, and is not yet implemented for the MXFP8Tensor format used on native Blackwell -- so primary training weights stay in BF16 on B200 today even though FP8 still accelerates the supported GEMMs.",
+          "speaker": "Jinghan Yao et al.",
+          "type": "data_point",
+          "entities": [
+            "SkyRL",
+            "NVIDIA Blackwell",
+            "Transformer Engine"
+          ],
+          "conviction": "medium",
+          "so_what": "A concrete near-term hardware/software gap: the memory-savings benefit of fp8_param is currently Hopper-only, so Blackwell deployments should not expect the same per-GPU memory reduction yet.",
+          "quote": null,
+          "locator": "Deep dive: FP8 quantization with FP32 and power-of-two block scales",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "General framework for FP8 RL correctness",
+      "insights": [
+        {
+          "claim": "The core practical takeaway is to treat weight synchronization itself as part of numerical correctness: training and rollout kernels can each individually be numerically stable while the synchronization interface between them silently changes the data-generating policy that the RL algorithm assumes it is optimizing.",
+          "speaker": "Jinghan Yao et al.",
+          "type": "framework",
+          "entities": [
+            "SkyRL"
+          ],
+          "conviction": "high",
+          "so_what": "A generalizable mental model for evaluating any distributed RL system that separates a trainer and an inference engine -- the interface, not either engine alone, is where correctness bugs hide.",
+          "quote": "Treat weight synchronization as part of numerical correctness. Training and rollout kernels can each be stable while independent quantization at their interface changes the data-generating policy.",
+          "locator": "Practical takeaways",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 12,
+  "top_entities": [
+    "SkyRL",
+    "Anyscale",
+    "vLLM",
+    "Megatron",
+    "NVIDIA Hopper",
+    "NVIDIA Blackwell",
+    "Qwen3.5",
+    "Transformer Engine",
+    "DeepSeek-V3"
+  ],
+  "source_meta": {
+    "author": "https://www.anyscale.com/blog?author=jinghan-yao",
+    "word_count": 2928,
+    "paywalled": false
+  }
+}
