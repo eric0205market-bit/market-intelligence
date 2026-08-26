@@ -1,0 +1,257 @@
+{
+  "record_id": "943b1444142e4096",
+  "source_type": "technology",
+  "source_name": "InfoQ",
+  "source_url": "https://www.infoq.com/articles/beyond-offset-lag-kafka-apache-hudi",
+  "title": "Beyond Offset Lag: Computing Time in Queue for Apache Hudi Data Lake Pipelines at Petabyte Scale",
+  "published_date": "2026-08-26",
+  "language": "en",
+  "processed_at": "2026-08-26T10:45:00Z",
+  "processor": "claude-code-sub-opus",
+  "tags": ["Tech"],
+  "gist": "A Twilio principal engineer explains why Kafka offset lag is a false signal of data freshness for Apache Hudi data-lake pipelines (which checkpoint to S3, invisible to tools like Burrow), and details a zero-instrumentation 'time-in-queue' metric — read the Kafka checkpoint from the latest Hudi commit, seek to that offset, and measure the timestamp delta — deployed across pipelines processing 5+ trillion records monthly. The piece doubles as a case study in observability design: graded SLA ratios over binary alerts, and suppressing a metric rather than publishing a misleading one.",
+  "themes": [
+    {
+      "theme": "Offset lag is the wrong freshness signal",
+      "insights": [
+        {
+          "claim": "Kafka consumer offset lag measures how far behind a consumer is, not how old the data is; for Apache Hudi pipelines these are two different things, and conflating them causes data-freshness SLA violations that standard dashboards never show.",
+          "speaker": "Srikanth Mamidala",
+          "type": "framework",
+          "entities": ["Apache Kafka", "Apache Hudi", "Twilio"],
+          "conviction": "high",
+          "so_what": "Teams standardized on Kafka-native lag tooling have a structural blind spot in lakehouse pipelines — a gap for data-observability vendors to fill.",
+          "quote": "Kafka Offset lag tells you how far behind a consumer is rather than telling you how old the data is.",
+          "locator": "Key Takeaways",
+          "quote_verified": false
+        },
+        {
+          "claim": "Hudi Delta Streamer stores its checkpoints inside .hoodie commit files on S3 rather than committing offsets to Kafka consumer groups, so standard lag monitors like Burrow have no awareness of whether data actually reached the lake — at Twilio, consumers looked healthy while downstream analytics data was hours stale.",
+          "speaker": "Srikanth Mamidala",
+          "type": "causal",
+          "entities": ["Apache Hudi", "Burrow", "Amazon S3", "Twilio", "Kafka"],
+          "conviction": "high",
+          "so_what": "Watch for the checkpoint-visibility gap wherever lakehouse writers (Hudi/Delta/Iceberg) self-manage offsets; existing Kafka monitoring stacks do not cover it.",
+          "quote": "Standard lag monitoring tools like Burrow track a consumer group’s committed offsets, which Hudi doesn’t populate by default",
+          "locator": "The Problem",
+          "quote_verified": false
+        },
+        {
+          "claim": "Offset-based monitoring and time-based lag monitoring are complementary rather than substitutes; only running both gives a complete picture of pipeline health.",
+          "speaker": "Srikanth Mamidala",
+          "type": "thesis",
+          "entities": ["Kafka", "Apache Hudi"],
+          "conviction": "high",
+          "so_what": "Expect observability spend to layer new freshness metrics on top of, not instead of, existing lag tooling.",
+          "quote": null,
+          "locator": "Key Takeaways",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Twilio pipeline scale",
+      "insights": [
+        {
+          "claim": "Twilio's data-lake ingestion via Apache Hudi Delta Streamer processes over five trillion records monthly as of Q4 2025 on self-hosted Kafka clusters, peaking at 12.9 million messages per second on Cyber Monday 2025.",
+          "speaker": "Srikanth Mamidala",
+          "type": "data_point",
+          "entities": ["Twilio", "Apache Hudi", "Apache Kafka"],
+          "conviction": "high",
+          "so_what": "Concrete evidence of petabyte-scale self-hosted Kafka at Twilio — relevant for sizing the open-source streaming/lakehouse footprint versus managed alternatives.",
+          "quote": "processing over five trillion records monthly as of Q4 2025, across self-hosted Kafka clusters, peaking at 12.9 million messages per second on Cyber Monday 2025",
+          "locator": "The Problem",
+          "quote_verified": false
+        },
+        {
+          "claim": "Twilio's data lake underpins analytics, reporting, and machine-learning workloads such as anomaly and fraud detection across messaging, email, and voice product lines, making data freshness a business-facing rather than purely operational concern.",
+          "speaker": "Srikanth Mamidala",
+          "type": "data_point",
+          "entities": ["Twilio", "fraud detection", "machine learning"],
+          "conviction": "high",
+          "so_what": "Stale lake data directly degrades ML-driven products; freshness SLAs are becoming part of the data contract, not a nice-to-have.",
+          "quote": null,
+          "locator": "The Problem",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Time-in-queue algorithm design",
+      "insights": [
+        {
+          "claim": "True data freshness for a Hudi pipeline can be computed with zero changes to producers, consumers, or pipeline code: an external 'metrics reporter' job reads the Kafka checkpoint (deltastreamer.checkpoint.key) from the latest Hudi commit in S3, seeks to that offset in Kafka, and measures the timestamp delta between the first unconsumed message and now.",
+          "speaker": "Srikanth Mamidala",
+          "type": "framework",
+          "entities": ["Apache Hudi", "Kafka", "Amazon S3", "Twilio"],
+          "conviction": "high",
+          "so_what": "A reusable, low-cost observability pattern: mine artifacts systems already produce instead of adding instrumentation — favors incumbents' data exhaust over new agent deployments.",
+          "quote": "The metrics reporter is purely an external observer that reads artifacts the system already produces, requiring neither new instrumentation nor producer changes.",
+          "locator": "Rethinking Lag as Time",
+          "quote_verified": false
+        },
+        {
+          "claim": "Hudi stores next-to-read offsets (not last-consumed), so seeking a Kafka consumer to the checkpoint offset positions it exactly at the first message not yet committed to the data lake.",
+          "speaker": "Srikanth Mamidala",
+          "type": "data_point",
+          "entities": ["Apache Hudi", "Kafka"],
+          "conviction": "high",
+          "so_what": "Implementation detail that makes the pattern exact rather than approximate; misreading it would produce off-by-one freshness errors.",
+          "quote": null,
+          "locator": "Fetching the Hudi Checkpoint from S3",
+          "quote_verified": false
+        },
+        {
+          "claim": "For multi-partition topics, lag must be taken as the earliest message timestamp across all partitions — averaging hides a slow partition and taking the latest hides a stuck one; worst-case lag is the only number that matters for SLA enforcement.",
+          "speaker": "Srikanth Mamidala",
+          "type": "framework",
+          "entities": ["Kafka", "Apache Hudi"],
+          "conviction": "high",
+          "so_what": "General aggregation principle for SLA metrics: report the worst case, since averages systematically mask partial failures.",
+          "quote": "Averaging would hide a slow partition. Using the latest number would hide a stuck partition.",
+          "locator": "Multi-Partition Topics",
+          "quote_verified": false
+        },
+        {
+          "claim": "The freshness reporter runs every fifteen minutes via AWS EventBridge on EMR Serverless, using Spark only as a runtime shell to give the Hudi SDK its S3A filesystem access, with no actual Spark data processing.",
+          "speaker": "Srikanth Mamidala",
+          "type": "data_point",
+          "entities": ["AWS EventBridge", "EMR Serverless", "Apache Spark", "Apache Hudi", "S3"],
+          "conviction": "high",
+          "so_what": "Serverless schedulers plus SDK-only Spark shells are a cheap deployment shape for observability jobs — minimal incremental compute spend.",
+          "quote": null,
+          "locator": "Real-World Results",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Production edge cases and hard lessons",
+      "insights": [
+        {
+          "claim": "When Hudi cannot find a commit with checkpoint metadata it does not error out but silently defaults to an epoch-zero timestamp (19700101000000000), which exploded Twilio's first lag metric into astronomical meaningless values that a Math.max(0) floor could not catch.",
+          "speaker": "Srikanth Mamidala",
+          "type": "anecdote",
+          "entities": ["Apache Hudi", "Twilio"],
+          "conviction": "high",
+          "so_what": "Silent sentinel defaults in open-source data frameworks are a recurring reliability trap; guard explicitly against epoch defaults in any Hudi-based tooling.",
+          "quote": "it silently defaults to a timestamp of epoch zero, 19700101000000000",
+          "locator": "The Epoch Timestamp Trap",
+          "quote_verified": false
+        },
+        {
+          "claim": "When multiple writers share a Hudi table during migrations (a legacy S3-sourced pipeline plus a new Kafka-sourced one), the most recent commit often lacks checkpoint metadata, so the algorithm must walk the timeline backwards up to a configurable depth (default 100 commits) to find the latest valid checkpoint, eliminating false seven-day lag spikes without external state.",
+          "speaker": "Srikanth Mamidala",
+          "type": "causal",
+          "entities": ["Apache Hudi", "Kafka", "S3", "Twilio"],
+          "conviction": "high",
+          "so_what": "Migration overlap periods are when monitoring most often lies; any lakehouse migration plan should assume multi-writer tables break naive latest-commit assumptions.",
+          "quote": null,
+          "locator": "Multiple Hudi Table Writers and Kafka Checkpoints",
+          "quote_verified": false
+        },
+        {
+          "claim": "Twilio reports the commit-walk depth itself as a separate metric because a high depth is a leading indicator that the primary pipeline is failing, firing before the lag metric ever crosses its threshold.",
+          "speaker": "Srikanth Mamidala",
+          "type": "framework",
+          "entities": ["Apache Hudi", "Twilio"],
+          "conviction": "medium",
+          "so_what": "Meta-metrics about the measurement process can be earlier warnings than the primary metric — a transferable observability pattern.",
+          "quote": "A high commit depth is a leading indicator that something is wrong with the primary pipeline even before the lag metric crosses its threshold.",
+          "locator": "The Latest Commit Is Not Always the Right Commit",
+          "quote_verified": false
+        },
+        {
+          "claim": "Kafka represents missing producer timestamps with the sentinel -1 (ConsumerRecord.NO_TIMESTAMP) rather than null, and producer clock skew can make lag appear negative; the fix is to floor lag at zero, skip reporting on -1 timestamps, and alert separately on sustained negative raw values as a clock-skew signal.",
+          "speaker": "Srikanth Mamidala",
+          "type": "data_point",
+          "entities": ["Kafka"],
+          "conviction": "high",
+          "so_what": "Any timestamp-based freshness metric inherits producer clock quality; negative-lag patterns are themselves diagnostic signal.",
+          "quote": null,
+          "locator": "Missing Kafka Timestamps",
+          "quote_verified": false
+        },
+        {
+          "claim": "When no valid checkpoint exists, the reporter suppresses the metric entirely and lets a 'No Data' alert fire, on the principle that a missing metric is more honest than a plausible-looking fabricated number.",
+          "speaker": "Srikanth Mamidala",
+          "type": "framework",
+          "entities": ["Twilio", "Apache Hudi"],
+          "conviction": "high",
+          "so_what": "A design stance against hallucinated metrics — relevant to evaluating observability products that always render a number.",
+          "quote": "sometimes, a missing metric is better than a hallucinated value",
+          "locator": "The Epoch Timestamp Trap",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "SLA ratios and data contracts",
+      "insights": [
+        {
+          "claim": "Time-based lag is exposed as a first-class data-contract metric: each pipeline declares slaInMinutes in its onboarding YAML (defaults: 60 minutes for streaming, 1440 for batch), and breach is reported as a graded 0.0-1.0 ratio of lag to threshold rather than a binary flag.",
+          "speaker": "Srikanth Mamidala",
+          "type": "thesis",
+          "entities": ["Twilio", "data contracts"],
+          "conviction": "high",
+          "so_what": "Freshness SLAs are moving into declarative data contracts — supports the thesis that data-contract tooling is the next layer of the modern data stack.",
+          "quote": null,
+          "locator": "Real-World Results",
+          "quote_verified": false
+        },
+        {
+          "claim": "Binary SLA alerts only fire after the SLA is already missed; a graded ratio lets teams set a warning at 0.7 and critical at 1.0, mirroring the SRE practice of tracking error-budget burn rate to act before customers are impacted.",
+          "speaker": "Srikanth Mamidala",
+          "type": "framework",
+          "entities": ["SRE", "Twilio"],
+          "conviction": "high",
+          "so_what": "Leading-indicator alerting (percent-of-budget) beats threshold alerting; a pattern to expect in data-observability product roadmaps.",
+          "quote": "This approach mirrors the SRE practice of tracking error-budget burn rate",
+          "locator": "SLA as a Ratio, Not a Binary",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Portability and roadmap signals",
+      "insights": [
+        {
+          "claim": "The pattern generalizes beyond Hudi: for Delta Lake with Spark Structured Streaming the Kafka offsets live in the streaming checkpoint directory instead of table metadata, but the same find-checkpoint, seek, and timestamp-delta principle applies to any framework that persists committed offsets.",
+          "speaker": "Srikanth Mamidala",
+          "type": "framework",
+          "entities": ["Delta Lake", "Apache Spark", "Kafka", "Apache Hudi"],
+          "conviction": "high",
+          "so_what": "The technique is table-format-agnostic, so its value is not tied to Hudi's ecosystem fortunes.",
+          "quote": "Find the last committed Kafka offset from wherever your framework persists it, seek to that position, and compute the timestamp delta.",
+          "locator": "What's Next",
+          "quote_verified": false
+        },
+        {
+          "claim": "Twilio is actively migrating from Apache Hudi to Apache Iceberg pipelines and is evaluating this freshness approach for Iceberg, while exploring open-source anomaly-detection libraries like Prophet and Luminaire to replace fixed SLA thresholds.",
+          "speaker": "Srikanth Mamidala",
+          "type": "data_point",
+          "entities": ["Twilio", "Apache Iceberg", "Apache Hudi", "Prophet", "Luminaire"],
+          "conviction": "medium",
+          "so_what": "Another large-scale operator moving Hudi-to-Iceberg — incremental evidence Iceberg is winning the open table-format consolidation, relevant to the lakehouse vendor landscape.",
+          "quote": "we are evaluating this approach for our Iceberg pipelines as we migrate from Hudi",
+          "locator": "What's Next",
+          "quote_verified": false
+        },
+        {
+          "claim": "The reporter reads Kafka with a dedicated consumer group and enable.auto.commit=false so it never commits offsets or triggers rebalances, and an empty partition after a 500 ms poll timeout is explicitly reported as zero lag rather than hanging.",
+          "speaker": "Srikanth Mamidala",
+          "type": "data_point",
+          "entities": ["Kafka", "Apache Hudi"],
+          "conviction": "high",
+          "so_what": "Read-only observers can safely share production Kafka topics; removes the operational objection to deploying such monitors.",
+          "quote": null,
+          "locator": "Common Questions",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 19,
+  "top_entities": ["Twilio", "Apache Hudi", "Apache Kafka", "S3", "Burrow", "Delta Lake", "Apache Iceberg", "EMR Serverless", "EventBridge", "Apache Spark", "Srikanth Mamidala"],
+  "source_meta": {"author": "Srikanth Mamidala", "word_count": 3999, "paywalled": false}
+}
