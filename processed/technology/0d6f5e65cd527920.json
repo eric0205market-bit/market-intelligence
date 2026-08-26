@@ -1,0 +1,301 @@
+{
+  "record_id": "0d6f5e65cd527920",
+  "source_type": "technology",
+  "source_name": "Anyscale / Ray Blog",
+  "source_url": "https://www.anyscale.com/blog/how-we-scaled-ray-from-batch-inference-to-10000-node-training-clusters",
+  "title": "Scaling Ray for AI workloads to 10k node clusters | Anyscale",
+  "published_date": "2026-08-25",
+  "language": "en",
+  "processed_at": "2026-08-26T15:24:52Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "Tech",
+    "AI"
+  ],
+  "gist": "Anyscale rebuilt core parts of Ray's driver and control plane (GCS) to remove lock contention, an overwhelmed background thread, and stale-resource-view scheduling, cutting placement-group readiness at 10,000 nodes from hours to seconds and enabling actor counts (40,000 on one cluster) that were infeasible a year ago.",
+  "themes": [
+    {
+      "theme": "Driver bottlenecks in Ray Data",
+      "insights": [
+        {
+          "claim": "A single publish lock shared between a Ray driver's Python thread and its background C thread was consuming 17.4% of the scheduling loop's time on a 500-node batch inference workload, because both threads needed the same lock to publish object location updates and failure messages.",
+          "speaker": "Yicheng Lu",
+          "type": "data_point",
+          "entities": [
+            "Ray Core",
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "Shows that in distributed schedulers, cross-thread lock contention rather than raw API speed is what caps sustained throughput at scale -- a pattern likely recurring in competing orchestration layers.",
+          "quote": null,
+          "locator": "Two Threads, One Lock",
+          "quote_verified": false
+        },
+        {
+          "claim": "Moving all object-location and failure-message publishing onto Ray's single background C thread eliminated the publish-lock contention entirely between the Python driver thread and the C thread.",
+          "speaker": "Yicheng Lu",
+          "type": "causal",
+          "entities": [
+            "Ray Core"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete fix pattern (consolidate contended work onto one thread) that other distributed-systems teams evaluating Ray internals can benchmark against.",
+          "quote": null,
+          "locator": "Two Threads, One Lock",
+          "quote_verified": false
+        },
+        {
+          "claim": "In one Ray Data shuffle run, a flood of over one million tiny argument-readiness callbacks consumed about 17% of the background C thread's time, with each callback waiting 5.7 seconds in queue despite taking only 0.04ms to execute.",
+          "speaker": "Yicheng Lu",
+          "type": "data_point",
+          "entities": [
+            "Ray Data",
+            "Ray Core"
+          ],
+          "conviction": "high",
+          "so_what": "Illustrates how per-object bookkeeping overhead, not compute, becomes the bottleneck in large fan-out ETL/shuffle pipelines -- relevant to anyone estimating Ray Data's ceiling for trillion-token dataset curation.",
+          "quote": null,
+          "locator": "One Overwhelmed Thread",
+          "quote_verified": false
+        },
+        {
+          "claim": "Skipping the async readiness check for task arguments that are already confirmed ready at task-creation time made Ray Data shuffles 9.2% faster end-to-end.",
+          "speaker": "Yicheng Lu",
+          "type": "causal",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "A specific, quantified optimization that partly explains the broader 24% shuffle speedup figure being marketed.",
+          "quote": null,
+          "locator": "One Overwhelmed Thread",
+          "quote_verified": false
+        },
+        {
+          "claim": "Two-thirds of the background C thread's time was spent publishing object location updates to other nodes; skipping location-subscription requests for objects already on the local node cut the driver's publishing traffic in half.",
+          "speaker": "Yicheng Lu",
+          "type": "causal",
+          "entities": [
+            "Ray Core"
+          ],
+          "conviction": "high",
+          "so_what": "Suggests data-locality-aware scheduling has a large, previously untapped efficiency payoff in Ray's object protocol.",
+          "quote": null,
+          "locator": "One Overwhelmed Thread",
+          "quote_verified": false
+        },
+        {
+          "claim": "After these driver-side fixes, Ray's batch inference workload runs 23% faster end-to-end at 500 nodes and Ray Data shuffle runs 24% faster, with sustained task throughput up by as much as 1.6x.",
+          "speaker": "Yicheng Lu",
+          "type": "data_point",
+          "entities": [
+            "Ray Data",
+            "Ray Core",
+            "Anyscale"
+          ],
+          "conviction": "high",
+          "so_what": "Headline efficiency gain investors/customers can use to model lower GPU-hour cost for batch inference and ETL pipelines run on Ray.",
+          "quote": null,
+          "locator": "When the Driver Becomes the Bottleneck",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "GCS control-plane scalability",
+      "insights": [
+        {
+          "claim": "Ray's Global Control Service (GCS) used to run node management, actor lifecycle management, the internal key-value store, autoscaler demand collection, and placement group scheduling all on one main thread, meaning the GCS could become overwhelmed by its own baseline workload before any user job even arrived.",
+          "speaker": "Yicheng Lu",
+          "type": "causal",
+          "entities": [
+            "Ray Core",
+            "GCS"
+          ],
+          "conviction": "high",
+          "so_what": "Identifies a structural single-thread bottleneck in Ray's control plane that any 10k+-node deployment needs to be aware of before Anyscale's fixes land in a stable release.",
+          "quote": null,
+          "locator": "Keeping the GCS Stable at 10,000 Nodes",
+          "quote_verified": false
+        },
+        {
+          "claim": "Making the GCS multithreaded (splitting node-status broadcast, key-value store serving, and autoscaler demand collection onto separate threads) reduced the GCS main thread's idle busy-time on a 10,000-node cluster with zero jobs submitted from about 61% (Ray 2.51) to about 38% (current nightly).",
+          "speaker": "Yicheng Lu",
+          "type": "data_point",
+          "entities": [
+            "Ray Core",
+            "GCS"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete before/after metric for how much control-plane headroom Anyscale has recovered ahead of scheduling any actual workload -- directly bears on how close to 10k nodes a customer can safely run today.",
+          "quote": "on last year's Ray (2.51), a 10,000 node cluster with zero jobs submitted already kept the GCS main thread about 61% busy; on today's nightly, the same idle cluster sits at about 38%",
+          "locator": "Keeping the GCS Stable at 10,000 Nodes",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Stale resource views and placement groups",
+      "insights": [
+        {
+          "claim": "Ray's scheduling is fully distributed -- every node maintains its own resource view built from cluster-wide gossip via a 'syncer' -- so scheduling decisions are always made on a resource view that can be stale, and the syncer's ability to keep up is itself a hidden performance-limiting factor as cluster size grows.",
+          "speaker": "Yicheng Lu",
+          "type": "framework",
+          "entities": [
+            "Ray Core"
+          ],
+          "conviction": "high",
+          "so_what": "A core mental model: distributed schedulers trade central-bottleneck risk for staleness risk, and staleness compounds nonlinearly as node count grows -- useful for evaluating any large distributed scheduler, not just Ray.",
+          "quote": null,
+          "locator": "Ray's Distributed Scheduling",
+          "quote_verified": false
+        },
+        {
+          "claim": "A periodic 'reset resource view every 3 seconds' safety mechanism, meant to correct optimistic resource deductions that never got cleaned up, became actively harmful at 10,000-node scale: because the syncer could not keep up, the reset kept making already-filled nodes look empty again, causing placement groups to be scheduled onto full nodes repeatedly until the syncer eventually caught up.",
+          "speaker": "Yicheng Lu",
+          "type": "causal",
+          "entities": [
+            "Ray Core"
+          ],
+          "conviction": "high",
+          "so_what": "A textbook case of a safety mechanism becoming the dominant cost at scale -- a useful pattern-match for diagnosing similar 'insurance policy' bugs in other distributed schedulers.",
+          "quote": null,
+          "locator": "Placement Groups: From Hours to Seconds",
+          "quote_verified": false
+        },
+        {
+          "claim": "Because placement groups are scheduled exclusively by the GCS via an explicit two-phase commit (prepare-then-commit across nodes), the GCS never actually needed the 3-second reset safety net that ordinary task/actor scheduling relies on; simply removing that reset for placement groups collapsed placement-group scheduling time at 10,000 nodes from hours to seconds.",
+          "speaker": "Yicheng Lu",
+          "type": "causal",
+          "entities": [
+            "Ray Core",
+            "GCS"
+          ],
+          "conviction": "high",
+          "so_what": "Directly explains the reported 303x placement-group speedup at 10,000 nodes -- a single design insight (recognize which paths already have consistency guarantees) drove almost the entire fix.",
+          "quote": null,
+          "locator": "Placement Groups: From Hours to Seconds",
+          "quote_verified": false
+        },
+        {
+          "claim": "pg.ready(), the API used to check whether a placement group is ready, used to submit a dummy task into the group and block on it; because many users wrote a serial loop calling ray.get(pg.ready()) once per group, checking a thousand placement groups meant a thousand sequential round trips, and the dummy task could itself stall behind an unrelated runtime-environment install like a torch build.",
+          "speaker": "Yicheng Lu",
+          "type": "causal",
+          "entities": [
+            "Ray Core"
+          ],
+          "conviction": "medium",
+          "so_what": "Shows how a seemingly innocuous convenience API (returning a ref for free) can silently impose O(n) sequential latency at scale; the fix (a direct async GCS query) removed that tax entirely.",
+          "quote": "for pg in pgs:\nray.get(pg.ready())",
+          "locator": "Placement Groups: From Hours to Seconds",
+          "quote_verified": false
+        },
+        {
+          "claim": "Placement group readiness time for a fixed workload (one placement group per 18-node NVIDIA rack, matching NVL72 topology) improved 62x at 2,000 nodes and 303x at 10,000 nodes comparing last year's Ray to today's nightly build.",
+          "speaker": "Yicheng Lu",
+          "type": "data_point",
+          "entities": [
+            "Ray Core",
+            "NVIDIA GB200",
+            "NVIDIA GB300 NVL72"
+          ],
+          "conviction": "high",
+          "so_what": "Quantifies how much faster large training clusters can now go from zero to a topology-aware, ready-to-train state -- directly reduces idle GPU-hour cost during cluster startup.",
+          "quote": null,
+          "locator": "Placement Groups: From Hours to Seconds",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Actor scheduling at 10k-node scale",
+      "insights": [
+        {
+          "claim": "At the 10,000-node level, Ray's syncer has been observed taking around 200 seconds at peak just to propagate placement-group resource information to the head node, meaning the head node cannot schedule any actors into topology-aware placement groups until that propagation completes.",
+          "speaker": "Yicheng Lu",
+          "type": "data_point",
+          "entities": [
+            "Ray Core"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete latency figure that helps quantify the actor-startup tax large RL/pre-training jobs currently pay before Anyscale's centralized-scheduling redesign ships.",
+          "quote": null,
+          "locator": "Actor Scheduling: Minutes Behind the Truth",
+          "quote_verified": false
+        },
+        {
+          "claim": "Anyscale is walking back Ray's foundational assumption that every node can independently make scheduling decisions, moving toward a more centralized scheduling mechanism so that only a few nodes need the full cluster resource view, which should reduce syncer load, improve view accuracy, and cut most of the reject-and-reschedule cycles caused by stale views.",
+          "speaker": "Yicheng Lu",
+          "type": "prediction",
+          "entities": [
+            "Ray Core"
+          ],
+          "conviction": "medium",
+          "so_what": "A architectural bet worth tracking: if centralization lands, it should materially close the remaining gap on actor-launch time at extreme node counts -- a leading indicator of Ray's fitness for even larger frontier training runs.",
+          "quote": null,
+          "locator": "Actor Scheduling: Minutes Behind the Truth",
+          "quote_verified": false
+        },
+        {
+          "claim": "Actor lifecycle (creation, restart, destruction) is currently managed by the GCS while the driver/owner separately holds references, so every actor startup costs at least four messages between owner and GCS; because a single dead actor in a distributed training job forces every actor to restart (NCCL communicators are all-or-nothing), tens of thousands of these four-message conversations can fire at the GCS simultaneously during a failure.",
+          "speaker": "Yicheng Lu",
+          "type": "causal",
+          "entities": [
+            "Ray Core",
+            "GCS"
+          ],
+          "conviction": "high",
+          "so_what": "Explains a specific, non-obvious tail-latency risk in large-scale RL/pre-training: a single node failure amplifies into a synchronized GCS message storm, which is exactly the kind of failure mode that drives idle-GPU cost during restarts.",
+          "quote": null,
+          "locator": "Actor Scheduling: Minutes Behind the Truth",
+          "quote_verified": false
+        },
+        {
+          "claim": "Anyscale plans to move non-detached actor lifecycle management out of the GCS entirely and onto the owner (the driver), which would eliminate the owner-GCS conversation delay for the common case, while detached actors (which must outlive their driver) would keep the current GCS-managed path.",
+          "speaker": "Yicheng Lu",
+          "type": "prediction",
+          "entities": [
+            "Ray Core",
+            "GCS"
+          ],
+          "conviction": "medium",
+          "so_what": "A specific near-term roadmap item that should further cut restart latency for large training clusters if delivered.",
+          "quote": null,
+          "locator": "Actor Scheduling: Minutes Behind the Truth",
+          "quote_verified": false
+        },
+        {
+          "claim": "End-to-end, creating topology-aware placement groups and scheduling actors into them is now 6.5x faster at 2,000 nodes, and the same cluster configuration that could not support more than roughly a year-old ceiling now scales to 40,000 actors on a 10,000-node cluster, a scale it could not support a year ago.",
+          "speaker": "Yicheng Lu",
+          "type": "data_point",
+          "entities": [
+            "Ray Core",
+            "Anyscale"
+          ],
+          "conviction": "high",
+          "so_what": "A headline capacity claim: Ray now supports actor counts and cluster sizes that were previously infeasible, directly relevant to teams sizing frontier-scale RL/pre-training clusters on Ray versus building custom orchestration.",
+          "quote": null,
+          "locator": "Actor Scheduling: Minutes Behind the Truth",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 18,
+  "top_entities": [
+    "Ray",
+    "Ray Core",
+    "Ray Data",
+    "Anyscale",
+    "GCS",
+    "NVIDIA GB200",
+    "NVIDIA GB300 NVL72",
+    "ByteDance",
+    "Google"
+  ],
+  "source_meta": {
+    "author": "https://www.anyscale.com/blog?author=yicheng-lu",
+    "word_count": 3697,
+    "paywalled": false
+  }
+}

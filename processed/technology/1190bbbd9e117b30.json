@@ -1,0 +1,322 @@
+{
+  "record_id": "1190bbbd9e117b30",
+  "source_type": "technology",
+  "source_name": "Anyscale / Ray Blog",
+  "source_url": "https://www.anyscale.com/blog/ray-data-shuffle-v2",
+  "title": "Shuffle V2 in Ray Data: Faster, Fault-Tolerant Joins and Aggregations | Anyscale",
+  "published_date": "2026-08-25",
+  "language": "en",
+  "processed_at": "2026-08-26T15:24:52Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "Tech",
+    "AI"
+  ],
+  "gist": "Ray Data's Shuffle V2 moves shuffle intermediates out of long-lived actor memory and into the spillable, lineage-tracked object store, fixing V1's OOM and single-point-of-failure problems and unlocking compression, fusion, and vectorized aggregation that combine for up to 53x speedup on some TPC-H queries and let previously-timing-out joins complete in ~320 seconds.",
+  "themes": [
+    {
+      "theme": "Why V1's shuffle architecture breaks",
+      "insights": [
+        {
+          "claim": "Ray Data's original shuffle engine (V1) uses a pool of long-lived aggregator actors that accumulate every shard of a partition in their own heap until the shuffle completes, so for concatenating operations like joins and key-based repartition -- which cannot compact partial results the way sum/count/unique can -- the cluster must hold the entire dataset in actor heaps at peak, capping dataset size to available memory.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "causal",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "Explains precisely why joins and repartitions (not simple aggregations) are the operations that OOM first as data scales past memory -- a concrete diagnostic for anyone debugging Ray Data failures.",
+          "quote": null,
+          "locator": "Where V1 breaks down",
+          "quote_verified": false
+        },
+        {
+          "claim": "In V1, a partition exists only inside the aggregator actor accumulating it with no lineage-tracked copy elsewhere, so losing one aggregator actor loses every partition it owned and the entire shuffle cannot recover.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "causal",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "A single-point-of-failure design flaw that makes V1 unsuitable for long-running shuffles on unreliable/spot infrastructure.",
+          "quote": null,
+          "locator": "Where V1 breaks down",
+          "quote_verified": false
+        },
+        {
+          "claim": "V1's aggregator pool is sized once from a sample of the first few input bundles, long before most data has arrived, so a skewed dataset or unrepresentative sample leaves a pool that is wrong for the actual data and cannot be resized mid-shuffle.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "causal",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "medium",
+          "so_what": "Real-world datasets are rarely uniform, so this is a recurring, hard-to-predict failure mode rather than an edge case.",
+          "quote": null,
+          "locator": "Where V1 breaks down",
+          "quote_verified": false
+        },
+        {
+          "claim": "V1 reserves all aggregator CPU resources up front for the entire duration of the shuffle regardless of whether those actors are actively working, starving other concurrent operators of resources.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "causal",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "medium",
+          "so_what": "A resource-inefficiency cost that compounds when shuffle is one stage in a larger multi-operator pipeline sharing a cluster.",
+          "quote": null,
+          "locator": "Where V1 breaks down",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Shuffle V2's architecture and what it fixes",
+      "insights": [
+        {
+          "claim": "Shuffle V2 replaces the long-lived aggregator actor with two ordinary stages -- map and reduce -- connected through the object store, so shuffle intermediates are spillable, lineage-tracked, ordinary Ray objects rather than state trapped in an actor's heap.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "framework",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "This single architectural decision is described as the source of nearly every downstream fix and optimization, making it the load-bearing design change to track when Ray Data ships further shuffle improvements.",
+          "quote": null,
+          "locator": "Architecture",
+          "quote_verified": false
+        },
+        {
+          "claim": "Because shuffle shards now spill to disk when object-store memory fills, Shuffle V2 removes the hard memory ceiling that caused V1 jobs to OOM once dataset size exceeded available RAM.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "causal",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "Directly targets the stated failure mode ('a job that ran fine at 100 GB falls over at 1 TB'), implying Ray Data can now be trusted for join/groupby workloads at multi-terabyte scale.",
+          "quote": null,
+          "locator": "Architecture",
+          "quote_verified": false
+        },
+        {
+          "claim": "Because shards are ordinary Ray objects, a lost shard can be rebuilt by simply re-executing the map task that produced it, so losing an individual shard no longer fails the entire shuffle job.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "causal",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "Meaningfully improves fault tolerance for long-running shuffle jobs on preemptible/spot clusters, a common cost-saving setup for large data pipelines.",
+          "quote": null,
+          "locator": "Architecture",
+          "quote_verified": false
+        },
+        {
+          "claim": "V2 sizes reducer memory by directly measuring the actual size of partition shards rather than relying on pre-shuffle estimates, which mitigates reducer out-of-memory errors caused by inaccurate upfront sizing.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "causal",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "medium",
+          "so_what": null,
+          "quote": null,
+          "locator": "Architecture",
+          "quote_verified": false
+        },
+        {
+          "claim": "With no persistent aggregator pool, map and reduce tasks acquire and release CPU resources only when scheduled, so capacity flows dynamically to whichever pipeline stage actually has work instead of sitting reserved and idle.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "causal",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "medium",
+          "so_what": null,
+          "quote": null,
+          "locator": "Architecture",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Optimizations unlocked by the new architecture",
+      "insights": [
+        {
+          "claim": "Input coalescing buffers and merges small input blocks into a single map task once a node-local buffer reaches shuffle_input_batch_bytes (1 GiB by default), which shrinks the number of map tasks and therefore the number of intermediate shard objects -- without it, the head node runs out of ability to track objects and OOMs as map-task count grows.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "causal",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "A specific configuration knob (shuffle_input_batch_bytes) worth tuning for very large-scale shuffles to avoid head-node OOMs.",
+          "quote": null,
+          "locator": "Input coalescing",
+          "quote_verified": false
+        },
+        {
+          "claim": "Benchmarked on a TPC-H SF1000 inner join, zstd compression of intermediate shards cuts spilled bytes by 91% and runtime by 26% versus no compression, while lz4 cuts spilled bytes by 68% and runtime by 21% at far lower CPU cost -- meaning the right codec choice depends on whether the shuffle is IO-bound (favor zstd) or CPU-bound (favor lz4).",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "data_point",
+          "entities": [
+            "Ray Data",
+            "Anyscale"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete, actionable tuning rule (zstd for IO-bound, lz4 for CPU-bound, none if data is already compressed) that materially affects shuffle runtime and cluster spend.",
+          "quote": "Compared with no compression, zstd cuts spilled bytes by 91% and runtime by 26%. lz4 spills more than zstd but still cuts spilled bytes by 68% and runtime by 21%.",
+          "locator": "Compression of intermediate shards",
+          "quote_verified": false
+        },
+        {
+          "claim": "V2 can fuse a map operation immediately downstream of a reduce into the reduce task itself (e.g., groupby().sum() followed by map_batches()), eliminating one materialization -- but the reverse direction, fusing an upstream map into the map stage, is not yet possible because input coalescing buffers blocks across bundles before a single upstream task can be identified to fuse into.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "framework",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "medium",
+          "so_what": "An honest limitation disclosure: the current optimization is one-directional, so pipelines with heavy upstream transforms feeding into shuffle won't yet see this benefit -- worth tracking as a near-term Ray Data roadmap item.",
+          "quote": null,
+          "locator": "Fusion across the shuffle boundary",
+          "quote_verified": false
+        },
+        {
+          "claim": "Switching aggregation from V1's row-by-row Python group-by loop to Arrow's native vectorized group-by, applied to entire blocks at once, delivers more than 30x speedup on aggregate_groups benchmark tests, with nine aggregation functions vectorized (Count, Sum, Min, Max, Mean, MissingValuePercentage, ZeroPercentage, Unique, CountDistinct).",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "data_point",
+          "entities": [
+            "Ray Data",
+            "Arrow"
+          ],
+          "conviction": "high",
+          "so_what": "One of the largest individual speedup levers in the whole redesign -- signals that columnar/vectorized execution, not just architecture, is where much of the raw performance actually comes from.",
+          "quote": null,
+          "locator": "Vectorized aggregations",
+          "quote_verified": false
+        },
+        {
+          "claim": "An upcoming 'disk shuffle' mode (targeted for Ray 2.59) removes the object store from the shuffle data path entirely: each mapper writes one file with an offset index instead of many small object-store entries, and a per-node Arrow Flight server streams partition byte-ranges to reducers -- intended to remove the last ceiling on intermediate object count that even coalescing doesn't fully solve.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "prediction",
+          "entities": [
+            "Ray Data",
+            "Arrow"
+          ],
+          "conviction": "medium",
+          "so_what": "A forward-looking architectural bet worth watching for teams hitting head-node object-count limits even after coalescing is applied.",
+          "quote": null,
+          "locator": "Disk shuffle",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Benchmark results and where V2 wins or loses",
+      "insights": [
+        {
+          "claim": "On the TPC-H q21 aggregation query, moving from V1 to V2's architecture alone cut runtime from 6.3k seconds to 2.4k seconds, and adding vectorized aggregation on top brought it to 119 seconds -- a 53x end-to-end speedup.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "data_point",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "The single most dramatic headline number in the piece; useful as a ceiling case for how much aggregation-heavy Ray Data pipelines could improve by upgrading.",
+          "quote": null,
+          "locator": "Benchmarks",
+          "quote_verified": false
+        },
+        {
+          "claim": "On light-shuffle queries (TPC-H q1, q13, q15) where little data actually needs to move, V2's architecture alone is measurably slower than V1 (e.g., 361s vs 240s, 372s vs 272s), because the extra encode step and object-store round trip cost more than the new architecture saves when the shuffle itself is small; vectorization is what erases this regression and lets V2 win every query once fully enabled.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "contrarian",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "An honest counterpoint to the marketing headline: the new architecture is not a free lunch on its own for small shuffles -- vectorization, not the architecture change, is what makes V2 unconditionally faster.",
+          "quote": null,
+          "locator": "Benchmarks",
+          "quote_verified": false
+        },
+        {
+          "claim": "V1 fails to finish (times out) on join and map_groups workloads at SF1000 scale because they have no aggregation combiner for vectorization to help and V1's aggregator pool holds CPU reservations for the whole shuffle, starving the map phase; V2 completes all four tested join types in about 320 seconds because it has no persistent pool competing for resources.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "data_point",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "Demonstrates V2 doesn't just make existing workloads faster -- it makes an entire class of previously-infeasible large-scale joins possible on Ray Data at all.",
+          "quote": null,
+          "locator": "Benchmarks",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Rollout and roadmap",
+      "insights": [
+        {
+          "claim": "Shuffle V2 is enabled starting in Ray 2.58 via DataContext.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2, and Ray 2.59 renames the strategy to SHUFFLE_V2 (keeping the old name as an alias) since V2 will no longer be specific to hash partitioning.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "prediction",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "medium",
+          "so_what": "Signals V2 is intended to eventually absorb sort-based shuffle strategies too, not remain a hash-only alternative.",
+          "quote": null,
+          "locator": "Enabling it",
+          "quote_verified": false
+        },
+        {
+          "claim": "Ray Data currently exposes five shuffle strategies (HASH_SHUFFLE/V1, HASH_SHUFFLE_V2, GPU_SHUFFLE, SORT_SHUFFLE_PULL_BASED, SORT_SHUFFLE_PUSH_BASED), and as V2 grows to cover the operators still served by the sort-based engines, V1 and the sort-based strategies are slated to be deprecated, leaving only SHUFFLE_V2 and GPU_SHUFFLE.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "prediction",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "medium",
+          "so_what": "A clear consolidation roadmap -- teams building on the sort-based shuffle strategies today should expect a forced migration path to SHUFFLE_V2.",
+          "quote": null,
+          "locator": "The shuffle strategy landscape",
+          "quote_verified": false
+        },
+        {
+          "claim": "An incremental join design -- building a hash table from one side of a join and streaming the other side through it in batches -- would bound join memory to the build side plus one batch instead of materializing both sides plus the entire output table, but it depends on the not-yet-released Arrow 26.0.0.",
+          "speaker": "You-Cheng Lin and Yuanzhuo Yang",
+          "type": "prediction",
+          "entities": [
+            "Ray Data",
+            "Arrow"
+          ],
+          "conviction": "low",
+          "so_what": "A meaningful further memory-efficiency improvement gated on an external dependency (Arrow 26.0.0) outside Anyscale's direct control.",
+          "quote": null,
+          "locator": "Incremental join",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 20,
+  "top_entities": [
+    "Ray Data",
+    "Anyscale",
+    "Shuffle V2",
+    "Arrow",
+    "TPC-H",
+    "zstd",
+    "lz4"
+  ],
+  "source_meta": {
+    "author": "https://www.anyscale.com/blog?author=you-cheng-lin",
+    "word_count": 2444,
+    "paywalled": false
+  }
+}
