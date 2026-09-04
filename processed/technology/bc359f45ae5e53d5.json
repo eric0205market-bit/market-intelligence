@@ -1,0 +1,452 @@
+{
+  "record_id": "bc359f45ae5e53d5",
+  "source_type": "technology",
+  "source_name": "InfoQ",
+  "source_url": "https://www.infoq.com/presentations/vortex-columnar-file-format-gpu-streaming",
+  "title": "From S3 to GPU in One Copy: Rethinking Data Loading for ML Training",
+  "published_date": "2026-09-04",
+  "language": "en",
+  "processed_at": "2026-09-04T15:13:59Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "AI",
+    "Tech"
+  ],
+  "gist": "Vortex, a Linux Foundation columnar file format built by SpiralDB, separates logical from physical encoding and eliminates redundant memory copies to stream data from S3 directly to GPUs at up to 60 Gbps with a single copy, claiming 30x faster GPU scans and 100x faster random access than Parquet while letting ML teams change filters and data mixes without reprocessing entire datasets.",
+  "themes": [
+    {
+      "theme": "The GPU idle-time problem: movement tax and decision tax",
+      "insights": [
+        {
+          "claim": "GPU utilization in ML training is throttled by two distinct 'taxes': a movement tax (the cost and complexity of getting data from a source like S3 onto the GPU) and a decision tax (the cost of reprocessing an entire dataset every time a team wants to iterate on filters, curriculum, or data mix).",
+          "speaker": "Onur Satici",
+          "type": "framework",
+          "entities": [
+            "GPU",
+            "Vortex"
+          ],
+          "conviction": "high",
+          "so_what": "A clean mental model for diagnosing where ML infrastructure spend is wasted on idle GPU time — useful framework for evaluating any data-loading or MLOps vendor's efficiency claims.",
+          "quote": null,
+          "locator": "Problem framing section",
+          "quote_verified": false
+        },
+        {
+          "claim": "Standard training data pipelines (e.g., WebDataset, MosaicML's streaming dataset) route data from S3 to NVMe disk, decompress on the CPU, then transfer over PCIe to the GPU — bottlenecked mainly by CPU decompression and NVMe throughput, partly because PyTorch's Python multiprocessing model forces workers to persist shards to disk to avoid duplicate downloads.",
+          "speaker": "Onur Satici",
+          "type": "causal",
+          "entities": [
+            "PyTorch",
+            "S3",
+            "NVMe"
+          ],
+          "conviction": "high",
+          "so_what": "Identifies PyTorch's process model itself as a root cause of unnecessary disk I/O in ML training pipelines — a structural inefficiency independent of any specific file format choice.",
+          "quote": null,
+          "locator": "Problem framing section",
+          "quote_verified": false
+        },
+        {
+          "claim": "An optimized pipeline that streams compressed data directly from S3 to GPU (skipping NVMe persistence and decompressing on the GPU instead of the CPU) can run roughly 10 times faster than the raw compressed transfer speed alone, by eliminating NVMe-stage bottlenecks entirely.",
+          "speaker": "Onur Satici",
+          "type": "thesis",
+          "entities": [
+            "S3",
+            "GPU"
+          ],
+          "conviction": "medium",
+          "so_what": "Quantifies the theoretical upside of format/pipeline redesign — a benchmark figure for evaluating whether a given ML data pipeline has room for a 10x efficiency improvement.",
+          "quote": null,
+          "locator": "Problem framing section",
+          "quote_verified": false
+        },
+        {
+          "claim": "With current tooling, iterating on a training data mix, curriculum, or filter typically requires reprocessing the entire dataset (re-tokenizing, reshuffling, reloading), which wastes the time budget that should go to either productive thinking or active GPU compute.",
+          "speaker": "Onur Satici",
+          "type": "causal",
+          "entities": [
+            "GPU"
+          ],
+          "conviction": "medium",
+          "so_what": "Frames data-format flexibility as a direct lever on ML researcher iteration speed, not just raw throughput — relevant to any team's time-to-experiment metric in model development.",
+          "quote": null,
+          "locator": "Problem framing section",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Vortex file format architecture",
+      "insights": [
+        {
+          "claim": "Vortex is an open-source columnar file format, now under the Linux Foundation (LF AI & Data), that separates logical types from physical on-disk encoding — unlike Parquet, which ties data types directly to how they are encoded — enabling more flexible, composable compression strategies.",
+          "speaker": "Onur Satici",
+          "type": "framework",
+          "entities": [
+            "Vortex",
+            "Linux Foundation",
+            "Parquet"
+          ],
+          "conviction": "high",
+          "so_what": "The logical/physical type separation is Vortex's core architectural bet versus Parquet; a format-agnostic design like this is more likely to accommodate future hardware (GPU-specific encodings) without breaking the spec.",
+          "quote": null,
+          "locator": "Vortex overview section",
+          "quote_verified": false
+        },
+        {
+          "claim": "A Vortex file consists of a fixed-size Postscript, a Footer listing arrays and layouts (the format's plug-in points), and Segments containing the actual compressed array data as offset/length/alignment triplets — with alignment baked into the format so readers can allocate SIMD- or GPU-ready buffers without extra copies.",
+          "speaker": "Onur Satici",
+          "type": "framework",
+          "entities": [
+            "Vortex"
+          ],
+          "conviction": "medium",
+          "so_what": "Baking memory alignment into the file format itself is a specific, non-obvious design choice that directly enables the zero-copy pipeline claims later in the talk.",
+          "quote": null,
+          "locator": "File structure section",
+          "quote_verified": false
+        },
+        {
+          "claim": "Vortex 'layouts' function as a pruning-oriented logical plan tree (e.g., a StructLayout with one child ZonedLayout per column), where each ZonedLayout embeds a zone-map segment of per-row-range statistics (min/max) so queries can skip segments that cannot match a filter before reading them.",
+          "speaker": "Onur Satici",
+          "type": "framework",
+          "entities": [
+            "Vortex"
+          ],
+          "conviction": "high",
+          "so_what": "Segment-level pruning via embedded statistics is the mechanism behind Vortex's large random-access speedups — directly comparable to predicate pushdown/zone maps in other analytical formats (e.g., Parquet, ClickHouse), useful for technical due diligence on the claim.",
+          "quote": null,
+          "locator": "Layouts section",
+          "quote_verified": false
+        },
+        {
+          "claim": "In a demonstrated query (select name where age greater than 30), reading only the zone-map statistics allowed the engine to identify that just the last of several segments could contain matching rows, satisfying the query by reading roughly 30% of the underlying data.",
+          "speaker": "Onur Satici",
+          "type": "anecdote",
+          "entities": [
+            "Vortex"
+          ],
+          "conviction": "medium",
+          "so_what": "A concrete worked example quantifying pruning efficiency (skip ~70% of data) gives a tangible sense of the I/O savings zone-map-based pruning can deliver on selective queries.",
+          "quote": null,
+          "locator": "Layouts worked example",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Compression that preserves computability",
+      "insights": [
+        {
+          "claim": "Vortex uses cascading lightweight encodings (dictionary encoding, run-end encoding, bit-packing, FSST substring extraction) rather than block compression like zlib, which preserves the ability to run compute — aggregation, random access — directly on compressed data, sometimes faster than on decompressed data (e.g., summing a run-length-encoded array reduces to per-run multiplication instead of iterating every element).",
+          "speaker": "Onur Satici",
+          "type": "thesis",
+          "entities": [
+            "Vortex"
+          ],
+          "conviction": "high",
+          "so_what": "Compute-on-compressed-data is Vortex's key differentiator from block-compressed formats — it changes the trade-off calculus for any workload where both storage efficiency and query speed matter simultaneously, rather than forcing a choice between the two.",
+          "quote": null,
+          "locator": "Vortex arrays section",
+          "quote_verified": false
+        },
+        {
+          "claim": "Vortex's compression is 'sliceable' — data can be sliced by row range before decompression, so only the rows actually needed are ever decompressed, embodying a 'do as little as possible, as late as possible' design philosophy that also minimizes intermediate memory copies (memcopies) for materializing results.",
+          "speaker": "Onur Satici",
+          "type": "thesis",
+          "entities": [
+            "Vortex"
+          ],
+          "conviction": "medium",
+          "so_what": "Lazy, sliceable decompression is what lets Vortex combine strong compression ratios with fast selective-query performance — a property worth checking for in any competing columnar format being evaluated.",
+          "quote": null,
+          "locator": "Layouts worked example",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Eliminating memory copies from S3 to GPU",
+      "insights": [
+        {
+          "claim": "Vortex conceptually separates a 'control plane' (the array-tree structure used to dispatch compute operations) from a 'data plane' (the actual bytes being transferred), which is what allows the identical scan logic to dispatch either CPU Rust functions or CUDA GPU kernels transparently against the same underlying data.",
+          "speaker": "Onur Satici",
+          "type": "framework",
+          "entities": [
+            "Vortex",
+            "CUDA"
+          ],
+          "conviction": "high",
+          "so_what": "This control-plane/data-plane split is the architectural key enabling Vortex to target CPU and GPU compute from one codebase — a reusable design pattern for any system trying to be hardware-portable without duplicating logic.",
+          "quote": null,
+          "locator": "Scan/byte copies section",
+          "quote_verified": false
+        },
+        {
+          "claim": "In a naive S3-to-GPU pipeline, data passes through four to five separate memory copies: the kernel's network receive buffer, a TLS decryption copy, an HTTP body deframing copy, a Vortex buffer-aggregation copy, and finally CUDA's own internal bounce-buffer copy before landing on the GPU.",
+          "speaker": "Onur Satici",
+          "type": "data_point",
+          "entities": [
+            "S3",
+            "GPU",
+            "CUDA"
+          ],
+          "conviction": "high",
+          "so_what": "Enumerating every copy in the naive path is a concrete engineering checklist for any team building high-throughput data pipelines to GPUs — each copy is a specific, addressable optimization target.",
+          "quote": null,
+          "locator": "Byte copy lifecycle section",
+          "quote_verified": false
+        },
+        {
+          "claim": "Memory-copy cost is measured in CPU cores consumed per gigabit of sustained bandwidth, and this cost competes directly with the CPU budget used by scan orchestration and any CPU-side compute — meaning excess copying doubly throttles achievable throughput by both wasting bandwidth and starving other CPU-bound work.",
+          "speaker": "Onur Satici",
+          "type": "causal",
+          "entities": [
+            "GPU"
+          ],
+          "conviction": "medium",
+          "so_what": "A precise cost model (cores per Gbps) for memory copies gives infrastructure teams a way to quantify exactly how much CPU capacity a data pipeline redesign could reclaim.",
+          "quote": null,
+          "locator": "Byte copy lifecycle section",
+          "quote_verified": false
+        },
+        {
+          "claim": "Vortex reduces the S3-to-GPU copy count through three techniques: (1) a pre-pinned, page-locked buffer pool reused via CUDA stream/event completion signals to avoid CUDA's internal bounce-buffer copy and amortize allocation cost; (2) optional kernel-side TLS (kTLS) decryption to eliminate one userspace copy, at the cost of potentially not using the widest available SIMD registers since Linux kTLS ciphers lag in optimization; (3) a custom-written HTTP client that decrypts and deframes data directly into the same pinned buffer destined for the GPU, achieving S3-to-GPU transfer in a single copy.",
+          "speaker": "Onur Satici",
+          "type": "causal",
+          "entities": [
+            "Vortex",
+            "CUDA"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete, replicable three-step optimization playbook (pinned buffer pooling, kTLS, custom HTTP client) for any team trying to build a near-zero-copy data path to GPU — directly actionable for infrastructure engineering teams.",
+          "quote": null,
+          "locator": "Copy-reduction section",
+          "quote_verified": false
+        },
+        {
+          "claim": "The next frontier beyond single-copy TCP pipelines is RDMA, which bypasses the kernel socket layer and even the CPU's PCIe hub entirely by letting GPUs read and write each other's or a storage peer's memory directly over NVLink or RDMA-capable network cards — described as 'basically free' for the CPU, though it requires expensive, tedious RDMA-capable object-store infrastructure that most organizations do not yet have.",
+          "speaker": "Onur Satici",
+          "type": "prediction",
+          "entities": [
+            "GPU",
+            "CUDA"
+          ],
+          "conviction": "low",
+          "so_what": "RDMA-based zero-CPU data movement is the plausible next efficiency frontier for ML infrastructure, but the requirement for specialized RDMA-capable storage means it remains a niche, high-end-cluster capability for now rather than a near-term mainstream option.",
+          "quote": null,
+          "locator": "RDMA discussion",
+          "quote_verified": false
+        },
+        {
+          "claim": "Vortex's optimized single-copy pipeline sustains end-to-end throughput of up to 60 Gbps from S3 to GPU, demonstrated live via a video-scan visualization deliberately paced to 60 frames per second (about 13-15 Gbps) for visibility, though an unpaced write could reach 240 frames per second.",
+          "speaker": "Onur Satici",
+          "type": "data_point",
+          "entities": [
+            "Vortex",
+            "S3",
+            "GPU"
+          ],
+          "conviction": "high",
+          "so_what": "A concrete, demonstrated sustained-throughput figure (60 Gbps) gives a hard performance benchmark for any team evaluating whether their current data-loading pipeline is leaving throughput on the table relative to network-card capacity.",
+          "quote": null,
+          "locator": "Demo/results section",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Query flexibility without a throughput penalty",
+      "insights": [
+        {
+          "claim": "Filters, projections, and custom compute expressions — including a custom user-written GPU kernel for a 'quantize' color-transform operation, and filtering video frames by a boolean object-detection column ('has_bike') — can be pushed through Vortex's scan orchestration without reducing throughput, directly addressing the 'decision tax' problem of needing to reprocess entire datasets to try a new filter or transformation.",
+          "speaker": "Onur Satici",
+          "type": "thesis",
+          "entities": [
+            "Vortex",
+            "GPU"
+          ],
+          "conviction": "high",
+          "so_what": "The ability to arbitrarily change filters/transformations at zero throughput cost is Vortex's answer to ML teams' iteration-speed problem — a concrete productivity claim worth stress-testing against a team's actual experimentation workflow.",
+          "quote": null,
+          "locator": "Demo section, quantize/has_bike examples",
+          "quote_verified": false
+        },
+        {
+          "claim": "Vortex layouts control physical data placement, so pruning metadata (zone-maps) and bulk array segments do not need to live in the same file or storage system — for example, storing pruning segments in Redis (roughly one-hundredth the latency of S3) while storing bulk array data in S3 combines near-instant pruning decisions with S3-scale storage throughput.",
+          "speaker": "Onur Satici",
+          "type": "framework",
+          "entities": [
+            "Vortex",
+            "Redis",
+            "S3"
+          ],
+          "conviction": "low",
+          "so_what": "A novel hybrid-storage pattern (fast metadata store plus cheap bulk object storage) that other data-infrastructure teams could adopt for latency-sensitive pruning at object-storage scale.",
+          "quote": null,
+          "locator": "What is possible section",
+          "quote_verified": false
+        },
+        {
+          "claim": "For multi-GPU workloads needing result aggregation, Vortex can model the aggregation itself as an RDMA scan over NVLink between GPUs, sustaining terabit-per-second inter-GPU aggregation speeds.",
+          "speaker": "Onur Satici",
+          "type": "framework",
+          "entities": [
+            "Vortex",
+            "CUDA"
+          ],
+          "conviction": "low",
+          "so_what": "Positions Vortex as extending beyond single-GPU data loading into multi-GPU distributed analytics coordination, broadening its addressable use case beyond ML training data ingestion alone.",
+          "quote": null,
+          "locator": "What is possible section",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Benchmarks, ecosystem interop, and standards philosophy",
+      "insights": [
+        {
+          "claim": "Vortex reports being roughly 30x faster than Parquet for GPU scans and 100x or more faster for random access, with additional disclosed benchmarks of roughly 20x faster CPU scans and roughly 5x faster CPU writes than Parquet, while file size/compression ratio remains roughly comparable to Parquet (within about 10% either direction).",
+          "speaker": "Onur Satici",
+          "type": "data_point",
+          "entities": [
+            "Vortex",
+            "Parquet"
+          ],
+          "conviction": "high",
+          "so_what": "A comprehensive benchmark suite (GPU scan, CPU scan, CPU write, random access, file size) against the incumbent format Parquet gives investors and technical buyers a full performance picture to validate against their own workloads before switching formats.",
+          "quote": null,
+          "locator": "Q&A benchmark discussion",
+          "quote_verified": false
+        },
+        {
+          "claim": "Vortex has official, stable integrations with DataFusion and DuckDB usable in production today, plus Polars support, is zero-copy compatible with Apache Arrow (its 'canonical encodings' map one-to-one to Arrow types), and has Iceberg support actively in development but not yet shipped as of this talk, despite reportedly being in progress for over a year.",
+          "speaker": "Onur Satici",
+          "type": "data_point",
+          "entities": [
+            "Vortex",
+            "DataFusion",
+            "DuckDB",
+            "Polars",
+            "Arrow",
+            "Iceberg"
+          ],
+          "conviction": "medium",
+          "so_what": "Iceberg support is the key missing integration that would materially widen Vortex's addressable enterprise data-lake market; its slow, multi-year progress is a concrete adoption-timeline risk to monitor.",
+          "quote": null,
+          "locator": "Q&A interop discussion",
+          "quote_verified": false
+        },
+        {
+          "claim": "Vortex deliberately avoids Parquet's slow, consensus-driven standards process — Parquet took roughly seven years to add float16 support due to multi-vendor committee agreement — by keeping its core file spec minimal and treating new encodings or layouts as pluggable Rust crates that don't require changing the core spec at all.",
+          "speaker": "Onur Satici",
+          "type": "contrarian",
+          "entities": [
+            "Vortex",
+            "Parquet"
+          ],
+          "conviction": "high",
+          "so_what": "A direct governance-model bet: minimal-core-plus-plugins versus committee-driven standards evolution — a pattern other infrastructure formats/protocols facing slow multi-vendor governance could emulate, and a factor in assessing Vortex's pace of innovation versus Parquet's.",
+          "quote": null,
+          "locator": "Backward compatibility Q&A",
+          "quote_verified": false
+        },
+        {
+          "claim": "Vortex reached a stable V1 file specification roughly six months prior to this talk (around early 2026), and the format is designed so that old files remain readable even as new pluggable encodings are added, mitigating the format-fragmentation risk historically seen in transitions like Avro-to-Parquet.",
+          "speaker": "Onur Satici",
+          "type": "data_point",
+          "entities": [
+            "Vortex"
+          ],
+          "conviction": "medium",
+          "so_what": "A relatively young stable spec (roughly 6 months old) means Vortex is still early in its production-hardening curve despite strong benchmark claims — a maturity risk factor for conservative enterprise adopters.",
+          "quote": null,
+          "locator": "Backward compatibility Q&A",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Limitations and adoption caveats",
+      "insights": [
+        {
+          "claim": "Vortex does not currently support 'shredding' nested JSON or map structures into separate columns in its core (unlike some tools in the Parquet ecosystem); it could be added as a custom layout, but the team judges current compression and query-pattern benchmarks (TPC-H, TPC-DS, ClickBench) sufficient without it as of this talk.",
+          "speaker": "Onur Satici",
+          "type": "data_point",
+          "entities": [
+            "Vortex"
+          ],
+          "conviction": "low",
+          "so_what": "A concrete current feature gap (nested-structure shredding) for teams with JSON/semi-structured-heavy workloads evaluating whether Vortex is production-ready for their specific data shape today.",
+          "quote": null,
+          "locator": "Q&A on nested structures",
+          "quote_verified": false
+        },
+        {
+          "claim": "An audience member noted a real organizational adoption friction: many companies strictly reserve GPU budget and allocation for ML training workloads only, which could limit adoption of a GPU-accelerated analytics tool like Vortex even though Satici argues pure analytics workloads would benefit more from the higher throughput than slow-consuming pre-training models do.",
+          "speaker": "Onur Satici",
+          "type": "contrarian",
+          "entities": [
+            "Vortex",
+            "GPU"
+          ],
+          "conviction": "medium",
+          "so_what": "A non-technical but potentially decisive adoption barrier: internal GPU budget policies at many companies may block Vortex's ideal use case (GPU-accelerated analytics) even where the technology is well suited, regardless of its technical merits.",
+          "quote": null,
+          "locator": "Q&A audience question",
+          "quote_verified": false
+        },
+        {
+          "claim": "Consistency and corruption checking in Vortex currently relies on the underlying network stack by default; Merkle trees and parity metadata can optionally be added to the file footer for corruption detection, but this is not enabled by default.",
+          "speaker": "Onur Satici",
+          "type": "data_point",
+          "entities": [
+            "Vortex"
+          ],
+          "conviction": "low",
+          "so_what": "An operational integrity gap (no default corruption detection) that teams with strict data-integrity/compliance requirements should account for and explicitly configure before production deployment.",
+          "quote": null,
+          "locator": "Q&A on error correction",
+          "quote_verified": false
+        },
+        {
+          "claim": "S3 throughput, when properly tuned (byte-range request ordering, 16-megabyte segment coalescing suited to S3's high-throughput/high-latency profile versus different NVMe tuning, and correct network-card ENI binding), can actually exceed local NVMe bandwidth despite S3's higher per-request latency.",
+          "speaker": "Onur Satici",
+          "type": "data_point",
+          "entities": [
+            "S3",
+            "NVMe"
+          ],
+          "conviction": "medium",
+          "so_what": "A counterintuitive but actionable finding: with proper tuning, cloud object storage (S3) need not be the bottleneck versus local NVMe — challenges a default assumption that local disk is always faster than network object storage.",
+          "quote": null,
+          "locator": "Q&A closing discussion",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 27,
+  "top_entities": [
+    "Vortex",
+    "SpiralDB",
+    "Onur Satici",
+    "Linux Foundation",
+    "S3",
+    "GPU",
+    "CUDA",
+    "Parquet",
+    "PyTorch",
+    "DataFusion",
+    "DuckDB",
+    "Arrow",
+    "Iceberg",
+    "NVMe"
+  ],
+  "source_meta": {
+    "author": "Onur Satici",
+    "word_count": 8673,
+    "paywalled": false
+  }
+}
