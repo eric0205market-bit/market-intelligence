@@ -412,7 +412,7 @@ def _transcript_api_fallback(video_id: str):
     except ImportError:
         return None, [], None, "en"
     try:
-        listing = YouTubeTranscriptApi.list_transcripts(video_id)
+        listing = YouTubeTranscriptApi().list(video_id)
         tr = None
         for cand in listing:
             if cand.language_code.lower().startswith("en"):
@@ -422,16 +422,16 @@ def _transcript_api_fallback(video_id: str):
             tr = next(iter(listing), None)
         if tr is None:
             return None, [], None, "en"
-        chunks = tr.fetch()
+        fetched = tr.fetch()                          # FetchedTranscript (dataclass snippets, not dicts)
         segs = []
-        for c in chunks:
-            t = (c.get("text") or "").strip()
+        for c in fetched:
+            t = (c.text or "").strip()
             if not t:
                 continue
-            start = round(float(c.get("start", 0.0)), 3)
+            start = round(float(c.start), 3)
             segs.append({
                 "start": start,
-                "end": round(start + float(c.get("duration", 0.0)), 3),
+                "end": round(start + float(c.duration), 3),
                 "text": re.sub(r"\s+", " ", t),
             })
         text = re.sub(r"\s+", " ", " ".join(s["text"] for s in segs)).strip()
@@ -440,7 +440,7 @@ def _transcript_api_fallback(video_id: str):
         source = "auto" if getattr(tr, "is_generated", True) else "manual"
         return text, segs, source, tr.language_code
     except Exception as exc:
-        log(f"    transcript-api fallback failed: {type(exc).__name__}")
+        log(f"    transcript-api fallback failed: {type(exc).__name__}: {exc}")
         return None, [], None, "en"
 
 
