@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">&#8592; MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">&#8212;</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER DATA INTELLIGENCE",
+  "collected_at": "2026-09-06T17:20:55Z",
+  "date": "2026-09-06 17:20 UTC",
+  "input_stats": {
+    "total_tweets": 60,
+    "unique_authors": 17,
+    "tweets_with_images": 23,
+    "after_filter": 40
+  },
+  "summary": "40 items cataloged from 15 of 17 accounts (2 authors posted only personal content) across 11 topic groups. Heavy macro and rates content today.\n\n**Key numbers:** ISM Services jumped to 55.4 in August (multi-year high, new orders and prices-paid both at multi-year highs); UK 30Y gilt hit 5.9% (highest since 1998); AfD took 44.5% in Saxony-Anhalt exit poll (one seat short of majority); US Information sector shed -23K jobs in August (-12% from Nov 2022 peak — matching 2008 GFC scale); China PMI both in contraction (manufacturing 49.8, services 49.0); India GDP +7.8% Q2 (five-quarter high).\n\n**This week's calendar:** PPI Thursday, CPI Friday — final inflation prints before the September Fed meeting. Also: 10Y Note Auction Wednesday, Turkey rate decision Thursday.",
+  "topics": [
+    {
+      "topic": "US Economic Indicators",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "US Information sector shed -23,000 jobs in August, bringing employment to 2.75 million — lowest since the 2020 pandemic. Since the November 2022 peak, the sector has contracted -270,000 (-12%), matching the scale of the 2008 Financial Crisis drawdown (-12%, -350K). AI displacement cited as accelerating factor across software, data processing, web search, telecom, and broadcasting.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2096647113178591488",
+          "images": ["https://pbs.twimg.com/media/HRiqiq9XQAQdVvK.jpg"],
+          "data_points": ["Info sector -23K jobs Aug", "Employment 2.75M (lowest since 2020)", "-270K from Nov 2022 peak (-12%)", "2008 GFC also saw -12% / -350K"],
+          "created_at": "2026-09-06T17:10:00.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "US ISM Services index jumped to 55.4 in August — new orders climbed to a multi-year high and the full complex is expanding. Prices-paid also hit a multi-year high, driven by tariffs and energy pass-through. Services reacceleration with rising input costs leaves Fed no room to cut; higher-for-longer stays the base case.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2096600564742131779",
+          "images": ["https://pbs.twimg.com/media/HRifGk4WoAIVQBi.jpg"],
+          "data_points": ["ISM Services 55.4 August", "New orders: multi-year high", "Prices-paid: multi-year high", "Tariffs + energy driving input costs"],
+          "created_at": "2026-09-06T14:05:02.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Global Inflation & Calendar",
+      "items": [
+        {
+          "author": "kurtsaltrichter",
+          "description": "Euro-area inflation climbed to ~2.9%, highest since 2023. Driver is energy — oil and diesel pass-through from the Iran shock. Core sits near 2% (at ECB target) and is steady. Viewed as a transitory price-level shift that reprices once and fades as energy stabilizes.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2096608365501677618",
+          "images": ["https://pbs.twimg.com/media/HRimMriWoAI8GxO.jpg"],
+          "data_points": ["Euro-area CPI ~2.9% (highest since 2023)", "Core CPI ~2.0% (at ECB target)", "Energy/Iran shock is driver"],
+          "created_at": "2026-09-06T14:36:02.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "Swiss CPI hit 0.6% — described as a two-year high — with core near 0.1%. Both readings sit within the SNB's 0-2% target band. Switzerland continues to stand apart from global inflation trends via conservative franc supply management.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2096636551597892093",
+          "images": ["https://pbs.twimg.com/media/HRi_1UtWYAAQZWc.jpg"],
+          "data_points": ["Swiss CPI 0.6% (two-year high)", "Swiss core CPI 0.1%", "SNB target: 0-2%"],
+          "created_at": "2026-09-06T16:28:02.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "Key events this week — the final inflation data week before the September Fed meeting. US markets closed Monday (Labor Day). 10Y Note Auction Wednesday. PPI + Existing Home Sales Thursday. CPI + Michigan Consumer Sentiment + Michigan Inflation Expectations Friday. Trump reportedly threatening to halt trade with dozens of countries if the Fed does not cut.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2096611631178375390",
+          "images": [],
+          "data_points": ["10Y Note Auction: Wed Sep 9", "PPI: Thu Sep 10", "Existing Home Sales: Thu Sep 10", "CPI: Fri Sep 11", "MI Consumer Sentiment: Fri Sep 11", "Final inflation data before Sep Fed meeting"],
+          "created_at": "2026-09-06T14:49:00.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Rates & Fixed Income",
+      "items": [
+        {
+          "author": "kurtsaltrichter",
+          "description": "UK 30-year gilt yield hit 5.9% — highest since 1998. Arriving just as the government heads into its October budget. Higher yields compound the deficit loop: more debt service → bigger deficit → more issuance → more pressure on yields. Bond market effectively setting the fiscal terms before the Chancellor does.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2096619440590700991",
+          "images": ["https://pbs.twimg.com/media/HRiwRVoWQAAu1qj.jpg"],
+          "data_points": ["UK 30Y gilt 5.9%", "Highest since 1998", "October budget upcoming"],
+          "created_at": "2026-09-06T15:20:02.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "Japan requested a record defense budget of 8.8 trillion yen for FY2027 — roughly double the 4.3 trillion yen it spent a decade ago. Funded by deficits. Each additional yen of defense spending adds to the global government borrowing wall that is pushing long-end yields higher.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2096558537002410444",
+          "images": ["https://pbs.twimg.com/media/HRh44SJXoAIxF1B.jpg"],
+          "data_points": ["Japan defense budget 8.8T yen (record FY2027)", "vs 4.3T yen a decade ago (+105%)", "Deficit-funded build-up"],
+          "created_at": "2026-09-06T11:18:02.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "Venezuela 2027 bond went from 20 cents to 53 cents over ~1 year (+150%). Each price leg tracked geopolitics: Maduro removal by US forces, $150B debt restructuring announcement, and the Trump oil deal reviving production hopes. A defaulted sovereign credit driven purely by political catalysts.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2096572890388771207",
+          "images": ["https://pbs.twimg.com/media/HRiF7xFWQAEDExx.jpg"],
+          "data_points": ["Venezuela 2027 bond: 20c → 53c (+150%)", "$150B debt restructuring underway", "Trump oil deal catalyst"],
+          "created_at": "2026-09-06T12:15:04.000Z"
+        },
+        {
+          "author": "PeterBerezinBCA",
+          "description": "BCA Research published a unified framework for forecasting bond yields (Friday special report). Key conclusion: an AI capex bust would drag yields lower temporarily, but without concerted efforts to reduce the US budget deficit, the longer-term path for yields is upward.",
+          "tweet_url": "https://x.com/PeterBerezinBCA/status/2096603241131757907",
+          "images": ["https://pbs.twimg.com/media/HRihh_cXAAUEdht.jpg"],
+          "data_points": ["AI capex bust → yields lower temporarily", "Without deficit reduction → yields higher long-term"],
+          "created_at": "2026-09-06T14:15:40.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Global Growth & Emerging Markets",
+      "items": [
+        {
+          "author": "kurtsaltrichter",
+          "description": "India's economy grew 7.8% in the April-June quarter — beating the RBI's own forecast and marking a five-quarter high. Fastest-growing major economy on the planet, gap with developed markets (~2%) widening.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2096534124416675913",
+          "images": ["https://pbs.twimg.com/media/HRhirSbW0AMGnf7.jpg"],
+          "data_points": ["India GDP +7.8% Q2 2026", "Five-quarter high", "Beat RBI forecast"],
+          "created_at": "2026-09-06T09:41:01.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "China's manufacturing PMI rose to 49.8 in August (best in months, still in contraction), while non-manufacturing slipped to 49.0 (also in contraction). Both main engines below 50 simultaneously — keeps pressure on Beijing to stimulate and on all exporters dependent on Chinese demand.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2096544692636643734",
+          "images": ["https://pbs.twimg.com/media/HRhsSbuW4AMrUb7.jpg"],
+          "data_points": ["China manufacturing PMI 49.8 Aug", "China non-manufacturing PMI 49.0 Aug", "Both in contraction simultaneously"],
+          "created_at": "2026-09-06T10:23:01.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "Asia-wide GDP snapshot post-Iran oil shock: Vietnam ~8%, India close behind. Indonesia, Malaysia, Singapore ~5%. Thailand and Philippines stalled near 1.5%. EM Asia is the global growth engine — outpacing the West (~2%) by a widening margin. 'This is where the next decade of returns gets made.'",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2096646112564113627",
+          "images": ["https://pbs.twimg.com/media/HRjIh1qW8AQhH0_.jpg"],
+          "data_points": ["Vietnam GDP ~8%", "India GDP ~8%", "Indonesia/Malaysia/Singapore ~5%", "Thailand/Philippines ~1.5%", "West ~2%"],
+          "created_at": "2026-09-06T17:06:01.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "South African RMB/BER business confidence index sank to a two-year low after the Iran war shock and soft demand. New-vehicle dealers — the recent bright spot that had spiked toward 64 — collapsed back to mid-30s. Manufacturers near 25. Reminder that the EM resilience trade is geographically uneven.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2096588483427029133",
+          "images": ["https://pbs.twimg.com/media/HRiUHYkXwAUGcw4.jpg"],
+          "data_points": ["RMB/BER index: two-year low", "New-vehicle dealers: mid-30s (from ~64)", "Manufacturers: ~25"],
+          "created_at": "2026-09-06T13:17:01.000Z"
+        },
+        {
+          "author": "themarketear",
+          "description": "EM EPS estimates continue to be revised higher — described as a 'rocket ship' trend. Chart shows continuous upward revisions for emerging market earnings per share, even as EM equities lag the upgrades.",
+          "tweet_url": "https://x.com/themarketear/status/2096618362054828218",
+          "images": [],
+          "data_points": ["EM EPS: continuous upward revisions", "EM equities lagging EPS upgrades"],
+          "created_at": "2026-09-06T15:15:45.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "European Politics (AfD / Saxony-Anhalt)",
+      "items": [
+        {
+          "author": "Schuldensuehner",
+          "description": "Exit poll result: AfD secured 44.5% in Saxony-Anhalt state election — just one seat short of an outright majority. CDU 18.5%, Left 9.5%, Greens 9%, SPD 8%. BSW at 4.8%, just 0.2pp below the 5% parliamentary threshold. Note: exit poll only, not final.",
+          "tweet_url": "https://x.com/Schuldensuehner/status/2096632492153282739",
+          "images": ["https://pbs.twimg.com/media/HRi7S8_XsAMPbYl.jpg"],
+          "data_points": ["AfD 44.5% (exit poll)", "CDU 18.5%", "Left 9.5%", "Greens 9%", "SPD 8%", "BSW 4.8% (below 5% threshold)"],
+          "created_at": "2026-09-06T16:11:54.000Z"
+        },
+        {
+          "author": "Schuldensuehner",
+          "description": "Pre-vote context: AfD polling 41-43% — almost twice its 2021 result — vs 22-23% for the CDU. An outright AfD majority was mathematically possible. Saxony-Anhalt represents 1.8% of German GDP and has lost ~25% of its population since reunification, but the political shockwaves could reach far beyond it.",
+          "tweet_url": "https://x.com/Schuldensuehner/status/2096504942244560927",
+          "images": ["https://pbs.twimg.com/media/HRhEA7TakAExm0s.png"],
+          "data_points": ["AfD pre-vote polling 41-43%", "CDU pre-vote 22-23%", "Saxony-Anhalt 1.8% German GDP", "Population -25% since reunification"],
+          "created_at": "2026-09-06T07:45:04.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Bloomberg confirmation: AfD secured 44.5% in the eastern state — above expectations — set to win the vote but short of a majority. Second C_Barraud tweet with full breakdown of party results from ARD exit poll.",
+          "tweet_url": "https://x.com/C_Barraud/status/2096642471438451151",
+          "images": [],
+          "data_points": ["AfD 44.5% (above expectations)", "CDU 18.5%", "Left 9.5%", "SPD 8%", "Greens 9%"],
+          "created_at": "2026-09-06T16:51:33.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Global Policy & Geopolitics",
+      "items": [
+        {
+          "author": "C_Barraud",
+          "description": "China Ministry of Finance to issue 300 billion yuan in special bonds to support financing. Stimulus signal amid weak domestic PMI data.",
+          "tweet_url": "https://x.com/C_Barraud/status/2096560524045468014",
+          "images": [],
+          "data_points": ["China MOF special bond issuance: 300B yuan"],
+          "created_at": "2026-09-06T11:25:55.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "OPEC+ agreed to keep October output quotas unchanged. The sub-group will hold its next meeting on October 4.",
+          "tweet_url": "https://x.com/C_Barraud/status/2096560370244633079",
+          "images": [],
+          "data_points": ["OPEC+ October quotas: unchanged", "Next OPEC+ sub-group meeting: Oct 4"],
+          "created_at": "2026-09-06T11:25:19.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Turkey cut its 2027 GDP growth forecast to 4.2% ahead of elections. Turkey central bank rate decision scheduled for next Thursday — a week containing the ECB meeting and CBRT decision.",
+          "tweet_url": "https://x.com/C_Barraud/status/2096560091671527607",
+          "images": [],
+          "data_points": ["Turkey 2027 GDP forecast cut to 4.2%", "Turkey CBRT rate decision: next Thursday"],
+          "created_at": "2026-09-06T11:24:12.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Fitch upgraded Portugal's sovereign credit rating to A+ with a stable outlook.",
+          "tweet_url": "https://x.com/C_Barraud/status/2096525371977953760",
+          "images": [],
+          "data_points": ["Portugal: Fitch upgrade to A+", "Outlook: stable"],
+          "created_at": "2026-09-06T09:06:14.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Iran vowed a 'faster, more painful' response to US attacks following a weekend sea battle. Escalation in the US-Iran military confrontation — key context for the energy price shock running through global CPI data.",
+          "tweet_url": "https://x.com/zerohedge/status/2096639593567171003",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-09-06T16:40:07.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Twelve companies made DOE's latest nuclear energy launch pad cut — an energy sector selection round for advanced nuclear development programs.",
+          "tweet_url": "https://x.com/zerohedge/status/2096615687695343693",
+          "images": [],
+          "data_points": ["12 companies selected in DOE nuclear launch pad cut"],
+          "created_at": "2026-09-06T15:05:07.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Diplomatic Blitz: Witkoff and Kushner held 'substantial' Ukraine talks after a Putin meeting. Geopolitical headline relevant to risk-on/risk-off and European defense spending themes.",
+          "tweet_url": "https://x.com/zerohedge/status/2096645883450348015",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-09-06T17:05:07.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Fund Flows & Positioning",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "Exposure-weighted average currency hedge ratio across 6 major markets (Japan, Canada, Taiwan, etc.) fell to just 41% — lowest since at least 2015. With 59% of USD exposure left unhedged, investors are taking on more currency risk even as hedging gets cheaper: USD hedge cost for JPY investors hit a 4-year low of 2.75% (from 6.0% in Oct 2023); for EUR investors, 2-year low of 1.32%.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2096627987265507668",
+          "images": ["https://pbs.twimg.com/media/HRiqEyqbIAAFSM1.jpg"],
+          "data_points": ["Hedge ratio 41% (lowest since 2015)", "59% exposure unhedged", "JPY USD hedge cost 2.75% (4yr low)", "EUR USD hedge cost 1.32% (2yr low)", "Oct 2023 JPY hedge cost peak: 6.0%"],
+          "created_at": "2026-09-06T15:54:00.000Z"
+        },
+        {
+          "author": "themarketear",
+          "description": "JPM Prime Intelligence: N. America gross flows have turned back toward additions after ~2 months of reductions — both longs and shorts being added. Post-summer re-grossing underway. 'Vacation is over.'",
+          "tweet_url": "https://x.com/themarketear/status/2096565892796555691",
+          "images": [],
+          "data_points": ["N. America gross flows: turning to additions", "After 2 months of reductions", "Both longs and shorts being added"],
+          "created_at": "2026-09-06T11:47:15.000Z"
+        },
+        {
+          "author": "EricBalchunas",
+          "description": "Discussion on ETF flow methodology distinction: active ETF new flows carry no rebalancing constraint — they can buy whatever they want — so they count vs index flows but structurally differ from index rebalancing. Bloomberg PORT tool can separate the two types. Relevant context for interpreting ETF flow data.",
+          "tweet_url": "https://x.com/EricBalchunas/status/2096627787222102018",
+          "images": [],
+          "data_points": ["Active ETF new flows: no rebal constraint", "Structurally distinct from index rebal flows"],
+          "created_at": "2026-09-06T15:53:12.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Crypto & Digital Assets",
+      "items": [
+        {
+          "author": "mark_ungewitter",
+          "description": "BTC polarity chart — technical chart showing Bitcoin's support/resistance polarity level, where former support becomes resistance (or vice versa). Chart speaks for itself.",
+          "tweet_url": "https://x.com/mark_ungewitter/status/2096575101772714108",
+          "images": ["https://pbs.twimg.com/media/HRiHsRbWIAMcNbx.png"],
+          "data_points": ["BTC polarity level chart"],
+          "created_at": "2026-09-06T12:23:51.000Z"
+        },
+        {
+          "author": "Tyler_Did_It",
+          "description": "Solana-based STONK token repriced sharply: +320% to $118M market cap after the LaunchLab debut and ZCAT sending to a $100M peak. Previously flagged at $34M ahead of the move (+90% at that point).",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2096552999422242899",
+          "images": ["https://pbs.twimg.com/media/HRhzuftW8AAFFq9.jpg"],
+          "data_points": ["STONK +320% to $118M mcap", "ZCAT reached $100M peak", "LaunchLab debut as key catalyst"],
+          "created_at": "2026-09-06T10:56:01.000Z"
+        },
+        {
+          "author": "Tyler_Did_It",
+          "description": "Weekly Pumpfun performance recap: 2 x 100x calls made on the app this week, with a 1000x call targeted as next milestone. Image shows the call performance log.",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2096587010618118220",
+          "images": ["https://pbs.twimg.com/media/HRiSxkcWIAAhZdM.jpg"],
+          "data_points": ["2 × 100x calls on Pumpfun this week"],
+          "created_at": "2026-09-06T13:11:10.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "Discussion on Bitcoin mining company Keel's book value vs ROE metrics. Keel has taken accelerated write-offs on mining assets, leaving very low reported book value relative to its 2GW+ power pipeline — context for why a high P/B ratio may be misleading for mining stocks.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2096603334610169905",
+          "images": ["https://pbs.twimg.com/media/HRihnuVWAAQ33ck.jpg"],
+          "data_points": ["Keel: 2GW+ power pipeline", "Low reported book value due to accelerated mining asset write-offs"],
+          "created_at": "2026-09-06T14:16:02.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Market Outlook",
+      "items": [
+        {
+          "author": "zerohedge",
+          "description": "Goldman top strategist 'Global Reflections' note covers Iran risk, US midterm elections, bond whiplash, and why index volatility may be underpricing current risks. Titled 'Stuck Between A Rock And A Hard Place.'",
+          "tweet_url": "https://x.com/zerohedge/status/2096633305823076719",
+          "images": [],
+          "data_points": ["Goldman: index vol may be understating risk", "Themes: Iran, midterms, bond whiplash"],
+          "created_at": "2026-09-06T16:15:08.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Article arguing September market weakness 'has teeth' given the current macro backdrop — historically weak seasonal period coinciding with elevated macro uncertainty.",
+          "tweet_url": "https://x.com/zerohedge/status/2096606878167859699",
+          "images": [],
+          "data_points": ["September seasonal weakness + macro backdrop"],
+          "created_at": "2026-09-06T14:30:07.000Z"
+        },
+        {
+          "author": "RealVision",
+          "description": "Real Vision shared a chart with minimal commentary ('Annoying, but fun'). Chart content visible in the image — check image for the data.",
+          "tweet_url": "https://x.com/RealVision/status/2096640570345079059",
+          "images": ["https://pbs.twimg.com/media/HRjDXqtXIAQ1F5-.jpg"],
+          "data_points": [],
+          "created_at": "2026-09-06T16:44:00.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "AI & Tech",
+      "items": [
+        {
+          "author": "a16z",
+          "description": "World Labs co-founders Fei-Fei Li and Justin Johnson introduced Atlas — a model that unifies 3D reconstruction and generation for the first time in one architecture. Native modalities: text, images, video, and camera poses. 3D is a native modality. Anchors on viewpoint estimation, eliminating the traditional split between reconstruction and generation tracks in computer vision.",
+          "tweet_url": "https://x.com/a16z/status/2096644736874639388",
+          "images": [],
+          "data_points": ["World Labs Atlas: unified 3D reconstruction + generation model", "Native modalities: text, images, video, camera poses, 3D", "Anchors on new view prediction"],
+          "created_at": "2026-09-06T17:00:33.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Trump declared 'whoever wins AI, wins.' Polymarket puts the probability of a Chinese company having the best AI model by end of 2026 at 9%.",
+          "tweet_url": "https://x.com/Polymarket/status/2096632414818746876",
+          "images": [],
+          "data_points": ["China top AI model by Dec 2026: 9% odds"],
+          "created_at": "2026-09-06T16:11:35.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "New Polymarket market launched: 'GPT-7 released by...?' — tracking the timing and announcer of OpenAI's next major model release.",
+          "tweet_url": "https://x.com/Polymarket/status/2096606093434560825",
+          "images": [],
+          "data_points": ["New market: GPT-7 release timing/source"],
+          "created_at": "2026-09-06T14:27:00.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Prediction Markets",
+      "items": [
+        {
+          "author": "Polymarket",
+          "description": "Lindsay Clancy murder conviction market: 23% implied probability she is convicted by end of 2027. Context: legal experts warned her attorney's attacks on the lone holdout juror could complicate future jury selection.",
+          "tweet_url": "https://x.com/Polymarket/status/2096627232123076706",
+          "images": [],
+          "data_points": ["Lindsay Clancy murder conviction: 23% odds"],
+          "created_at": "2026-09-06T15:51:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Polymarket cartel leader arrests forecast — prediction market tracking which cartel leaders will be arrested in 2026, linked from a breaking story about a California pizza location busted as a meth distribution hub.",
+          "tweet_url": "https://x.com/Polymarket/status/2096647128105746502",
+          "images": [],
+          "data_points": ["New market: cartel leader arrests 2026"],
+          "created_at": "2026-09-06T17:10:03.000Z"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/markets/stuck-between-rock-hard-place-top-goldman-strategist-global-reflections-iran-midterms-bond",
+      "description": "Goldman strategist Global Reflections: Iran, midterms, bond whiplash, index vol"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/markets/september-market-weakness-setup-has-teeth",
+      "description": "September Market Weakness: The Setup Has Teeth"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/geopolitical/iran-vows-faster-more-painful-response-us-attacks-after-weekend-sea-battle",
+      "description": "Iran vows faster/more painful response after weekend sea battle"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/energy/twelve-companies-make-does-latest-nuclear-launch-pad-cut",
+      "description": "12 companies make DOE nuclear launch pad cut"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/geopolitical/diplomatic-blitz-witkoff-kushner-hold-substantial-ukraine-talks-after-putin-meeting",
+      "description": "Witkoff/Kushner Ukraine talks after Putin meeting"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-09-06/german-far-right-afd-set-to-win-state-vote-short-of-majority?srnd=homepage-europe",
+      "description": "Bloomberg: AfD set to win Saxony-Anhalt state vote"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-09-06/turkey-cuts-2027-gdp-growth-forecast-to-4-2-as-elections-beckon?srnd=homepage-europe",
+      "description": "Bloomberg: Turkey cuts 2027 GDP forecast to 4.2%"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.euronews.com/business/2026/09/05/fitch-upgrades-portugals-rating-to-a-and-says-outlook-is-stable",
+      "description": "Euronews: Fitch upgrades Portugal to A+"
+    },
+    {
+      "author": "PeterBerezinBCA",
+      "url": "https://www.bcaresearch.com/reports/unified-framework-forecasting-bond-yields-04-09-2026/225656",
+      "description": "BCA Research: Unified Framework for Forecasting Bond Yields"
+    },
+    {
+      "author": "themarketear",
+      "url": "https://www.zerohedge.com/the-market-ear/emerging-market-equities-not-keeping-pace-upgrades",
+      "description": "Market Ear: EM equities not keeping pace with EPS upgrades"
+    },
+    {
+      "author": "themarketear",
+      "url": "https://www.zerohedge.com/the-market-ear/let-re-gross-begin-0",
+      "description": "Market Ear: Let the re-gross begin (JPM PI N. America gross flows)"
+    }
+  ],
+  "coverage": {
+    "authors_covered": 15,
+    "authors_total": 17
+  }
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet &#8594;</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">&#9658;</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">&#8212;</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">&#9658;</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  const is = d.input_stats || {};
+  if (is.total_tweets) parts.push(`tweets in <strong>${is.total_tweets}</strong>`);
+  if (is.tweets_with_images) parts.push(`with images <strong>${is.tweets_with_images}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
