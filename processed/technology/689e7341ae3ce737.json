@@ -1,0 +1,405 @@
+{
+  "record_id": "689e7341ae3ce737",
+  "source_type": "technology",
+  "source_name": "Hugging Face Blog",
+  "source_url": "https://huggingface.co/blog/bartowski/per-tensor-layout-maps-for-gguf-quantization",
+  "title": "Per-tensor layout maps for GGUF quantization",
+  "published_date": "2026-09-10",
+  "language": "en",
+  "processed_at": "2026-09-12T17:24:42Z",
+  "processor": "claude-code-sub-opus",
+  "tags": ["Tech", "AI"],
+  "gist": "Bartowski replaced llama.cpp's years-old hand-tuned quantization heuristics with a data-derived per-tensor sensitivity map, built by running over 1,000 quantizations across ~96 hours on a donated AMD AI Max+ 395 128GB Framework Desktop and measuring KL divergence against bf16. The findings: token_embd is 8-16x more sensitive than any single weight tensor, sensitivity follows a U-shape by depth, attn_v/attn_output/ffn_up/ssm_out are the highest-value bump targets while ffn_gate is never worth extra bits, and crushing low-sensitivity tensors is a net loss for K-quants. A solver plus an automated 'canary' regression gate now decides whether the learned map or the old heuristic ships per model shape.",
+  "themes": [
+    {
+      "theme": "Legacy heuristics hitting their limit",
+      "insights": [
+        {
+          "claim": "The quantization assignment logic inside llama-quant.cpp still contains special cases written for Mixtral at exactly 8 experts, so the arrival of MoE models with more than 8 experts broke the assumptions the mainline algorithm was built on.",
+          "speaker": "Bartowski",
+          "type": "causal",
+          "entities": ["llama.cpp", "llama-quant.cpp", "Mixtral", "MoE"],
+          "conviction": "high",
+          "so_what": "Core open-source inference tooling is carrying architecture assumptions from a prior model generation; as MoE becomes the default frontier shape, tooling debt is a real quality tax on locally-run models.",
+          "quote": "llama-quant.cpp only has special cases for mixtral at exactly 8 experts",
+          "locator": "The Backstory",
+          "quote_verified": false
+        },
+        {
+          "claim": "The shared-expert (shexp) tensors in MoE models turned out to be disproportionately sensitive to quantization despite being extremely small, a property the existing size-driven heuristics did not capture.",
+          "speaker": "Bartowski",
+          "type": "data_point",
+          "entities": ["MoE", "shexp", "llama.cpp"],
+          "conviction": "high",
+          "so_what": "Parameter count is a poor proxy for a tensor's importance — a general lesson for anyone budgeting precision, pruning or memory in MoE serving stacks.",
+          "quote": "the shexp tensors were pretty sensitive despite being incredibly small",
+          "locator": "The Backstory",
+          "quote_verified": false
+        },
+        {
+          "claim": "The fundamental defect of both upstream llama.cpp and the author's own fork is that their bit-allocation rules are model-agnostic — shape-dependent proxies like use_more_bits, which bumps precision in the first eighth, last eighth and every third middle layer, substitute for actual per-model measurement.",
+          "speaker": "Bartowski",
+          "type": "thesis",
+          "entities": ["llama.cpp", "use_more_bits", "quantization"],
+          "conviction": "high",
+          "so_what": "Frames the whole shift from hand-tuned heuristics to measured, per-model optimization — the same pattern playing out across compilers, schedulers and kernel selection in the AI stack.",
+          "quote": "they're always going to be model-agnostic",
+          "locator": "The Problem",
+          "quote_verified": false
+        },
+        {
+          "claim": "The current allocation rules are calibrated against tests run several years ago, meaning today's quantizations are still spending bits according to conclusions drawn from a much older model population.",
+          "speaker": "Bartowski",
+          "type": "contrarian",
+          "entities": ["llama.cpp", "quantization"],
+          "conviction": "high",
+          "so_what": "Stale calibration is silent quality loss across the entire GGUF ecosystem; any benchmark comparing local quantized models to hosted APIs may be measuring tooling debt rather than model capability.",
+          "quote": "as determined by some tests several years ago",
+          "locator": "The Problem",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Brute-force sensitivity measurement",
+      "insights": [
+        {
+          "claim": "The experimental method was a wide 'degrade-one' sweep — set every tensor to q8_0 except one forced to q2_k — with a mirrored 'upgrade-one' sweep that proved largely useless because most of its runs were noise.",
+          "speaker": "Bartowski",
+          "type": "framework",
+          "entities": ["q8_0", "q2_k", "quantization", "Qwen3.5"],
+          "conviction": "high",
+          "so_what": "A reusable ablation template for measuring component importance in any large model; note that the negative-perturbation direction carries far more signal than the positive one.",
+          "quote": null,
+          "locator": "The first step was to attempt a wide sweep",
+          "quote_verified": false
+        },
+        {
+          "claim": "Over 1,000 quantizations were produced and evaluated across roughly 96 hours of continuous compute on a single donated AMD AI Max+ 395 128GB Framework Desktop, with Claude Code writing the test scripts and framework.",
+          "speaker": "Bartowski",
+          "type": "data_point",
+          "entities": ["Framework", "AMD AI Max+ 395", "Claude Code", "Anthropic"],
+          "conviction": "high",
+          "so_what": "A single unified-memory desktop plus an agentic coding tool now suffices to redo work that used to require a lab — evidence that high-memory consumer AI hardware is opening real research throughput outside institutions.",
+          "quote": "\"Claude Code running for days unleashed on my Framework Desktop\"",
+          "locator": "Data gathering",
+          "quote_verified": false
+        },
+        {
+          "claim": "All sensitivity numbers are KL divergence between a quant's token probabilities and the bf16 model's, measured with llama-perplexity --kl-divergence on wikitext-2-raw at context 512, with the sensitivity sweep run at low chunk counts and head-to-head comparisons at 100 chunks, escalating to 300 chunks when results were close.",
+          "speaker": "Bartowski",
+          "type": "framework",
+          "entities": ["KL divergence", "llama-perplexity", "wikitext-2-raw", "bf16"],
+          "conviction": "high",
+          "so_what": "KLD against full precision is becoming the de facto quality yardstick for quantization, displacing raw perplexity; anyone comparing quant vendors should demand KLD-per-bit, not file size.",
+          "quote": null,
+          "locator": "First, a quick note on measuring",
+          "quote_verified": false
+        },
+        {
+          "claim": "The primary sensitivity prior was fit on only two small Qwen models plus granite, with validation sweeps against Gemma 4, Granite 4.2 at 3B/8B/30B, Laguna, Ling, Muse and Ornith used only to confirm that depth and tensor-type trends were not Qwen-specific.",
+          "speaker": "Bartowski",
+          "type": "data_point",
+          "entities": ["Qwen3.5", "Gemma 4", "Granite 4.2", "Ling", "Muse", "Ornith", "Laguna"],
+          "conviction": "medium",
+          "so_what": "The generalization claim rests on a narrow fitting base, which is exactly why the canary regression gate exists; treat cross-family transfer as provisional.",
+          "quote": null,
+          "locator": "Prior was only fit using 2 small Qwen models",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Empirical sensitivity findings",
+      "insights": [
+        {
+          "claim": "The token embedding tensor dominates the sensitivity scale, costing roughly 8x the worst single weight tensor at 0.8B parameters and 16x at 4B — meaning embedding sensitivity scales up, not down, with model size in this range.",
+          "speaker": "Bartowski",
+          "type": "data_point",
+          "entities": ["token_embd", "Qwen3.5", "quantization"],
+          "conviction": "high",
+          "so_what": "Vindicates the 'high-precision embeddings' camp and implies embedding precision should be the first line item in any memory budget for local inference.",
+          "quote": "token_embd dominates the sensitivity scale ... costing about 8x the worst single weight tensor at 0.8B and 16x at 4B",
+          "locator": "token_embd dominates the sensitivity scale",
+          "quote_verified": false
+        },
+        {
+          "claim": "Despite its dominance, token_embd recovers a large majority of its performance already at q4_k, so at low overall bitrates full q8_0 embeddings are not automatically optimal — a healthy bump beats a maximal one.",
+          "speaker": "Bartowski",
+          "type": "contrarian",
+          "entities": ["token_embd", "q4_k", "q8_0"],
+          "conviction": "high",
+          "so_what": "Directly overturns the popular 'q8_0 embeddings or bust' rule-of-thumb; the marginal bit is better spent elsewhere, which is why the dedicated q8_0-embedding releases were retired.",
+          "quote": null,
+          "locator": "That said, it gets a large majority",
+          "quote_verified": false
+        },
+        {
+          "claim": "Quantization sensitivity follows a U shape with depth — early and late layers matter most, middle layers least — empirically confirming an assumption that llama.cpp's use_more_bits had encoded years earlier by intuition.",
+          "speaker": "Bartowski",
+          "type": "data_point",
+          "entities": ["use_more_bits", "llama.cpp", "transformer layers"],
+          "conviction": "high",
+          "so_what": "A stable structural regularity that transfers beyond quantization to pruning, layer-skipping, speculative decoding and early-exit designs.",
+          "quote": "Depth is a U shape of sensitivity.",
+          "locator": "Depth is a U shape of sensitivity",
+          "quote_verified": false
+        },
+        {
+          "claim": "On a per-bit basis the small attention projections are the most sensitive tensors, with attn_v, attn_output, ffn_up and ssm_out standing out as extreme outliers worth extra precision.",
+          "speaker": "Bartowski",
+          "type": "data_point",
+          "entities": ["attn_v", "attn_output", "ffn_up", "ssm_out", "quantization"],
+          "conviction": "high",
+          "so_what": "Gives a concrete, transferable precision-allocation priority list for anyone building inference kernels or mixed-precision serving, including SSM-hybrid architectures.",
+          "quote": "attn_v, attn_output, ffn_up, and ssm_out are extreme standouts on sensitivity",
+          "locator": "Per bit, small attention projections",
+          "quote_verified": false
+        },
+        {
+          "claim": "ffn_gate is essentially never worth extra bits, making it the clearest place to save memory without measurable quality cost.",
+          "speaker": "Bartowski",
+          "type": "contrarian",
+          "entities": ["ffn_gate", "quantization"],
+          "conviction": "high",
+          "so_what": "A specific, actionable asymmetry: uniform-precision quantization is wasting bits on gate projections in every deployment that uses it.",
+          "quote": "ffn_gate is basically never worth any extra bits",
+          "locator": "Per bit, small attention projections",
+          "quote_verified": false
+        },
+        {
+          "claim": "Above roughly Q5, precision bumps produce almost purely noise, meaning the entire optimization exercise only pays off in the low-bit regime.",
+          "speaker": "Bartowski",
+          "type": "data_point",
+          "entities": ["Q5", "quantization", "KL divergence"],
+          "conviction": "medium",
+          "so_what": "Defines where mixed-precision engineering earns its keep — the memory-constrained low-bit tier — and where it is wasted effort.",
+          "quote": "Above ~Q5 the bumps are almost purely noise",
+          "locator": "Limits of this work",
+          "quote_verified": false
+        },
+        {
+          "claim": "Below roughly 3 bits, dense models under the new map come out essentially tied with the old heuristic, so the gains are concentrated in mid-bit and MoE territory rather than being universal.",
+          "speaker": "Bartowski",
+          "type": "data_point",
+          "entities": ["quantization", "dense models", "MoE"],
+          "conviction": "high",
+          "so_what": "Honest scoping of the upside: the method's value is consistency and MoE handling, not a blanket quality jump at every bitrate.",
+          "quote": "below ~3 bits, dense models basically come out as a tie to the old method",
+          "locator": "It's worth noting that below ~3 bits",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Solver design and the asymmetry of crushing",
+      "insights": [
+        {
+          "claim": "The solver takes a model shape, the measured sensitivity prior in prior.json, ggml block-size data and a target quant type, and outputs an optimal per-tensor layout, replacing hand-written conditionals with a constrained optimization.",
+          "speaker": "Bartowski",
+          "type": "framework",
+          "entities": ["prior.json", "ggml", "generate.py", "Claude"],
+          "conviction": "high",
+          "so_what": "Bit allocation becomes a solved optimization problem rather than folklore, which means it can be re-run automatically as models and quant formats evolve.",
+          "quote": null,
+          "locator": "The Solution",
+          "quote_verified": false
+        },
+        {
+          "claim": "K-quants almost never benefit from crushing low-sensitivity tensors to fund bumps elsewhere, because the quality gap between adjacent K-quant levels is too coarse, whereas IQ-quants have a finer slope of change and can profitably trade bits.",
+          "speaker": "Bartowski",
+          "type": "causal",
+          "entities": ["K-quants", "IQ-quants", "quantization"],
+          "conviction": "high",
+          "so_what": "The granularity of the format, not the allocation policy, determines whether trade-based optimization works — a design lesson for anyone specifying new numeric formats.",
+          "quote": null,
+          "locator": "The solver is allowed to crush weights",
+          "quote_verified": false
+        },
+        {
+          "claim": "Measured results show that the more tensors the solver is permitted to crush, the worse the KLD gets relative to llama.cpp's default, even when crushing only the least sensitive tensors to bump only the most sensitive ones.",
+          "speaker": "Bartowski",
+          "type": "data_point",
+          "entities": ["llama.cpp", "K-quants", "KL divergence"],
+          "conviction": "high",
+          "so_what": "Counterintuitive result: the theoretically appealing zero-sum bit-reshuffling is net-negative for K-quants, so 'bump only' is the correct policy.",
+          "quote": "it still results in a net-loss for K-quants",
+          "locator": "In this figure, you can see that the more tensors",
+          "quote_verified": false
+        },
+        {
+          "claim": "K-quants are deliberately forbidden from using IQ tensor types for compatibility reasons while IQ-quants may use any type the solver chooses, an explicit trade of some quality for ecosystem interoperability.",
+          "speaker": "Bartowski",
+          "type": "thesis",
+          "entities": ["K-quants", "IQ-quants", "llama.cpp"],
+          "conviction": "medium",
+          "so_what": "Backward compatibility constrains optimization in mature open-source stacks; the quality headroom left on the table is a future upgrade path if mixed types are later allowed.",
+          "quote": null,
+          "locator": "I also decided to force K-quants",
+          "quote_verified": false
+        },
+        {
+          "claim": "A TINY_PARAMS definition forces all extremely small tensors to F32 on the grounds that it improves both speed and quality, so the smallest tensors escape the bit budget entirely.",
+          "speaker": "Bartowski",
+          "type": "framework",
+          "entities": ["TINY_PARAMS", "F32", "generate.py"],
+          "conviction": "high",
+          "so_what": "Cheap dominant-strategy optimization: tiny tensors cost almost no memory at full precision but quantizing them costs both accuracy and dequantization overhead.",
+          "quote": null,
+          "locator": "Another thing you'll see in generate.py",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Restoring meaning to quant naming",
+      "insights": [
+        {
+          "claim": "Quant labels had drifted into meaninglessness — a file named starting with Q3_K_ could be mostly non-Q3_K tensors and sit above 5 bits per weight — so the new scheme enforces that _S is 90% the named tensor type, _M 70%, and _L allows up to 50% bumped.",
+          "speaker": "Bartowski",
+          "type": "framework",
+          "entities": ["Q3_K_S", "Q4_K_M", "GGUF", "quantization"],
+          "conviction": "high",
+          "so_what": "Restores label-to-content integrity in the most-downloaded artifact format for local LLMs; users can once again infer contents from filename.",
+          "quote": "If a file that starts with Q3_K_ is mostly non-Q3_K tensor types and sits above 5 bits per weight, something has gone wrong..",
+          "locator": "The Solution",
+          "quote_verified": false
+        },
+        {
+          "claim": "The naming rules also fix an observed 'bpw collapse' in which quants targeting different outcomes all converged to roughly the same file size, destroying the size-quality ladder users pick from.",
+          "speaker": "Bartowski",
+          "type": "causal",
+          "entities": ["GGUF", "quantization", "bits per weight"],
+          "conviction": "high",
+          "so_what": "Restores a spread of real size tiers, which matters for anyone matching model size to a fixed VRAM or unified-memory budget.",
+          "quote": null,
+          "locator": "This was in part also to avoid an observed",
+          "quote_verified": false
+        },
+        {
+          "claim": "File sizes shift materially under the new scheme — Q3_K_M on Qwen3.5-4B comes out 15% smaller, and in one case Q4_K_M had slightly worse absolute KLD but was over 5% smaller, making it better per bit.",
+          "speaker": "Bartowski",
+          "type": "data_point",
+          "entities": ["Q3_K_M", "Q4_K_M", "Qwen3.5-4B", "KL divergence"],
+          "conviction": "high",
+          "so_what": "Users should re-check sizes rather than reuse old choices — the same VRAM budget may now fit a higher tier, and absolute KLD alone misranks the options.",
+          "quote": null,
+          "locator": "This means if you see Q3_K_S",
+          "quote_verified": false
+        },
+        {
+          "claim": "The _L suffix is redefined: it previously meant only 'same quant with q8_0 embedding and output', and now Q2_K_L, Q3_K_XL and Q5_K_L are eliminated while Q4_K_L and Q6_K_L survive as genuine tensor-type budgets, with Q6_K_L opening a 7.2-7.4 bpw tier.",
+          "speaker": "Bartowski",
+          "type": "data_point",
+          "entities": ["Q4_K_L", "Q6_K_L", "Q3_K_XL", "q8_0"],
+          "conviction": "high",
+          "so_what": "Consumers of these releases need to remap their preferred variant names; the retired tiers were producing absurdities like Q3_K_XL exceeding Q5_K_M in size because of oversized embeddings in gemma-4-E4B.",
+          "quote": "avoids weird situations where you'd see Q3_K_XL being larger than Q5_K_M because the embeddings were massive",
+          "locator": "What ships",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Generalization and automated regression gating",
+      "insights": [
+        {
+          "claim": "The learned map did not win on first pass for every architecture — granite's and MiniCPM's dense all-attention layouts and DeepSeek-V2-Lite's MLA all failed initially, and were fixed only by giving the body prior a per-class table and making the embedding rule account for the embedding table's share of total file size.",
+          "speaker": "Bartowski",
+          "type": "causal",
+          "entities": ["Granite", "MiniCPM5-2B", "DeepSeek-V2-Lite", "MLA"],
+          "conviction": "high",
+          "so_what": "Sensitivity priors are conditional on attention-architecture class, not universal — an important caveat as MLA, hybrid attention and SSM blocks proliferate.",
+          "quote": "It should be noted: the solver didn't win.",
+          "locator": "But does it generalize?",
+          "quote_verified": false
+        },
+        {
+          "claim": "Every new model shape — keyed on architecture name, the ordered list of tensor names and dimensions, and the generator version — must now pass a 'canary' test in which Q4_K_M, Q3_K_M and IQ2_XS are built both ways and the six resulting models are plotted on a KLD-per-bit curve, with the map rejected and the old heuristic used if any mapped quant falls above the curve beyond noise.",
+          "speaker": "Bartowski",
+          "type": "framework",
+          "entities": ["Q4_K_M", "Q3_K_M", "IQ2_XS", "KL divergence"],
+          "conviction": "high",
+          "so_what": "A template for shipping learned optimizations safely: automated per-artifact regression gating with a known-good fallback, the pattern serious ML infrastructure will need everywhere.",
+          "quote": null,
+          "locator": "The \"canary\" test",
+          "quote_verified": false
+        },
+        {
+          "claim": "The canary gate has already fired in production — MiniCPM5-2B failed it and the pipeline automatically fell back to the original heuristic rather than shipping a regression.",
+          "speaker": "Bartowski",
+          "type": "anecdote",
+          "entities": ["MiniCPM5-2B", "GGUF"],
+          "conviction": "high",
+          "so_what": "Demonstrated fallback behavior is the credibility test for any automated optimization pipeline; a gate that never fires is a gate nobody trusts.",
+          "quote": "MiniCPM5-2B actually failed my canary tests (mentioned above), and my pipeline correctly fell back to my original heuristic",
+          "locator": "While testing, MiniCPM5-2B actually failed",
+          "quote_verified": false
+        },
+        {
+          "claim": "The map is keyed on model shape rather than model identity on the assumption that fine-tunes behave identically to their base model for quantization sensitivity, the same assumption already made by imatrix.",
+          "speaker": "Bartowski",
+          "type": "thesis",
+          "entities": ["imatrix", "fine-tunes", "GGUF"],
+          "conviction": "medium",
+          "so_what": "Shape-keying means one expensive calibration amortizes across an entire fine-tune ecosystem — the economics that make the approach viable at community scale.",
+          "quote": "I am keying off of the shape because tunes should behave identically to the base model",
+          "locator": "I am keying off of the shape",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Open gaps and architectural frontier",
+      "insights": [
+        {
+          "claim": "Qwen3.8-Flash-Next carries a giant PLE n-gram table that the generator cannot yet handle, and DeepSeek-V4.1-Flash reportedly has an n-gram table too, making this the next investigation priority.",
+          "speaker": "Bartowski",
+          "type": "prediction",
+          "entities": ["Qwen3.8-Flash-Next", "DeepSeek-V4.1-Flash", "PLE n-gram table"],
+          "conviction": "medium",
+          "so_what": "N-gram/lookup tables appearing in multiple independent frontier architectures is a structural trend worth tracking — it changes memory layouts and quantization economics for the whole serving stack.",
+          "quote": null,
+          "locator": "What's next?",
+          "quote_verified": false
+        },
+        {
+          "claim": "Hy4-preview uses a gated MLA with q_lora_rank 2048 and kv_lora_rank 512 plus sparse attention, an unsupported configuration that the author also could not quantize at all because of sheer model size.",
+          "speaker": "Bartowski",
+          "type": "data_point",
+          "entities": ["Hy4-preview", "MLA", "sparse attention"],
+          "conviction": "medium",
+          "so_what": "Model size is becoming a hard gate on community quantization itself — if independent quantizers cannot process frontier open weights, local-inference access narrows regardless of licensing.",
+          "quote": null,
+          "locator": "Hy4-preview also has a strange gated MLA",
+          "quote_verified": false
+        },
+        {
+          "claim": "All KLD measurement was done on wikitext only, which the author flags as a limitation warranting a second dataset to confirm the conclusions hold.",
+          "speaker": "Bartowski",
+          "type": "contrarian",
+          "entities": ["wikitext", "KL divergence"],
+          "conviction": "medium",
+          "so_what": "Single-corpus calibration risks optimizing for text-distribution artifacts; a genuine source of uncertainty in an otherwise carefully measured result.",
+          "quote": "KLD was run on wikitext only",
+          "locator": "Limits of this work",
+          "quote_verified": false
+        },
+        {
+          "claim": "The method has shipped in only two releases so far, MiniCPM5-2B-GGUF and Gryphe_Pantheon-Reasoning-26B-A4B-1.1-V2-GGUF, so real-world validation remains thin and rests on the ongoing canary testing.",
+          "speaker": "Bartowski",
+          "type": "data_point",
+          "entities": ["MiniCPM5-2B-GGUF", "Gryphe_Pantheon-Reasoning-26B-A4B-1.1-V2-GGUF"],
+          "conviction": "medium",
+          "so_what": "Early-stage rollout: expect the per-tensor layout tables published alongside each model to become the new comparison surface for judging quant quality.",
+          "quote": null,
+          "locator": "Finally, this has not yet been tested wide",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 28,
+  "top_entities": ["llama.cpp", "GGUF", "Qwen3.5", "MiniCPM5-2B", "DeepSeek-V2-Lite", "token_embd", "Framework", "AMD AI Max+ 395", "Claude Code", "Granite 4.2", "Gemma 4", "KL divergence"],
+  "source_meta": {"author": "Bartowski", "word_count": 2578, "paywalled": false}
+}
