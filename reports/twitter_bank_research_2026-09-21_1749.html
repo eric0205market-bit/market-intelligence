@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER BANK RESEARCH",
+  "collected_at": "2026-09-21T17:23:56Z",
+  "window_days": 4,
+  "input_stats": {
+    "total_tweets": 60,
+    "considered": 60,
+    "kept": 14,
+    "dropped": 46,
+    "deduped": 0
+  },
+  "summary": "14 research items kept from 60 tweets over the last 4 days, all Goldman/Citadel/JPM/Apollo/Morningstar (no Neil K. Sethi items this cycle). Goldman leads with 6 items on EPS revisions, multiple compression, and AI-narrative concentration in banks. Citadel Securities' flow desk (4 items) flags CTAs very short Treasury duration into quarter-end and fading September retail flow. JPMAM (2 items) pushes back on the Fed's latest hike via the PCE/CPI gap and highlights strong Mag 7 balance sheets. Apollo's Slok flags hyperscaler credit resting on a cash-flow tripling assumption; Morningstar notes rising thematic-ETF inflows into AI/energy transition. Per-bank counts: Goldman 6, Citadel 4, JPM 2, Apollo/Slok 1, Morningstar 1.",
+  "by_bank_counts": {
+    "Goldman": 6,
+    "Citadel": 4,
+    "JPM": 2,
+    "Apollo/Slok": 1,
+    "Morningstar": 1
+  },
+  "banks": [
+    {
+      "bank": "Goldman",
+      "theme": "GS on 2026 setup — EPS revisions, multiple compression, AI-narrative concentration, sector leadership",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Global EPS estimates... a broken record... onward &amp; upward GS https://t.co/5F1faXfnTe",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102080668142305291",
+          "images": [
+            "https://pbs.twimg.com/media/HSwXOoKXIAIhWuj.png"
+          ],
+          "created_at": "2026-09-21T17:01:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Remarkable multiple compression YTD... perhaps the SPX at 23x P/E last October was a simple expectation of incredible EPS growth we now see in the rearview GS https://t.co/9HZSMDwnJL",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102075634570715467",
+          "images": [
+            "https://pbs.twimg.com/media/HSwSpo6XcAACv2h.png"
+          ],
+          "created_at": "2026-09-21T16:41:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "YTD, tech hardware/semis crushing it. \n\nJapan, South Korea, Taiwan are the leaders GS https://t.co/5kCmnFiwsV",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102070602043375763",
+          "images": [
+            "https://pbs.twimg.com/media/HSwOEsYXEAA-aBi.png"
+          ],
+          "created_at": "2026-09-21T16:21:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Goldman sees 12% SPX upside in the next 12 months https://t.co/JnEEcaDKhW",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102066826544853301",
+          "images": [
+            "https://pbs.twimg.com/media/HSwKo8VWoAACbcD.png"
+          ],
+          "created_at": "2026-09-21T16:06:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: The AI narrative is increasingly a bank narrative...  US banks screen second only to technology on AI mentions\n\n... The AI conversation is concentrated in the largest banks in the US https://t.co/lbsXiaFWYI",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2101997620780527857",
+          "images": [
+            "https://pbs.twimg.com/media/HSvLsnpXMAEoo9S.png"
+          ],
+          "created_at": "2026-09-21T11:31:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Similar to during the Tech Bubble, the proportion of stocks with a negative beta has increased $SPY\n\n\"Low-volatility and high-dividend-yield stocks can outperform the market ex-Tech on a risk-adjusted basis\" https://t.co/ACXxoD9gDX",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2101993048515194949",
+          "images": [
+            "https://pbs.twimg.com/media/HSvHig3XwAAoR-f.png"
+          ],
+          "created_at": "2026-09-21T11:12:50.000Z"
+        }
+      ]
+    },
+    {
+      "bank": "Citadel",
+      "theme": "Citadel Securities flow desk — CTA duration positioning into quarter-end, fading retail flow, September sector breadth",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "CTAs are very short Treasury futures. Rubner, Citadel via @soberlook $TLT https://t.co/0ogrxRGlPU",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102006429309649315",
+          "images": [
+            "https://pbs.twimg.com/media/HSvTtVgXcAAKOxP.jpg"
+          ],
+          "created_at": "2026-09-21T12:06:00.000Z"
+        },
+        {
+          "author": "LanceRoberts",
+          "text": "As we head into Quarter-end, rebalancing will likely impact allocations.  CTA's are VERY short \"duration\" in US Treasuries and long equities.\n\"The quarter-end rebalance also starts from an unfavorable cross-asset move. The S&P 500 is still up roughly 1% in Q3, while bonds are down 2.2%, increasing the potential need for pensions to sell equities and buy fixed income into quarter-end.\" - Citadel Securities",
+          "tweet_url": "https://x.com/LanceRoberts/status/2101988094471815206",
+          "images": [
+            "https://pbs.twimg.com/media/HSvDA36XwAEWF1j.png"
+          ],
+          "created_at": "2026-09-21T10:53:09.000Z"
+        },
+        {
+          "author": "LanceRoberts",
+          "text": "\"Retail activity has slowed so far this month, which is seasonally typical. At the start of September we highlighted that this is historically the month when retail accumulation fades and dip-buying slows. That has been the case again this year: average daily gross notional is tracking roughly 10% below its 1-year average, while average daily net notional spent in cash equities has fallen below its 1-year average for the first time since April.\" - Citadel Securities",
+          "tweet_url": "https://x.com/LanceRoberts/status/2101987576261283985",
+          "images": [
+            "https://pbs.twimg.com/media/HSvCbu3XkAAFN0-.png"
+          ],
+          "created_at": "2026-09-21T10:51:05.000Z"
+        },
+        {
+          "author": "LanceRoberts",
+          "text": "September has been a weak month as expected.  \n\"Nine of eleven sectors are lower month-to-date. Only Energy and Communication Services, 14% of the index between them, are higher. Since the August high, Information Technology, Industrials and Consumer Discretionary account for the entire decline in index points, while Energy and Communication Services have added roughly 40 points against them. This has been a meaningful drawdown under the surface, but importantly, it has remained rotational rather than disorderly.\" - Citadel Securities",
+          "tweet_url": "https://x.com/LanceRoberts/status/2101986656223973442",
+          "images": [
+            "https://pbs.twimg.com/media/HSvBuGbWwAA18iE.png"
+          ],
+          "created_at": "2026-09-21T10:47:26.000Z"
+        }
+      ]
+    },
+    {
+      "bank": "JPM",
+      "theme": "JPMAM — Fed rate-hike critique via PCE/CPI gap, and Mag 7 balance-sheet strength",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "JPMAM Kelly: On balance, I don’t believe that the Federal Reserve should have raised interest rates last week.\n\nOver the past 40 years, core PCE inflation has run an average of 0.43% cooler than core CPI inflation... focusing too much on PCE inflation could be a mistake right now https://t.co/p53x8dOTu9",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102025302918480133",
+          "images": [
+            "https://pbs.twimg.com/media/HSvk389WAAAfbfZ.png"
+          ],
+          "created_at": "2026-09-21T13:21:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Mag 7 balance sheet still strong JPMAM \n\nSky-high interest coverage ratio\n\nMore importantly, price action is strong: https://t.co/HWKXqWsfRe @stockcharts https://t.co/HQO3rSPoqm",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102022786357006821",
+          "images": [
+            "https://pbs.twimg.com/media/HSvilenXsAAZcrd.png"
+          ],
+          "created_at": "2026-09-21T13:11:00.000Z"
+        }
+      ]
+    },
+    {
+      "bank": "Apollo/Slok",
+      "theme": "Apollo (Slok) — hyperscaler credit thesis rests on cash flow tripling to $2T",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "The credit story in hyperscalers rests on a single consensus assumption: that operating cash flow triples from $600 billion to $2 trillion\n\nTorsten at Apollo https://t.co/zOwDWCKzn0",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2101995104516895003",
+          "images": [
+            "https://pbs.twimg.com/media/HSvJaJ2XYAAn40D.jpg"
+          ],
+          "created_at": "2026-09-21T11:21:00.000Z"
+        }
+      ]
+    },
+    {
+      "bank": "Morningstar",
+      "theme": "Morningstar — thematic ETF inflows chasing AI and energy transition",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Thematic ETFs have seen rising inflows over the past year, driven by AI and the energy transition. @soberlook @morningstar\n\nThematic ETFs... where hot investor dollars go to (eventually) die https://t.co/1LYAqq9JD1",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102001396325220699",
+          "images": [
+            "https://pbs.twimg.com/media/HSvPIWWWgAA7z1q.jpg"
+          ],
+          "created_at": "2026-09-21T11:46:00.000Z"
+        }
+      ]
+    }
+  ],
+  "date": "2026-09-21 17:23 UTC",
+  "topics": [
+    {
+      "topic": "Goldman (6) — GS on 2026 setup — EPS revisions, multiple compression, AI-narrative concentration, sector leadership",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Global EPS estimates... a broken record... onward &amp; upward GS https://t.co/5F1faXfnTe",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102080668142305291",
+          "images": [
+            "https://pbs.twimg.com/media/HSwXOoKXIAIhWuj.png"
+          ],
+          "created_at": "2026-09-21T17:01:00.000Z",
+          "data_points": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Remarkable multiple compression YTD... perhaps the SPX at 23x P/E last October was a simple expectation of incredible EPS growth we now see in the rearview GS https://t.co/9HZSMDwnJL",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102075634570715467",
+          "images": [
+            "https://pbs.twimg.com/media/HSwSpo6XcAACv2h.png"
+          ],
+          "created_at": "2026-09-21T16:41:00.000Z",
+          "data_points": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "YTD, tech hardware/semis crushing it. \n\nJapan, South Korea, Taiwan are the leaders GS https://t.co/5kCmnFiwsV",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102070602043375763",
+          "images": [
+            "https://pbs.twimg.com/media/HSwOEsYXEAA-aBi.png"
+          ],
+          "created_at": "2026-09-21T16:21:00.000Z",
+          "data_points": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Goldman sees 12% SPX upside in the next 12 months https://t.co/JnEEcaDKhW",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102066826544853301",
+          "images": [
+            "https://pbs.twimg.com/media/HSwKo8VWoAACbcD.png"
+          ],
+          "created_at": "2026-09-21T16:06:00.000Z",
+          "data_points": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: The AI narrative is increasingly a bank narrative...  US banks screen second only to technology on AI mentions\n\n... The AI conversation is concentrated in the largest banks in the US https://t.co/lbsXiaFWYI",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2101997620780527857",
+          "images": [
+            "https://pbs.twimg.com/media/HSvLsnpXMAEoo9S.png"
+          ],
+          "created_at": "2026-09-21T11:31:00.000Z",
+          "data_points": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Similar to during the Tech Bubble, the proportion of stocks with a negative beta has increased $SPY\n\n\"Low-volatility and high-dividend-yield stocks can outperform the market ex-Tech on a risk-adjusted basis\" https://t.co/ACXxoD9gDX",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2101993048515194949",
+          "images": [
+            "https://pbs.twimg.com/media/HSvHig3XwAAoR-f.png"
+          ],
+          "created_at": "2026-09-21T11:12:50.000Z",
+          "data_points": []
+        }
+      ]
+    },
+    {
+      "topic": "Citadel (4) — Citadel Securities flow desk — CTA duration positioning into quarter-end, fading retail flow, September sector breadth",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "CTAs are very short Treasury futures. Rubner, Citadel via @soberlook $TLT https://t.co/0ogrxRGlPU",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102006429309649315",
+          "images": [
+            "https://pbs.twimg.com/media/HSvTtVgXcAAKOxP.jpg"
+          ],
+          "created_at": "2026-09-21T12:06:00.000Z",
+          "data_points": []
+        },
+        {
+          "author": "LanceRoberts",
+          "text": "As we head into Quarter-end, rebalancing will likely impact allocations.  CTA's are VERY short \"duration\" in US Treasuries and long equities.\n\"The quarter-end rebalance also starts from an unfavorable cross-asset move. The S&P 500 is still up roughly 1% in Q3, while bonds are down 2.2%, increasing the potential need for pensions to sell equities and buy fixed income into quarter-end.\" - Citadel Securities",
+          "tweet_url": "https://x.com/LanceRoberts/status/2101988094471815206",
+          "images": [
+            "https://pbs.twimg.com/media/HSvDA36XwAEWF1j.png"
+          ],
+          "created_at": "2026-09-21T10:53:09.000Z",
+          "data_points": []
+        },
+        {
+          "author": "LanceRoberts",
+          "text": "\"Retail activity has slowed so far this month, which is seasonally typical. At the start of September we highlighted that this is historically the month when retail accumulation fades and dip-buying slows. That has been the case again this year: average daily gross notional is tracking roughly 10% below its 1-year average, while average daily net notional spent in cash equities has fallen below its 1-year average for the first time since April.\" - Citadel Securities",
+          "tweet_url": "https://x.com/LanceRoberts/status/2101987576261283985",
+          "images": [
+            "https://pbs.twimg.com/media/HSvCbu3XkAAFN0-.png"
+          ],
+          "created_at": "2026-09-21T10:51:05.000Z",
+          "data_points": []
+        },
+        {
+          "author": "LanceRoberts",
+          "text": "September has been a weak month as expected.  \n\"Nine of eleven sectors are lower month-to-date. Only Energy and Communication Services, 14% of the index between them, are higher. Since the August high, Information Technology, Industrials and Consumer Discretionary account for the entire decline in index points, while Energy and Communication Services have added roughly 40 points against them. This has been a meaningful drawdown under the surface, but importantly, it has remained rotational rather than disorderly.\" - Citadel Securities",
+          "tweet_url": "https://x.com/LanceRoberts/status/2101986656223973442",
+          "images": [
+            "https://pbs.twimg.com/media/HSvBuGbWwAA18iE.png"
+          ],
+          "created_at": "2026-09-21T10:47:26.000Z",
+          "data_points": []
+        }
+      ]
+    },
+    {
+      "topic": "JPM (2) — JPMAM — Fed rate-hike critique via PCE/CPI gap, and Mag 7 balance-sheet strength",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "JPMAM Kelly: On balance, I don’t believe that the Federal Reserve should have raised interest rates last week.\n\nOver the past 40 years, core PCE inflation has run an average of 0.43% cooler than core CPI inflation... focusing too much on PCE inflation could be a mistake right now https://t.co/p53x8dOTu9",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102025302918480133",
+          "images": [
+            "https://pbs.twimg.com/media/HSvk389WAAAfbfZ.png"
+          ],
+          "created_at": "2026-09-21T13:21:00.000Z",
+          "data_points": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Mag 7 balance sheet still strong JPMAM \n\nSky-high interest coverage ratio\n\nMore importantly, price action is strong: https://t.co/HWKXqWsfRe @stockcharts https://t.co/HQO3rSPoqm",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102022786357006821",
+          "images": [
+            "https://pbs.twimg.com/media/HSvilenXsAAZcrd.png"
+          ],
+          "created_at": "2026-09-21T13:11:00.000Z",
+          "data_points": []
+        }
+      ]
+    },
+    {
+      "topic": "Apollo/Slok (1) — Apollo (Slok) — hyperscaler credit thesis rests on cash flow tripling to $2T",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "The credit story in hyperscalers rests on a single consensus assumption: that operating cash flow triples from $600 billion to $2 trillion\n\nTorsten at Apollo https://t.co/zOwDWCKzn0",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2101995104516895003",
+          "images": [
+            "https://pbs.twimg.com/media/HSvJaJ2XYAAn40D.jpg"
+          ],
+          "created_at": "2026-09-21T11:21:00.000Z",
+          "data_points": []
+        }
+      ]
+    },
+    {
+      "topic": "Morningstar (1) — Morningstar — thematic ETF inflows chasing AI and energy transition",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Thematic ETFs have seen rising inflows over the past year, driven by AI and the energy transition. @soberlook @morningstar\n\nThematic ETFs... where hot investor dollars go to (eventually) die https://t.co/1LYAqq9JD1",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2102001396325220699",
+          "images": [
+            "https://pbs.twimg.com/media/HSvPIWWWgAA7z1q.jpg"
+          ],
+          "created_at": "2026-09-21T11:46:00.000Z",
+          "data_points": []
+        }
+      ]
+    }
+  ],
+  "links": []
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
