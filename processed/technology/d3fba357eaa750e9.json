@@ -1,0 +1,249 @@
+{
+  "record_id": "d3fba357eaa750e9",
+  "source_type": "technology",
+  "source_name": "InfoQ",
+  "source_url": "https://www.infoq.com/news/2026/09/cobbledb-perplexity/",
+  "title": "Home Made CobbleDB Replaces DynamoDB at Perplexity to Cut Query Latency 5x and Reduce Cloud Storage",
+  "published_date": "2026-09-25",
+  "language": "en",
+  "processed_at": "2026-09-26T11:03:49Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "Tech",
+    "AI"
+  ],
+  "gist": "Perplexity moved its search serving tier off Amazon DynamoDB onto CobbleDB, an in-house Rust key-value store on RocksDB/NVMe, cutting median batch-read latency from 31.4ms to 5.60ms and storage costs by at least 20%. The driver: LLM answer engines read ~50KB full-passage records at 200K+ req/s, making DynamoDB's per-byte metering and opaque internals untenable; notably, the 40K-line system was built in two months by two engineers plus a swarm of AI coding agents.",
+  "themes": [
+    {
+      "theme": "AI workloads break managed-DB economics",
+      "insights": [
+        {
+          "claim": "AI answer-engine retrieval has a fundamentally heavier read pattern than classic search: each Perplexity query generates 100-120 page keys fetched in parallel batches of 10-20, with average record payloads of roughly 50KB because LLMs need full chunked passages plus dense embeddings rather than snippets.",
+          "speaker": "Olimpiu Pop",
+          "type": "data_point",
+          "entities": [
+            "Perplexity",
+            "LLMs",
+            "vector embeddings"
+          ],
+          "conviction": "high",
+          "so_what": "LLM-era retrieval multiplies bytes moved per query, inflating data-transfer and storage-tier spend for AI search companies and benefiting providers of high-throughput storage.",
+          "quote": "retrieval for language models requires extracting full chunked passages and dense vector embeddings, yielding average record payloads of roughly 50 kilobytes",
+          "locator": "Artificial intelligence answer engines impose read patterns",
+          "quote_verified": true
+        },
+        {
+          "claim": "At over 200,000 requests per second, DynamoDB's usage-based pricing became financially unsustainable for Perplexity because AWS meters every byte transferred.",
+          "speaker": "Olimpiu Pop",
+          "type": "causal",
+          "entities": [
+            "Amazon DynamoDB",
+            "AWS",
+            "Perplexity"
+          ],
+          "conviction": "high",
+          "so_what": "High-scale AI tenants have a clear incentive to repatriate hot-path workloads off per-byte-priced managed services — a revenue risk for AWS managed databases at the largest AI customers.",
+          "quote": "DynamoDB usage-based pricing became financially unsustainable because AWS meters every byte transferred",
+          "locator": "At production traffic scales exceeding 200,000",
+          "quote_verified": true
+        },
+        {
+          "claim": "DynamoDB's black-box design (hidden partition placement, caching policy, and replica routing) prevented Perplexity engineers from controlling tail-latency spikes from uncached reads, cross-zone hops, and lagging replicas.",
+          "speaker": "Olimpiu Pop",
+          "type": "causal",
+          "entities": [
+            "Amazon DynamoDB",
+            "Perplexity"
+          ],
+          "conviction": "high",
+          "so_what": "Lack of control over internals, not just price, pushes latency-sensitive AI products toward self-managed infrastructure.",
+          "quote": "DynamoDB operates as a black box that conceals internal partition placement, memory caching policies, and replica routing",
+          "locator": "Additionally, DynamoDB operates as a black box",
+          "quote_verified": true
+        },
+        {
+          "claim": "Reprocessing jobs triggered by new chunking algorithms or newer embedding models pushed high-volume writes into DynamoDB, causing noisy-neighbor contention against live user queries.",
+          "speaker": "Olimpiu Pop",
+          "type": "causal",
+          "entities": [
+            "Amazon DynamoDB",
+            "embedding models",
+            "Perplexity"
+          ],
+          "conviction": "medium",
+          "so_what": "Frequent embedding-model upgrades create recurring re-index write storms — a structural infrastructure cost of AI search that favors architectures separating write and serve paths.",
+          "quote": null,
+          "locator": "Reprocessing jobs triggered by updated chunking",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Three-tier storage architecture",
+      "insights": [
+        {
+          "claim": "Perplexity split storage into three systems: Pillar (durable state on YTsaurus over high-capacity mechanical drives with atomic transactions), Lorry (stateless consumer batching exports into partition-aligned files on Amazon S3), and CobbleDB (low-latency serving that pulls S3 batches), fully isolating hot serving nodes from the crawl write pipeline.",
+          "speaker": "Olimpiu Pop",
+          "type": "framework",
+          "entities": [
+            "Pillar",
+            "Lorry",
+            "CobbleDB",
+            "YTsaurus",
+            "Amazon S3",
+            "Perplexity"
+          ],
+          "conviction": "high",
+          "so_what": "Decoupling cheap durable storage (HDD, S3) from a small NVMe hot tier is a template other AI search/RAG operators may copy; note Perplexity still relies on AWS S3 as the batch transport.",
+          "quote": null,
+          "locator": "To resolve these constraints, Perplexity split",
+          "quote_verified": false
+        },
+        {
+          "claim": "CobbleDB is a Rust key-value store optimized solely for batched lookups, with three replicas per partition, RocksDB as the embedded engine, memory-mapped caching, and local NVMe SSDs, using RocksDB's batched MultiGet to fetch keys in one call.",
+          "speaker": "Olimpiu Pop",
+          "type": "framework",
+          "entities": [
+            "CobbleDB",
+            "Rust",
+            "RocksDB",
+            "NVMe SSD"
+          ],
+          "conviction": "high",
+          "so_what": "Reinforces demand for local NVMe flash in AI serving infrastructure and the maturity of RocksDB/Rust as building blocks for custom databases.",
+          "quote": null,
+          "locator": "CobbleDB operates as a distributed key-value store",
+          "quote_verified": false
+        },
+        {
+          "claim": "CobbleDB's stateless router prefers same-availability-zone replicas and speculatively hedges slow requests by issuing a concurrent read to an alternate replica on another node.",
+          "speaker": "Olimpiu Pop",
+          "type": "framework",
+          "entities": [
+            "CobbleDB"
+          ],
+          "conviction": "high",
+          "so_what": "Zone affinity also avoids cross-AZ transfer charges — a cost lever for any cloud-hosted high-throughput service.",
+          "quote": null,
+          "locator": "A stateless query router maps hashed page identifiers",
+          "quote_verified": false
+        },
+        {
+          "claim": "CobbleDB deliberately drops distributed transactions and synchronous consensus, letting replicas apply updates asynchronously because search serving tolerates slight replication lag.",
+          "speaker": "Olimpiu Pop",
+          "type": "contrarian",
+          "entities": [
+            "CobbleDB"
+          ],
+          "conviction": "high",
+          "so_what": "Relaxing consistency for read-heavy AI retrieval is a key source of the performance gain — the pattern generalizes only to workloads that can accept eventual consistency.",
+          "quote": "Because search serving tolerates slight replication lag, replicas apply updates asynchronously at their own rate",
+          "locator": "The database discards standard distributed transaction protocols",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Measured performance and cost results",
+      "insights": [
+        {
+          "claim": "In production, CobbleDB cut Perplexity's batch-read latency versus DynamoDB from 31.4ms to 5.60ms at the median, 56.7ms to 9.77ms at p90, and 123ms to 24.2ms at p99, while lowering overall storage expenses by at least 20%.",
+          "speaker": "Olimpiu Pop",
+          "type": "data_point",
+          "entities": [
+            "CobbleDB",
+            "Amazon DynamoDB",
+            "Perplexity"
+          ],
+          "conviction": "high",
+          "so_what": "~5x latency gains plus 20%+ cost savings quantify the prize for AI firms that in-source hot data paths from hyperscaler managed services.",
+          "quote": null,
+          "locator": "In live production measurements, CobbleDB reduced",
+          "quote_verified": false
+        },
+        {
+          "claim": "Synthetic benchmarks showed CobbleDB sustaining consistent throughput up to 500,000 requests per second with payloads up to 100KB, about 2.5x Perplexity's reported 200K+ req/s production load.",
+          "speaker": "Olimpiu Pop",
+          "type": "data_point",
+          "entities": [
+            "CobbleDB",
+            "Perplexity"
+          ],
+          "conviction": "medium",
+          "so_what": "Suggests headroom for Perplexity query growth without re-architecting; benchmark is synthetic, not production.",
+          "quote": null,
+          "locator": "Synthetic benchmarks handling payloads up to 100 kilobytes",
+          "quote_verified": false
+        },
+        {
+          "claim": "Leaving a fully managed database shifts node lifecycle management, backup verification, and partition rebalancing onto internal SREs, and forces applications to tolerate eventual consistency.",
+          "speaker": "Olimpiu Pop",
+          "type": "thesis",
+          "entities": [
+            "CobbleDB",
+            "Perplexity"
+          ],
+          "conviction": "medium",
+          "so_what": "The cost savings are partly offset by operational burden — a reason managed-DB churn is likely limited to the largest, most engineering-capable AI tenants.",
+          "quote": "The architecture incurs non-trivial trade-offs.",
+          "locator": "The architecture incurs non-trivial trade-offs",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "AI agents compress build-vs-buy",
+      "insights": [
+        {
+          "claim": "Per Perplexity CEO Aravind Srinivas, CobbleDB's 40,000 lines of Rust were built in two months by two systems engineers working with an autonomous swarm of AI coding agents that handled integration testing, build monitoring, and operational runbooks.",
+          "speaker": "Olimpiu Pop",
+          "type": "anecdote",
+          "entities": [
+            "Aravind Srinivas",
+            "Perplexity",
+            "AI coding agents",
+            "Rust"
+          ],
+          "conviction": "medium",
+          "so_what": "If AI agents make custom infrastructure this cheap to build, the build-vs-buy calculus shifts against managed cloud services and database vendors — a medium-term threat to their moat at large customers.",
+          "quote": null,
+          "locator": "Aravind Srinivas, the CEO of the company",
+          "quote_verified": false
+        },
+        {
+          "claim": "Perplexity has indicated it plans to open-source the CobbleDB codebase in an upcoming release.",
+          "speaker": "Olimpiu Pop",
+          "type": "prediction",
+          "entities": [
+            "Perplexity",
+            "CobbleDB"
+          ],
+          "conviction": "medium",
+          "so_what": "An open-source, AI-retrieval-optimized KV store could give other AI companies a ready alternative to DynamoDB for RAG serving; watch for release and adoption.",
+          "quote": null,
+          "locator": "Perplexity has indicated plans to open-source",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 13,
+  "top_entities": [
+    "Perplexity",
+    "CobbleDB",
+    "Amazon DynamoDB",
+    "AWS",
+    "RocksDB",
+    "Rust",
+    "YTsaurus",
+    "Amazon S3",
+    "Aravind Srinivas",
+    "AI coding agents",
+    "NVMe SSD"
+  ],
+  "source_meta": {
+    "author": "Olimpiu Pop",
+    "word_count": 1308,
+    "paywalled": false
+  }
+}
