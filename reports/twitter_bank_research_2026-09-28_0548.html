@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER BANK RESEARCH",
+  "collected_at": "2026-09-28T05:24:01Z",
+  "window_days": 4,
+  "input_stats": {
+    "total_tweets": 60,
+    "considered": 60,
+    "kept": 25,
+    "dropped": 35,
+    "deduped": 0
+  },
+  "summary": "Goldman Sachs research dominated the window (23 of 25 kept items, all via @MikeZaccardi's relay feed), spanning equity positioning (bullish 8,700 SPX 12-month target, narrowing market breadth, de-rated Nasdaq 100/SPX/RSP multiples), macro (year-end Fed rate seen near 4.8%, PCE inflation cooling toward ~2% by YE2027, tariff pass-through to consumer prices 'mostly done'), and cross-asset signals (bonds outperforming equities in drawdowns, muted co-movement across bonds/equities/FX during fiscal-worry episodes).\n\nApollo's Torsten Slok flagged a structural risk: AI assistants auto-sweeping idle cash out of low-yield checking accounts into 5% yields could erode banks' cheap deposit base (\"agentic bank run\"). Deutsche Bank noted that the impact of higher rates will be amplified by a market showing more volatility.\n\nPer-bank counts: Goldman 23, Apollo/Slok 1, Deutsche 1.",
+  "by_bank_counts": {
+    "Deutsche": 1,
+    "Goldman": 23,
+    "Apollo/Slok": 1
+  },
+  "banks": [
+    {
+      "bank": "Goldman",
+      "theme": "GS equity & macro catalog — bullish SPX target and cooling inflation alongside narrowing breadth and de-rated multiples",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Goldman has a bullish 8700 SPX target out 12 months\n\nNo SPX EPS disruption expected https://t.co/MQyud0IhTS",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104164235622117744",
+          "images": [
+            "https://pbs.twimg.com/media/HTN-ONRXsAAYfFU.jpg"
+          ],
+          "created_at": "2026-09-27T11:00:21.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "The 'average stock' is expected to grow earnings at about an 11% annual clip through next year GS https://t.co/qf2VK98Zw1",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104166721250542005",
+          "images": [
+            "https://pbs.twimg.com/media/HTOAe6rXQAAxXhg.png"
+          ],
+          "created_at": "2026-09-27T11:10:14.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Goldman expects SPX EPS growth to chill from 36% this year to just 11% in CY 2027 https://t.co/6qIi4cGdDM",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104169431450419691",
+          "images": [
+            "https://pbs.twimg.com/media/HTOC8oyWUAAOBTL.png"
+          ],
+          "created_at": "2026-09-27T11:21:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS US Equity Sentiment Indicator of investor positioning is not aggressive as we head into Q4 of the midterm year (which is historically very strong) https://t.co/HeQkcbr4sD",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104174464040669556",
+          "images": [
+            "https://pbs.twimg.com/media/HTOHhmhWwAAnuNC.png"
+          ],
+          "created_at": "2026-09-27T11:41:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: not just a US story.. global oil inventories are very low\n\nFrom gult to grim https://t.co/KEZERqWVGV",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104174564208992334",
+          "images": [
+            "https://pbs.twimg.com/media/HTOHnbaXUAAhDCX.png"
+          ],
+          "created_at": "2026-09-27T11:41:24.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: bond inflows remain strong YTD https://t.co/tQ9y0qTTE0",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104179499508150565",
+          "images": [
+            "https://pbs.twimg.com/media/HTOMGj9WAAAWR1u.png"
+          ],
+          "created_at": "2026-09-27T12:01:01.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "All told, bonds tend to perform better than stocks during equity drawdowns GS https://t.co/CgmxiWjJu2",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104182014383358083",
+          "images": [
+            "https://pbs.twimg.com/media/HTOOZFMXwAAOp3g.jpg"
+          ],
+          "created_at": "2026-09-27T12:11:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Q3 could print 4% US real GDP growth annualized, but it appears the broader trend is closer to 2% GS https://t.co/L60Kfqo1Zw",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104184531968246092",
+          "images": [
+            "https://pbs.twimg.com/media/HTOQrmTWcAA_h-B.jpg"
+          ],
+          "created_at": "2026-09-27T12:21:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We Estimate That, Once Diesel Storage Is Full, Each Week of a US Diesel Export Ban Would Likely Be Associated With $0.3/gallon of Upward Pressure on US Retail Gasoline Prices https://t.co/IqJn4F2zY5",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104185940319068488",
+          "images": [
+            "https://pbs.twimg.com/media/HTOR9mkW8AAgCCb.png"
+          ],
+          "created_at": "2026-09-27T12:26:36.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "PCE inflation expected to cool to about 2% by YE 2027 GS https://t.co/Awg43Kpzu8",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104187047044923903",
+          "images": [
+            "https://pbs.twimg.com/media/HTOS-BoWIAA2bNT.png"
+          ],
+          "created_at": "2026-09-27T12:31:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Year-end Fed rate now seen near 4.8% (it was 3.62% before the Fed hiked this month) GS https://t.co/a2CAjDsimP",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104189564071837767",
+          "images": [
+            "https://pbs.twimg.com/media/HTOVQhUWwAAHPJu.png"
+          ],
+          "created_at": "2026-09-27T12:41:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: When fiscal worries hit, bonds, equities, and currencies usually fall together. \n\nBut US co-movements of this kind have remained historically low compared to both its own past and those of other major economies. https://t.co/GdA7vPItfu",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104192081526669442",
+          "images": [
+            "https://pbs.twimg.com/media/HTOXjAIXMAAl2J4.jpg"
+          ],
+          "created_at": "2026-09-27T12:51:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Financial conditions have tightened recently, if you back out equities GS https://t.co/KP2EhNyL8H",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104194596758544433",
+          "images": [
+            "https://pbs.twimg.com/media/HTOZ1eoWQAA_Bz7.png"
+          ],
+          "created_at": "2026-09-27T13:01:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Stocks getting too extended from the earnings trend? GS https://t.co/Y7I4RwMy68",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104197114792128795",
+          "images": [
+            "https://pbs.twimg.com/media/HTOcIBKWAAAe8vP.png"
+          ],
+          "created_at": "2026-09-27T13:11:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS equity breadth has plunged to a century-low... but is it just healthy sector rotation?\n\nMarket breadth here is the gap between the SPX and its median stock relative to their 52-week highs. Narrow breadth means the index is much closer to its high than the typical stock. https://t.co/jfW5t8KonU",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104199630393053450",
+          "images": [
+            "https://pbs.twimg.com/media/HTOeadMXMAAlMsA.png"
+          ],
+          "created_at": "2026-09-27T13:21:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "The Nasdaq 100 has de-rated to a 23x P/E\nSPX 19x\n$RSP 15x GS https://t.co/T8hIjsjZ9U",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104202147428442499",
+          "images": [
+            "https://pbs.twimg.com/media/HTOgs7dXMAAkjzf.jpg"
+          ],
+          "created_at": "2026-09-27T13:31:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "The largest 10 SPX stocks account for 40% of the index and 37% of EPS... pretty close GS https://t.co/4YjtrvwK7p",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104204664249917735",
+          "images": [
+            "https://pbs.twimg.com/media/HTOi_dZW4AAlDuu.png"
+          ],
+          "created_at": "2026-09-27T13:41:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "S&amp;P 500 equity risk premium is tighter, but still projects better returns ahead for US large caps than Treasurys GS https://t.co/wJk8g5oNJz",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104207180350058921",
+          "images": [
+            "https://pbs.twimg.com/media/HTOlR7jXoAAFHoh.png"
+          ],
+          "created_at": "2026-09-27T13:51:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Another fresh low in S&amp;P 500 realized average stock correlation GS https://t.co/oRAmeCA5xw",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104209696533991612",
+          "images": [
+            "https://pbs.twimg.com/media/HTOnkZCXkAAcTZy.png"
+          ],
+          "created_at": "2026-09-27T14:01:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Whopping 45% Nasdaq 100 EPS growth expected this year\n\nbut 50% for the Russell 2000 next year GS https://t.co/k1PwDoEzEy",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104214729728115191",
+          "images": [
+            "https://pbs.twimg.com/media/HTOsJWyXkAAChUF.png"
+          ],
+          "created_at": "2026-09-27T14:21:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Momentum has come storming back GS $MTUM https://t.co/D4cHTmvgBx",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104224796057739618",
+          "images": [
+            "https://pbs.twimg.com/media/HTO1TSnWoAAmBqg.png"
+          ],
+          "created_at": "2026-09-27T15:01:00.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: The Pass-through of Tariffs to Consumer Prices Is Mostly Done https://t.co/U5ezn6Akuy",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104355666588582220",
+          "images": [
+            "https://pbs.twimg.com/media/HTQsU-pWMAAjpJ4.png"
+          ],
+          "created_at": "2026-09-27T23:41:02.000Z"
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We preliminarily forecast +0.24% for monthly core CPI in September and +0.22% in October\n\nThereafter, we expect cooler core CPI readings (November: +0.12%, December: +0.11%) https://t.co/ecARuA0J4x",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104356265266741585",
+          "images": [
+            "https://pbs.twimg.com/media/HTQs30gXAAAqT6Z.png"
+          ],
+          "created_at": "2026-09-27T23:43:25.000Z"
+        }
+      ]
+    },
+    {
+      "bank": "Apollo/Slok",
+      "theme": "Torsten Slok — AI agents auto-sweeping idle cash could erode banks' cheap deposit base",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Is an Agentic Bank Run Coming?\n\nAI assistants are about to auto-sweep cash from 0.1% checking accounts into 5% yields. If everyone adopts them, banks lose their cheap deposit base... risking a systemic crunch.\n\nTorsten at Apollo .. I use $BOXX https://t.co/TEIi6dnAPJ",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104171947927941182",
+          "images": [
+            "https://pbs.twimg.com/media/HTOFPICWcAA6emN.png"
+          ],
+          "created_at": "2026-09-27T11:31:00.000Z"
+        }
+      ]
+    },
+    {
+      "bank": "Deutsche",
+      "theme": "DB rates outlook — higher rates amplified by rising market volatility",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "DB: The impact of higher rates will be amplified by a market that shows more volatility https://t.co/6gwNI9teIP",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2103892608036601936",
+          "images": [
+            "https://pbs.twimg.com/media/HTKHLYXWsAAZQEB.jpg"
+          ],
+          "created_at": "2026-09-26T17:01:00.000Z"
+        }
+      ]
+    }
+  ],
+  "date": "2026-09-28 05:24:01 UTC — Bank Research (4d window)",
+  "topics": [
+    {
+      "topic": "Goldman (23) — GS equity & macro catalog — bullish SPX target and cooling inflation alongside narrowing breadth and de-rated multiples",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T11:00:21.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104164235622117744",
+          "text": "Goldman has a bullish 8700 SPX target out 12 months\n\nNo SPX EPS disruption expected https://t.co/MQyud0IhTS",
+          "images": [
+            "https://pbs.twimg.com/media/HTN-ONRXsAAYfFU.jpg"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T11:10:14.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104166721250542005",
+          "text": "The 'average stock' is expected to grow earnings at about an 11% annual clip through next year GS https://t.co/qf2VK98Zw1",
+          "images": [
+            "https://pbs.twimg.com/media/HTOAe6rXQAAxXhg.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T11:21:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104169431450419691",
+          "text": "Goldman expects SPX EPS growth to chill from 36% this year to just 11% in CY 2027 https://t.co/6qIi4cGdDM",
+          "images": [
+            "https://pbs.twimg.com/media/HTOC8oyWUAAOBTL.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T11:41:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104174464040669556",
+          "text": "GS US Equity Sentiment Indicator of investor positioning is not aggressive as we head into Q4 of the midterm year (which is historically very strong) https://t.co/HeQkcbr4sD",
+          "images": [
+            "https://pbs.twimg.com/media/HTOHhmhWwAAnuNC.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T11:41:24.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104174564208992334",
+          "text": "GS: not just a US story.. global oil inventories are very low\n\nFrom gult to grim https://t.co/KEZERqWVGV",
+          "images": [
+            "https://pbs.twimg.com/media/HTOHnbaXUAAhDCX.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T12:01:01.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104179499508150565",
+          "text": "GS: bond inflows remain strong YTD https://t.co/tQ9y0qTTE0",
+          "images": [
+            "https://pbs.twimg.com/media/HTOMGj9WAAAWR1u.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T12:11:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104182014383358083",
+          "text": "All told, bonds tend to perform better than stocks during equity drawdowns GS https://t.co/CgmxiWjJu2",
+          "images": [
+            "https://pbs.twimg.com/media/HTOOZFMXwAAOp3g.jpg"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T12:21:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104184531968246092",
+          "text": "Q3 could print 4% US real GDP growth annualized, but it appears the broader trend is closer to 2% GS https://t.co/L60Kfqo1Zw",
+          "images": [
+            "https://pbs.twimg.com/media/HTOQrmTWcAA_h-B.jpg"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T12:26:36.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104185940319068488",
+          "text": "GS: We Estimate That, Once Diesel Storage Is Full, Each Week of a US Diesel Export Ban Would Likely Be Associated With $0.3/gallon of Upward Pressure on US Retail Gasoline Prices https://t.co/IqJn4F2zY5",
+          "images": [
+            "https://pbs.twimg.com/media/HTOR9mkW8AAgCCb.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T12:31:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104187047044923903",
+          "text": "PCE inflation expected to cool to about 2% by YE 2027 GS https://t.co/Awg43Kpzu8",
+          "images": [
+            "https://pbs.twimg.com/media/HTOS-BoWIAA2bNT.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T12:41:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104189564071837767",
+          "text": "Year-end Fed rate now seen near 4.8% (it was 3.62% before the Fed hiked this month) GS https://t.co/a2CAjDsimP",
+          "images": [
+            "https://pbs.twimg.com/media/HTOVQhUWwAAHPJu.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T12:51:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104192081526669442",
+          "text": "GS: When fiscal worries hit, bonds, equities, and currencies usually fall together. \n\nBut US co-movements of this kind have remained historically low compared to both its own past and those of other major economies. https://t.co/GdA7vPItfu",
+          "images": [
+            "https://pbs.twimg.com/media/HTOXjAIXMAAl2J4.jpg"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T13:01:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104194596758544433",
+          "text": "Financial conditions have tightened recently, if you back out equities GS https://t.co/KP2EhNyL8H",
+          "images": [
+            "https://pbs.twimg.com/media/HTOZ1eoWQAA_Bz7.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T13:11:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104197114792128795",
+          "text": "Stocks getting too extended from the earnings trend? GS https://t.co/Y7I4RwMy68",
+          "images": [
+            "https://pbs.twimg.com/media/HTOcIBKWAAAe8vP.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T13:21:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104199630393053450",
+          "text": "GS equity breadth has plunged to a century-low... but is it just healthy sector rotation?\n\nMarket breadth here is the gap between the SPX and its median stock relative to their 52-week highs. Narrow breadth means the index is much closer to its high than the typical stock. https://t.co/jfW5t8KonU",
+          "images": [
+            "https://pbs.twimg.com/media/HTOeadMXMAAlMsA.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T13:31:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104202147428442499",
+          "text": "The Nasdaq 100 has de-rated to a 23x P/E\nSPX 19x\n$RSP 15x GS https://t.co/T8hIjsjZ9U",
+          "images": [
+            "https://pbs.twimg.com/media/HTOgs7dXMAAkjzf.jpg"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T13:41:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104204664249917735",
+          "text": "The largest 10 SPX stocks account for 40% of the index and 37% of EPS... pretty close GS https://t.co/4YjtrvwK7p",
+          "images": [
+            "https://pbs.twimg.com/media/HTOi_dZW4AAlDuu.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T13:51:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104207180350058921",
+          "text": "S&amp;P 500 equity risk premium is tighter, but still projects better returns ahead for US large caps than Treasurys GS https://t.co/wJk8g5oNJz",
+          "images": [
+            "https://pbs.twimg.com/media/HTOlR7jXoAAFHoh.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T14:01:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104209696533991612",
+          "text": "Another fresh low in S&amp;P 500 realized average stock correlation GS https://t.co/oRAmeCA5xw",
+          "images": [
+            "https://pbs.twimg.com/media/HTOnkZCXkAAcTZy.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T14:21:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104214729728115191",
+          "text": "Whopping 45% Nasdaq 100 EPS growth expected this year\n\nbut 50% for the Russell 2000 next year GS https://t.co/k1PwDoEzEy",
+          "images": [
+            "https://pbs.twimg.com/media/HTOsJWyXkAAChUF.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T15:01:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104224796057739618",
+          "text": "Momentum has come storming back GS $MTUM https://t.co/D4cHTmvgBx",
+          "images": [
+            "https://pbs.twimg.com/media/HTO1TSnWoAAmBqg.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T23:41:02.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104355666588582220",
+          "text": "GS: The Pass-through of Tariffs to Consumer Prices Is Mostly Done https://t.co/U5ezn6Akuy",
+          "images": [
+            "https://pbs.twimg.com/media/HTQsU-pWMAAjpJ4.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T23:43:25.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104356265266741585",
+          "text": "GS: We preliminarily forecast +0.24% for monthly core CPI in September and +0.22% in October\n\nThereafter, we expect cooler core CPI readings (November: +0.12%, December: +0.11%) https://t.co/ecARuA0J4x",
+          "images": [
+            "https://pbs.twimg.com/media/HTQs30gXAAAqT6Z.png"
+          ],
+          "data_points": [
+            "Goldman"
+          ]
+        }
+      ]
+    },
+    {
+      "topic": "Apollo/Slok (1) — Torsten Slok — AI agents auto-sweeping idle cash could erode banks' cheap deposit base",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-27T11:31:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2104171947927941182",
+          "text": "Is an Agentic Bank Run Coming?\n\nAI assistants are about to auto-sweep cash from 0.1% checking accounts into 5% yields. If everyone adopts them, banks lose their cheap deposit base... risking a systemic crunch.\n\nTorsten at Apollo .. I use $BOXX https://t.co/TEIi6dnAPJ",
+          "images": [
+            "https://pbs.twimg.com/media/HTOFPICWcAA6emN.png"
+          ],
+          "data_points": [
+            "Apollo/Slok"
+          ]
+        }
+      ]
+    },
+    {
+      "topic": "Deutsche (1) — DB rates outlook — higher rates amplified by rising market volatility",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "created_at": "2026-09-26T17:01:00.000Z",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2103892608036601936",
+          "text": "DB: The impact of higher rates will be amplified by a market that shows more volatility https://t.co/6gwNI9teIP",
+          "images": [
+            "https://pbs.twimg.com/media/HTKHLYXWsAAZQEB.jpg"
+          ],
+          "data_points": [
+            "Deutsche"
+          ]
+        }
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
