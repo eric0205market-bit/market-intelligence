@@ -1,0 +1,1456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER DATA INTELLIGENCE",
+  "collected_at": "2026-06-16T05:20:51Z",
+  "date": "2026-06-16 05:20 UTC",
+  "input_stats": {
+    "total_tweets": 96,
+    "unique_authors": 23,
+    "tweets_with_images": 48,
+    "after_filter": 79
+  },
+  "summary": "79 tweets processed across 23 data accounts covering major macro events on June 15-16. **BOJ hiked rates to 1.00%** (31-year high) and announced bond-buying tapering from April 2027 — the dominant overnight story. **SpaceX $SPCX** closed +17% day-1 at $197, surged to $230 AH, and crossed $3 trillion market cap overnight — now above both Amazon and Microsoft by market cap on just $19B in revenues (P/S 125x). China printed across-the-board misses: retail sales -0.6% y/y vs 0% expected, fixed investment -4.1% vs -2% expected. Goldman cut Brent to $80 Q4 2026 on Hormuz reopening. Semiconductor Index gained +230% in 14 months — only other comparable was the 1998-2000 dot-com run. Key numbers: VIX spiked to 16 on BOJ news, vol-control funds sold $5.7B today / $11.1B over 5 sessions, US equity allocations ~60% of financial assets (near all-time record), Smart Money confidence 0.56 / Dumb Money 0.61.",
+  "topics": [
+    {
+      "topic": "Japan / BOJ Policy",
+      "items": [
+        {
+          "author": "C_Barraud",
+          "description": "BOJ raises rate to 31-year high (1.00%), plans to stop paring bond buys. Bond buying set at 2T yen/month from April 2027 (tapering). Bloomberg article with rate-path chart.",
+          "tweet_url": "https://x.com/C_Barraud/status/2066746335097733487",
+          "images": [
+            "https://pbs.twimg.com/media/HK6OjbzXoAAWe-U.jpg"
+          ],
+          "data_points": [
+            "BOJ rate 1.00%",
+            "31-year high",
+            "Bond buys 2T yen/month from Apr 2027",
+            "Tapering plan announced"
+          ],
+          "created_at": "2026-06-16T04:54:59.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "Japan raises rates to 1.0%. Chart showing BOJ rate path and market reaction.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2066723890504609919",
+          "images": [
+            "https://pbs.twimg.com/media/HK56bK4XAAA7cvJ.jpg"
+          ],
+          "data_points": [
+            "BOJ rate 1.0%"
+          ],
+          "created_at": "2026-06-16T03:25:48.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Flash headline: BOJ raises overnight call rate to 1.00%.",
+          "tweet_url": "https://x.com/zerohedge/status/2066722434628157484",
+          "images": [],
+          "data_points": [
+            "BOJ overnight call rate 1.00%"
+          ],
+          "created_at": "2026-06-16T03:20:00.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "BOJ to buy bonds at monthly pace of 2 trillion yen from April 2027 — tapering framework announced alongside the rate hike.",
+          "tweet_url": "https://x.com/zerohedge/status/2066724868247220630",
+          "images": [],
+          "data_points": [
+            "BOJ bond purchase pace 2T yen/month",
+            "Starting April 2027"
+          ],
+          "created_at": "2026-06-16T03:29:41.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "BOJ to keep raising rates in response to economy and prices — hawkish forward guidance.",
+          "tweet_url": "https://x.com/zerohedge/status/2066722601385218143",
+          "images": [],
+          "data_points": [
+            "BOJ hawkish bias confirmed"
+          ],
+          "created_at": "2026-06-16T03:20:40.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "BOJ officially hikes interest rates to the highest level since 1995 amid rising inflation.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2066724018166607935",
+          "images": [],
+          "data_points": [
+            "BOJ rate highest since 1995"
+          ],
+          "created_at": "2026-06-16T03:26:18.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Japan is reportedly set to hike interest rates to their highest level since 1995.",
+          "tweet_url": "https://x.com/Polymarket/status/2066726206741864456",
+          "images": [],
+          "data_points": [
+            "Japan rate highest since 1995"
+          ],
+          "created_at": "2026-06-16T03:35:00.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Commentary post-BOJ hike: 'And now we wait for the yentervention' — flagging JPY strengthening risk and potential BoJ intervention dynamics.",
+          "tweet_url": "https://x.com/zerohedge/status/2066722538516779216",
+          "images": [],
+          "data_points": [
+            "Yentervention risk flagged"
+          ],
+          "created_at": "2026-06-16T03:20:25.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "SpaceX IPO ($SPCX) — Price Data",
+      "items": [
+        {
+          "author": "Tyler_Did_It",
+          "description": "SPCX +17% on day 1 closing at $197; IPO buyers up 45%. After-hours surged to $217, wicked to $230. Low float / high FDV dynamic. Charts of day-1 close and AH levels.",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2066641125037740135",
+          "images": [
+            "https://pbs.twimg.com/media/HK4vDpPWwAEsxNm.jpg",
+            "https://pbs.twimg.com/media/HK5azQEXkAAqH1p.jpg"
+          ],
+          "data_points": [
+            "SPCX close $197 (+17% day 1)",
+            "IPO buyers +45%",
+            "IPO price $135",
+            "AH spike to $230"
+          ],
+          "created_at": "2026-06-15T21:56:55.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "SPCX worth $2.5T, 6th largest public company globally — just 5% away from surpassing Amazon. Chart of company rankings.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2066619838806589929",
+          "images": [
+            "https://pbs.twimg.com/media/HK4byl6W8AEA3Vn.jpg"
+          ],
+          "data_points": [
+            "SPCX $2.5T market cap",
+            "6th largest globally",
+            "5% from surpassing Amazon"
+          ],
+          "created_at": "2026-06-15T20:32:20.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "SPCX surges +9% in overnight trading, hits $2.7T, surpasses Amazon to become 5th largest company globally. Chart.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2066684276909781267",
+          "images": [
+            "https://pbs.twimg.com/media/HK5WZYIWMAATCYR.jpg"
+          ],
+          "data_points": [
+            "SPCX $2.7T (+9% overnight)",
+            "5th largest globally (passed Amazon)"
+          ],
+          "created_at": "2026-06-16T00:48:23.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "SPCX above $220/share overnight; $2.9T market cap approaching Microsoft. +63% from IPO $135. SpaceX+Tesla combined $4.4T. Record IPO raise of $85.7B after greenshoe exercised.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2066688275754946810",
+          "images": [],
+          "data_points": [
+            "SPCX $220+/share",
+            "SPCX market cap $2.9T",
+            "+63% from IPO price $135",
+            "SpaceX+Tesla combined $4.4T",
+            "Record IPO raise $85.7B (greenshoe)"
+          ],
+          "created_at": "2026-06-16T01:04:16.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "Musk net worth above $1.3T on SPCX overnight move — worth more than market cap of all but 12 public companies. SpaceX+Tesla combined now larger than Apple by market cap.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2066695001916965195",
+          "images": [],
+          "data_points": [
+            "Musk net worth $1.3T+",
+            "SpaceX+Tesla > Apple by market cap"
+          ],
+          "created_at": "2026-06-16T01:31:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "SpaceX soars above $3,000,000,000,000 market cap in after-hours trading.",
+          "tweet_url": "https://x.com/Polymarket/status/2066723518914482510",
+          "images": [],
+          "data_points": [
+            "SPCX $3T+ market cap in AH"
+          ],
+          "created_at": "2026-06-16T03:24:19.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "SpaceX allocated $600M of its IPO to European retail investors.",
+          "tweet_url": "https://x.com/Polymarket/status/2066739292605734917",
+          "images": [],
+          "data_points": [
+            "$600M SPCX IPO allocated to European retail"
+          ],
+          "created_at": "2026-06-16T04:27:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "SPCX options begin trading tomorrow (Jun 16). Polymarket gives 22% chance SPCX reaches $3T valuation this month.",
+          "tweet_url": "https://x.com/Polymarket/status/2066714782393069858",
+          "images": [],
+          "data_points": [
+            "SPCX options launch Jun 16",
+            "22% Polymarket probability of $3T valuation this month"
+          ],
+          "created_at": "2026-06-16T02:49:36.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "$1T+ Club update: SPCX $2.52T after +20% day, ~$130B from Amazon. NVDA back above $5T. Chart of all trillion-dollar companies.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2066632542812262493",
+          "images": [
+            "https://pbs.twimg.com/media/HK4m8eEW0AA-xYz.png"
+          ],
+          "data_points": [
+            "SPCX $2.52T (+20% day)",
+            "NVDA >$5T",
+            "Gap to Amazon ~$130B"
+          ],
+          "created_at": "2026-06-15T21:22:49.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "SPCX at $200/share = same market cap as Amazon.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2066614447112663523",
+          "images": [],
+          "data_points": [
+            "SPCX $200 = Amazon market cap equivalence"
+          ],
+          "created_at": "2026-06-15T20:10:54.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "SpaceX crosses $3T market cap vs Amazon $2.65T and Microsoft $2.97T. SpaceX: $19B in sales, -$9B net income. MSFT: $318B sales, $125B NI. AMZN: $743B sales, $91B NI.",
+          "tweet_url": "https://x.com/charliebilello/status/2066696202280718592",
+          "images": [],
+          "data_points": [
+            "SpaceX market cap $3T",
+            "AMZN market cap $2.65T",
+            "MSFT market cap $2.97T",
+            "SpaceX sales $19B (net income -$9B)",
+            "MSFT sales $318B",
+            "AMZN sales $743B"
+          ],
+          "created_at": "2026-06-16T01:35:46.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "If SpaceX were in the S&P 500: 6th largest by market cap but 198th by revenue. Investors betting on exponential growth. Chart showing market cap vs revenue rank.",
+          "tweet_url": "https://x.com/charliebilello/status/2066571882414088357",
+          "images": [
+            "https://pbs.twimg.com/media/HK3vKiOWAAAw0cv.jpg"
+          ],
+          "data_points": [
+            "SpaceX: 6th S&P 500 rank by market cap",
+            "SpaceX: 198th S&P 500 rank by revenue"
+          ],
+          "created_at": "2026-06-15T17:21:46.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "P/S ratio table for major tech/growth names (TTM sales): SpaceX 125, Palantir 66, Broadcom 26, AMD 24, Micron 21, NVDA 20, AMAT 16, Tesla 15, Intel 11, Google 11, Apple 10, MSFT 9, Oracle 8, Cisco 8, Netflix 7, Meta 7, Amazon 3.6, S&P 500 3.6.",
+          "tweet_url": "https://x.com/charliebilello/status/2066602003560534097",
+          "images": [],
+          "data_points": [
+            "SpaceX P/S 125x",
+            "Palantir P/S 66x",
+            "Broadcom P/S 26x",
+            "NVDA P/S 20x",
+            "Micron P/S 21x",
+            "AMAT P/S 16x",
+            "S&P 500 P/S 3.6x"
+          ],
+          "created_at": "2026-06-15T19:21:27.000Z"
+        },
+        {
+          "author": "EricBalchunas",
+          "description": "Corgi filed for a MANGOS ETF — Meta, Anthropic, Nvidia, Google, OpenAI, SpaceX. Image shows the ETF filing.",
+          "tweet_url": "https://x.com/EricBalchunas/status/2066721146859331662",
+          "images": [
+            "https://pbs.twimg.com/media/HK537dAWsAAK01p.jpg"
+          ],
+          "data_points": [
+            "MANGOS ETF filed by Corgi",
+            "Components: Meta, Anthropic, Nvidia, Google, OpenAI, SpaceX"
+          ],
+          "created_at": "2026-06-16T03:14:53.000Z"
+        },
+        {
+          "author": "ARKInvest",
+          "description": "ARK: SpaceX in early innings of value creation; vertically integrated compute model at 100 gigawatts per year makes opportunity 'almost impossible to size.'",
+          "tweet_url": "https://x.com/ARKInvest/status/2066633448761008253",
+          "images": [],
+          "data_points": [
+            "ARK: SpaceX compute model 100GW/year target"
+          ],
+          "created_at": "2026-06-15T21:26:25.000Z"
+        },
+        {
+          "author": "WarrenPies",
+          "description": "Pushback on SpaceX revenue assumptions: questions where the 20% annual revenue growth projection comes from.",
+          "tweet_url": "https://x.com/WarrenPies/status/2066636397608354273",
+          "images": [],
+          "data_points": [
+            "20% annual revenue growth questioned by analyst"
+          ],
+          "created_at": "2026-06-15T21:38:08.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "China Economic Data",
+      "items": [
+        {
+          "author": "ShanghaiMacro",
+          "description": "China domestic demand recession confirmed: May retail sales -0.6% y/y (est 0%), fixed investment -4.1% (est -2%). Economy now carried entirely by exports, >50% driven by US AI buildout. Rising odds of significant policy intervention. Chart.",
+          "tweet_url": "https://x.com/ShanghaiMacro/status/2066703805455204664",
+          "images": [
+            "https://pbs.twimg.com/media/HK5oJmFbwAAXUjz.jpg"
+          ],
+          "data_points": [
+            "China May retail sales -0.6% y/y (est 0%)",
+            "China fixed investment -4.1% y/y (est -2%)",
+            ">50% of exports AI-buildout driven",
+            "Policy intervention odds rising"
+          ],
+          "created_at": "2026-06-16T02:05:59.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "China May data flash: retail sales -0.6% y/y (est -0.2%); Jan-May fixed investment -4.1% y/y (est -2.3%); May industrial output +4.5% y/y (est +4.4%). Oil imports collapsed.",
+          "tweet_url": "https://x.com/zerohedge/status/2066702433305190897",
+          "images": [],
+          "data_points": [
+            "China May retail -0.6% y/y (est -0.2%)",
+            "Jan-May fixed investment -4.1% y/y (est -2.3%)",
+            "May industrial output +4.5% y/y (est +4.4%)",
+            "China oil imports collapsed"
+          ],
+          "created_at": "2026-06-16T02:00:32.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Chinese economy stalls: first consumer spending drop since COVID, investment in big slump. Bloomberg article with chart.",
+          "tweet_url": "https://x.com/C_Barraud/status/2066748288292856133",
+          "images": [
+            "https://pbs.twimg.com/media/HK6QhIqWYAAMeS-.png"
+          ],
+          "data_points": [
+            "First China consumer spending drop since COVID"
+          ],
+          "created_at": "2026-06-16T05:02:44.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "China home prices fall at faster pace in setback to property revival. Bloomberg chart.",
+          "tweet_url": "https://x.com/C_Barraud/status/2066748609115087244",
+          "images": [
+            "https://pbs.twimg.com/media/HK6Q3eDW8AEV7kR.png"
+          ],
+          "data_points": [
+            "China home prices declining at accelerating pace"
+          ],
+          "created_at": "2026-06-16T05:04:01.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Chinese bonds drew foreign funds in May after a full year of outflows. Reversal of bond outflow trend. Bloomberg chart.",
+          "tweet_url": "https://x.com/C_Barraud/status/2066746895989436620",
+          "images": [
+            "https://pbs.twimg.com/media/HK6PPOhW0AAAf8q.png"
+          ],
+          "data_points": [
+            "China bonds: first foreign inflows after 1 year outflows (May 2026)"
+          ],
+          "created_at": "2026-06-16T04:57:12.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "China's top legislature to hold meeting June 23-26 (Xinhua) — potential policy response to economic slump.",
+          "tweet_url": "https://x.com/C_Barraud/status/2066751598349394171",
+          "images": [],
+          "data_points": [
+            "China NPC meeting June 23-26"
+          ],
+          "created_at": "2026-06-16T05:15:54.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Market Data (Equities & Volatility)",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "S&P 500 closes +1.7% on US-Iran deal announcement, adding $1.2T in market cap. Chart shows index chart and setup from June 10 (sub-7,300 to 7,500+).",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2066611787978441098",
+          "images": [
+            "https://pbs.twimg.com/media/HK4PmYWWsAEaX_m.jpg",
+            "https://pbs.twimg.com/media/HK4VJrAWYAA1c1D.jpg"
+          ],
+          "data_points": [
+            "S&P 500 +1.7%",
+            "+$1.2T market cap day",
+            "S&P 500 above 7,500 (from sub-7,300 on June 10)"
+          ],
+          "created_at": "2026-06-15T20:00:20.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "Dow closes at 16th all-time high of 2026. Now 14 straight years with at least 1 ATH — 2 years beyond the 1989-2000 run of 12 consecutive years. Chart.",
+          "tweet_url": "https://x.com/charliebilello/status/2066678426577121370",
+          "images": [
+            "https://pbs.twimg.com/media/HK5QdiRXgAALlZH.png"
+          ],
+          "data_points": [
+            "Dow 16th ATH of 2026",
+            "14 consecutive years with ≥1 ATH (record)"
+          ],
+          "created_at": "2026-06-16T00:25:08.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "S&P 500 cap-weighted ($SPY +1.7%) significantly outperforming equal-weight ($RSP +0.6%) — breadth divergence today.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2066606880126803969",
+          "images": [],
+          "data_points": [
+            "SPY +1.7%",
+            "RSP +0.6%",
+            "Breadth divergence: 1.1ppt cap vs equal-weight gap"
+          ],
+          "created_at": "2026-06-15T19:40:50.000Z"
+        },
+        {
+          "author": "MichaelKantro",
+          "description": "S&P 500 would be +5% more YTD if P/Es weren't compressed. Oil spike drove rate rise which compressed multiples. Lower rates most likely catalyst for P/E expansion. Chart.",
+          "tweet_url": "https://x.com/MichaelKantro/status/2066627047191941333",
+          "images": [
+            "https://pbs.twimg.com/media/HK4iWNyXwAMl-oq.jpg"
+          ],
+          "data_points": [
+            "P/E compression cost S&P 500 ~5% YTD",
+            "Oil spike → higher rates → P/E compression"
+          ],
+          "created_at": "2026-06-15T21:00:58.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "SPX 1-month realized vol crossed above 3-month — the trigger vol-control funds watch. Forced $5.7B mechanical equity selling today, $11.1B over 5 sessions. Vol-control allocation down to $188.3B. Chart.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2066601892092752216",
+          "images": [
+            "https://pbs.twimg.com/media/HK4LeDdWAAAi01z.jpg"
+          ],
+          "data_points": [
+            "1m realized vol > 3m (trigger hit)",
+            "Vol-control sold $5.7B today",
+            "Vol-control sold $11.1B over 5 sessions",
+            "Vol-control equity allocation $188.3B"
+          ],
+          "created_at": "2026-06-15T19:21:01.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "VIX spiked to 16 on BOJ rate hike news. Chart of intraday VIX spike.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2066736190456283388",
+          "images": [
+            "https://pbs.twimg.com/media/HK6FnLuXIAA6PJO.jpg"
+          ],
+          "data_points": [
+            "VIX spike to 16 on BOJ news"
+          ],
+          "created_at": "2026-06-16T04:14:40.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "SPX gapped up and tagged the weekly expected move posted earlier. Chart.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2066565375572029517",
+          "images": [
+            "https://pbs.twimg.com/media/HK3oZpJWgAAnuGI.jpg"
+          ],
+          "data_points": [
+            "SPX tagged weekly expected move to the upside"
+          ],
+          "created_at": "2026-06-15T16:55:55.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "Chart shared with note 'Great looking chart' — technical/breadth chart. See image.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2066570199101272307",
+          "images": [
+            "https://pbs.twimg.com/media/HK3upRJXEAAupp3.jpg"
+          ],
+          "data_points": [],
+          "created_at": "2026-06-15T17:15:05.000Z"
+        },
+        {
+          "author": "RyanDetrick",
+          "description": "S&P 500 is up 25% since exactly one year ago. Chart.",
+          "tweet_url": "https://x.com/RyanDetrick/status/2066708397718650882",
+          "images": [
+            "https://pbs.twimg.com/media/HK5sVa6XUAAYkrx.jpg"
+          ],
+          "data_points": [
+            "S&P 500 +25% over prior 12 months"
+          ],
+          "created_at": "2026-06-16T02:24:14.000Z"
+        },
+        {
+          "author": "RealVision",
+          "description": "Bubble comparison chart: At dot-com peak, 6.7% of stocks doubled in a quarter; meme mania: 5.9%; currently: 1.1%. Characterized as a 'repricing, not a bubble yet.' Chart.",
+          "tweet_url": "https://x.com/RealVision/status/2066629816585990409",
+          "images": [
+            "https://pbs.twimg.com/media/HK4jFAXWQAAeLtm.jpg"
+          ],
+          "data_points": [
+            "Dot-com: 6.7% of stocks doubled in a quarter",
+            "Meme mania peak: 5.9%",
+            "Current: 1.1%"
+          ],
+          "created_at": "2026-06-15T21:11:59.000Z"
+        },
+        {
+          "author": "RealVision",
+          "description": "RV Pulse dashboard screenshot — multi-asset market overview chart.",
+          "tweet_url": "https://x.com/RealVision/status/2066614292179247496",
+          "images": [
+            "https://pbs.twimg.com/media/HK4UdfgWsAAeMGG.jpg"
+          ],
+          "data_points": [],
+          "created_at": "2026-06-15T20:10:17.000Z"
+        },
+        {
+          "author": "RyanDetrick",
+          "description": "S&P 500 is +10% higher since the Strait of Hormuz closed nearly 4 months ago. Historically, stocks do well during wars.",
+          "tweet_url": "https://x.com/RyanDetrick/status/2066724346085740709",
+          "images": [],
+          "data_points": [
+            "S&P 500 +10% since Hormuz closure (4 months)"
+          ],
+          "created_at": "2026-06-16T03:27:36.000Z"
+        },
+        {
+          "author": "RyanDetrick",
+          "description": "Hindenburg Omen is historically not bearish. Best years in recent memory had many HOs: 2013, 2014, 2017, 2024, 2025.",
+          "tweet_url": "https://x.com/RyanDetrick/status/2066703015801684017",
+          "images": [],
+          "data_points": [
+            "Hindenburg Omen bullish years: 2013, 2014, 2017, 2024, 2025"
+          ],
+          "created_at": "2026-06-16T02:02:51.000Z"
+        },
+        {
+          "author": "themarketear",
+          "description": "Semis exploding, AI remains crowded, 1997 analog refuses to break. The bull market nobody trusts. Link to analysis.",
+          "tweet_url": "https://x.com/themarketear/status/2066633816282693764",
+          "images": [],
+          "data_points": [
+            "1997 analog intact",
+            "AI remains crowded"
+          ],
+          "created_at": "2026-06-15T21:27:52.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Oil, Energy & Geopolitics",
+      "items": [
+        {
+          "author": "zerohedge",
+          "description": "Goldman cuts oil price forecast (2nd time in a week): Q4 2026 Brent $80 (from $90); 2027 avg $75 (from $80). Assumes Persian Gulf exports normalize to pre-war levels by end of July. Chart.",
+          "tweet_url": "https://x.com/zerohedge/status/2066713396158791727",
+          "images": [
+            "https://pbs.twimg.com/media/HK5w36HW0AAPDXU.png"
+          ],
+          "data_points": [
+            "Goldman Brent Q4 2026 target $80 (was $90)",
+            "Goldman Brent 2027 avg target $75 (was $80)",
+            "Hormuz reopening: end of July assumed"
+          ],
+          "created_at": "2026-06-16T02:44:05.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "US-Iran deal stirs inflation fears after China kept oil in check. If Chinese oil demand recovers with Hormuz open, poses inflation risk. Bloomberg article with chart.",
+          "tweet_url": "https://x.com/C_Barraud/status/2066752626465640867",
+          "images": [
+            "https://pbs.twimg.com/media/HK6UekOWkAAQOis.png"
+          ],
+          "data_points": [
+            "China oil demand recovery = inflation risk post-deal"
+          ],
+          "created_at": "2026-06-16T05:19:59.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "US Strategic Petroleum Reserve hits 43-year low as Trump draws reserves to tame gas prices. Bloomberg article with SPR level chart.",
+          "tweet_url": "https://x.com/C_Barraud/status/2066750075800281461",
+          "images": [
+            "https://pbs.twimg.com/media/HK6SMSOWsAAft_U.png"
+          ],
+          "data_points": [
+            "US SPR at 43-year low"
+          ],
+          "created_at": "2026-06-16T05:09:51.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Macron brushes off Trump's 100% tariff threat on French wine at G7 meeting. Bloomberg.",
+          "tweet_url": "https://x.com/C_Barraud/status/2066751990076453283",
+          "images": [],
+          "data_points": [
+            "Trump 100% wine tariff threat vs France",
+            "Macron G7 rebuff"
+          ],
+          "created_at": "2026-06-16T05:17:27.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "North Korea claims industrial output exceeded targets, with state media touting 'miracles.'",
+          "tweet_url": "https://x.com/Polymarket/status/2066742312668197258",
+          "images": [],
+          "data_points": [
+            "North Korea: industrial output beat targets claim"
+          ],
+          "created_at": "2026-06-16T04:39:00.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Geopolitical analysis: 'Who Won The Third Gulf War?' — assessing outcomes post US-Iran conflict. Article link.",
+          "tweet_url": "https://x.com/zerohedge/status/2066723719620235572",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-06-16T03:25:07.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "US Fiscal & Consumer Sentiment",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "US deficit $293B in May (-7% YoY); 8-month FY2026 deficit $1.25T (3rd highest in history). Net interest hits record $723B (+8% YoY), 2nd-largest outlay after Social Security. Chart.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2066564367639097812",
+          "images": [
+            "https://pbs.twimg.com/media/HK3pVw3W0AAV3qt.jpg"
+          ],
+          "data_points": [
+            "May deficit $293B (-7% YoY)",
+            "8-month FY2026 deficit $1.25T (3rd highest ever)",
+            "Net interest $723B record (+8% YoY)",
+            "Net interest 2nd largest after Social Security"
+          ],
+          "created_at": "2026-06-15T16:51:54.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "38% of Americans see inflation as greater risk than unemployment (highest since March 2025), +13pts in 2 months. Only 5% see unemployment as higher risk (lowest in 2+ years). Gap 33ppts, widest since Feb 2025. Chart.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2066649144597299463",
+          "images": [
+            "https://pbs.twimg.com/media/HK3OT9GWAAEab0K.jpg"
+          ],
+          "data_points": [
+            "38% see inflation > unemployment risk (highest since March 2025)",
+            "+13ppts in 2 months",
+            "5% see unemployment > inflation risk (lowest in 2+ years)",
+            "Inflation-unemployment gap 33ppts (widest since Feb 2025)"
+          ],
+          "created_at": "2026-06-15T22:28:47.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "Global capital markets raised record $4.7T in equity, debt, and loans YTD. 3rd consecutive annual increase; $500B above 2021 post-pandemic boom. AI spending driving surge. Chart.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2066589483185709376",
+          "images": [
+            "https://pbs.twimg.com/media/HK3OeTsWAAAz6BL.jpg"
+          ],
+          "data_points": [
+            "Global capital markets raised $4.7T YTD (record)",
+            "$500B above 2021 pandemic boom",
+            "3rd consecutive annual increase"
+          ],
+          "created_at": "2026-06-15T18:31:42.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Fund Flows & Positioning",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "US/Canada household, pension, insurance, fund equity allocations at ~60% of financial assets — near record, exceeding bear market peaks of 2000, 2007, 2021. Scandinavia 50%, Europe 31%, Japan 20%. Chart.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2066671699613843880",
+          "images": [
+            "https://pbs.twimg.com/media/HK3O_PfWcAAQKv1.jpg"
+          ],
+          "data_points": [
+            "US/Canada equity allocation ~60% (near record)",
+            "Exceeds 2000, 2007, 2021 pre-bear peaks",
+            "Scandinavia 50%",
+            "Europe 31%",
+            "Japan 20%"
+          ],
+          "created_at": "2026-06-15T23:58:24.000Z"
+        },
+        {
+          "author": "sentimentrader",
+          "description": "Smart Money / Dumb Money Confidence as of June 15: Smart Money 0.56 (neutral), Dumb Money 0.61 (optimistic). Chart.",
+          "tweet_url": "https://x.com/sentimentrader/status/2066696517587759300",
+          "images": [
+            "https://pbs.twimg.com/media/HK5hWQzbcAAEgrw.jpg"
+          ],
+          "data_points": [
+            "Smart Money confidence 0.56 (neutral)",
+            "Dumb Money confidence 0.61 (optimistic)"
+          ],
+          "created_at": "2026-06-16T01:37:01.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Semiconductors & Tech Valuations",
+      "items": [
+        {
+          "author": "charliebilello",
+          "description": "Semiconductor Index gained >230% in 14 months. Only other time in history: December 1998 – February 2000 (dot-com peak). That's the entire list. Chart.",
+          "tweet_url": "https://x.com/charliebilello/status/2066690143314940045",
+          "images": [
+            "https://pbs.twimg.com/media/HK5bipbW8AE54dN.png"
+          ],
+          "data_points": [
+            "Semiconductor Index +230% in 14 months",
+            "Only comparable: Dec 1998–Feb 2000 (dot-com)"
+          ],
+          "created_at": "2026-06-16T01:11:42.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "Micron ($MU) at 21x price-to-sales — more than double its dot-com bubble peak of 10x sales. 10x growth in one year. Two charts showing price-to-sales history and recent performance.",
+          "tweet_url": "https://x.com/charliebilello/status/2066620013226635745",
+          "images": [
+            "https://pbs.twimg.com/media/HK4buBaXUAA7KUQ.jpg",
+            "https://pbs.twimg.com/media/HK4c7EpW4AA_WsI.png"
+          ],
+          "data_points": [
+            "Micron P/S 21x (current)",
+            "Micron dot-com bubble peak P/S: 10x",
+            "Micron 10x growth in one year"
+          ],
+          "created_at": "2026-06-15T20:33:01.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "Applied Materials ($AMAT) at 16x sales — highest valuation ever, above April 2000 peak of 15x. Then suffered 85% drawdown as P/S fell from 15x to 1x. Two historical P/S charts.",
+          "tweet_url": "https://x.com/charliebilello/status/2066606757695115614",
+          "images": [
+            "https://pbs.twimg.com/media/HK4PVM2WsAAWg7z.jpg",
+            "https://pbs.twimg.com/media/HK4Sw1DWsAA9xF-.jpg"
+          ],
+          "data_points": [
+            "AMAT P/S 16x (current, all-time high)",
+            "AMAT dot-com peak P/S: 15x",
+            "AMAT subsequent drawdown from 2000 peak: -85%"
+          ],
+          "created_at": "2026-06-15T19:40:21.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "Micron forward P/E appears cheap — same dynamic occurred in 2000 when DRAM prices peaked and earnings subsequently collapsed. Key question: are DRAM earnings cyclical or structural? Chart.",
+          "tweet_url": "https://x.com/charliebilello/status/2066633973175038323",
+          "images": [
+            "https://pbs.twimg.com/media/HK4nbofWkAEmvGb.png"
+          ],
+          "data_points": [
+            "Micron forward P/E appears cheap",
+            "2000 analog: low forward P/E before DRAM collapse"
+          ],
+          "created_at": "2026-06-15T21:28:30.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "NVDA's planned $20B equity offering was 4x oversubscribed. $20B ≈ level of NVDA's external equity investments over the past year. Chart.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2066570630175068463",
+          "images": [
+            "https://pbs.twimg.com/media/HK3u7a2WgAEZq9f.png"
+          ],
+          "data_points": [
+            "NVDA $20B offering 4x oversubscribed",
+            "$20B ≈ NVDA external equity investments past year"
+          ],
+          "created_at": "2026-06-15T17:16:47.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "QCOM in talks to acquire Tenstorrent at $8-10B (The Information). Tenstorrent builds RISC-V AI accelerators — no ARM royalties, avoids costly HBM memory. Led by Jim Keller. Last confirmed round: $693M at $2.6B (Dec 2024). Chart.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2066626520165339628",
+          "images": [
+            "https://pbs.twimg.com/media/HK4hyxRXcAAvGSM.png"
+          ],
+          "data_points": [
+            "QCOM/Tenstorrent talks at $8-10B valuation",
+            "Tenstorrent last round: $693M at $2.6B (Dec 2024)",
+            "RISC-V architecture (HBM-free)",
+            "NVDA paid $20B for Groq (similar HBM alternative)"
+          ],
+          "created_at": "2026-06-15T20:58:53.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "LLM-referred traffic hit all-time highs in May 2026 for Reddit, Pinterest, Facebook, and Google. Reddit's LLM-sourced share ~40bps of total traffic — small but growing sharply. Chart.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2066621492939334028",
+          "images": [
+            "https://pbs.twimg.com/media/HK4dNzGWEAEdXik.png"
+          ],
+          "data_points": [
+            "LLM-referred traffic ATH May 2026: Reddit, Pinterest, Facebook, Google",
+            "Reddit LLM traffic share ~40bps of total"
+          ],
+          "created_at": "2026-06-15T20:38:54.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "OpenAI to deprecate GPT-5 — AI model transition event with ecosystem implications.",
+          "tweet_url": "https://x.com/Polymarket/status/2066703409227403300",
+          "images": [],
+          "data_points": [
+            "OpenAI GPT-5 deprecation announced"
+          ],
+          "created_at": "2026-06-16T02:04:24.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Crypto & DeFi",
+      "items": [
+        {
+          "author": "charliebilello",
+          "description": "Bitcoin (-27%) and Gold (-3%) are the two worst-performing major assets YTD 2026 — unprecedented to have both be worst performers in the same calendar year. Chart.",
+          "tweet_url": "https://x.com/charliebilello/status/2066559648744812861",
+          "images": [
+            "https://pbs.twimg.com/media/HK3kvFJWcAA9-YL.png"
+          ],
+          "data_points": [
+            "Bitcoin -27% YTD 2026",
+            "Gold -3% YTD 2026",
+            "First calendar year both are worst-performing simultaneously"
+          ],
+          "created_at": "2026-06-15T16:33:09.000Z"
+        },
+        {
+          "author": "Tyler_Did_It",
+          "description": "Hyperliquid Anthropic and OpenAI pre-IPO markets shut down after Ventuals closed its project. TradeXYZ holds 97% market share in pre-IPO crypto prediction markets. SPCX had billions in volume and 9-figures in open interest near IPO. Chart.",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2066654307001192532",
+          "images": [
+            "https://pbs.twimg.com/media/HK47FHKWsAAic-T.jpg"
+          ],
+          "data_points": [
+            "Ventuals shut down Hyperliquid pre-IPO markets",
+            "TradeXYZ 97% market share in pre-IPO crypto markets",
+            "SPCX: 9-figure OI near IPO date"
+          ],
+          "created_at": "2026-06-15T22:49:18.000Z"
+        },
+        {
+          "author": "DefiLlama",
+          "description": "DefiLlama launches Markets tool: tracks spot and derivatives across 3,000+ assets and 45 exchanges. Shows volume, fees, OI, funding rates, max leverage. Chart of tool interface.",
+          "tweet_url": "https://x.com/DefiLlama/status/2066578892916166732",
+          "images": [
+            "https://pbs.twimg.com/media/HK32X6QWAAAZXe6.jpg"
+          ],
+          "data_points": [
+            "DefiLlama Markets: 3,000+ assets, 45 exchanges, spot + perps data"
+          ],
+          "created_at": "2026-06-15T17:49:37.000Z"
+        },
+        {
+          "author": "DefiLlama",
+          "description": "Private credit is bringing new non-crypto borrowers onchain, leading to a boom in DeFi. Podcast episode 1 covers protocols attracting users who have never used crypto before.",
+          "tweet_url": "https://x.com/DefiLlama/status/2066684513262985624",
+          "images": [],
+          "data_points": [
+            "Private credit DeFi: new non-crypto borrowers onchain"
+          ],
+          "created_at": "2026-06-16T00:49:19.000Z"
+        },
+        {
+          "author": "LynAldenContact",
+          "description": "Reference to 2021 BTC energy debate with Alex de Vries — video discussion on Bitcoin energy arguments at the cycle peak.",
+          "tweet_url": "https://x.com/LynAldenContact/status/2066694803731906675",
+          "images": [
+            "https://pbs.twimg.com/tweet_video_thumb/HK5f-AxXsAAef9R.jpg"
+          ],
+          "data_points": [],
+          "created_at": "2026-06-16T01:30:13.000Z"
+        },
+        {
+          "author": "a16zcrypto",
+          "description": "Stablecoins explained by Sam Broner (a16z) — resource on stablecoin mechanics and adoption.",
+          "tweet_url": "https://x.com/a16zcrypto/status/2066656704910225753",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-06-15T22:58:49.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Gold & Commodities",
+      "items": [
+        {
+          "author": "TaviCosta",
+          "description": "Gold miners in a bottoming process — transitioning from weak hands to strong hands. Chart shows the miner bottoming pattern.",
+          "tweet_url": "https://x.com/TaviCosta/status/2066672398624293217",
+          "images": [
+            "https://pbs.twimg.com/media/HK5LhkLaMAAvEmO.jpg"
+          ],
+          "data_points": [
+            "Gold miners: bottoming (weak to strong hands transition)"
+          ],
+          "created_at": "2026-06-16T00:01:11.000Z"
+        },
+        {
+          "author": "RyanDetrick",
+          "description": "Reference to a notable MacroCharts analysis on gold.",
+          "tweet_url": "https://x.com/RyanDetrick/status/2066705623316631698",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-06-16T02:13:12.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "ETF Data & Flows",
+      "items": [
+        {
+          "author": "EricBalchunas",
+          "description": "iShares Bitcoin Premium Income ETF ($BITA) launches tomorrow (Jun 16). Targets 15-25% annual yield while capturing ≥70% of Bitcoin's upside. Confirmed by Nasdaq. Chart.",
+          "tweet_url": "https://x.com/EricBalchunas/status/2066604439977246909",
+          "images": [
+            "https://pbs.twimg.com/media/HK4Nih0WcAAyl33.png"
+          ],
+          "data_points": [
+            "$BITA launches Jun 16 (iShares Bitcoin Premium Income ETF)",
+            "Target yield: 15-25% annually",
+            "Target BTC upside capture: ≥70%"
+          ],
+          "created_at": "2026-06-15T19:31:08.000Z"
+        },
+        {
+          "author": "EricBalchunas",
+          "description": "Buffer ETF event in Frankfurt (Tuesday) hosted by Bloomberg with BlackRock and Goldman. Image of event details.",
+          "tweet_url": "https://x.com/EricBalchunas/status/2066607010783637923",
+          "images": [
+            "https://pbs.twimg.com/media/HK4PycXWwAAAHp6.jpg"
+          ],
+          "data_points": [
+            "Buffer ETF Europe event: BlackRock + Goldman + Bloomberg (Frankfurt, Tue)"
+          ],
+          "created_at": "2026-06-15T19:41:21.000Z"
+        },
+        {
+          "author": "EricBalchunas",
+          "description": "Midwit investor behavior chart: over-complicating, calling tops, being bearish. Market consistently punishes midwit behavior. Image.",
+          "tweet_url": "https://x.com/EricBalchunas/status/2066722437924848119",
+          "images": [
+            "https://pbs.twimg.com/media/HK55GmCXMAArzWP.jpg"
+          ],
+          "data_points": [],
+          "created_at": "2026-06-16T03:20:01.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Korea Market",
+      "items": [
+        {
+          "author": "zerohedge",
+          "description": "Goldman urges clients to hedge for Kospi drawdown. Korean banks capping loans to curb stock market frenzy — Kospi VIX potentially hitting 100? Chart.",
+          "tweet_url": "https://x.com/zerohedge/status/2066718275090661752",
+          "images": [
+            "https://pbs.twimg.com/media/HK51UKVWEAAggIa.jpg"
+          ],
+          "data_points": [
+            "Goldman: hedge Kospi drawdown",
+            "Korean banks capping loans to control equity frenzy",
+            "Kospi VIX elevated"
+          ],
+          "created_at": "2026-06-16T03:03:29.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Goldman urges clients to hedge Kospi drawdown; Korea's banks cap loans to curb stock market frenzy. Article link.",
+          "tweet_url": "https://x.com/zerohedge/status/2066717929060667407",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-06-16T03:02:06.000Z"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/geopolitical/who-won-third-gulf-war",
+      "description": "Who Won The Third Gulf War — geopolitical analysis"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/markets/goldman-urges-clients-hedge-kospi-drawdown-koreas-banks-cap-loans-curb-stock-market-frenzy",
+      "description": "Goldman urges Kospi drawdown hedge; Korea banks cap loans"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-16/boj-hikes-rate-to-31-year-high-at-meeting-with-governor-absent",
+      "description": "BOJ hikes to 31-year high, plans to stop paring bond buys — Bloomberg"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-16/bank-of-japan-hike-shows-inflation-worries-strategists-say",
+      "description": "BOJ hike shows inflation worries, strategists say — Bloomberg"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-15/us-iran-deal-poses-inflation-risk-if-chinese-oil-demand-recovers",
+      "description": "US-Iran deal poses inflation risk if China oil demand recovers — Bloomberg"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-15/us-oil-reserve-hits-43-year-low-as-trump-aims-to-tame-gas-prices",
+      "description": "US Oil Reserve at 43-year low — Bloomberg"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-16/china-home-prices-fall-at-faster-pace-in-setback-to-revival",
+      "description": "China home prices fall at faster pace — Bloomberg"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-16/china-s-first-consumer-spending-drop-since-covid-imperils-growth",
+      "description": "China: first consumer spending drop since COVID — Bloomberg"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-16/chinese-bonds-draw-foreign-funds-in-may-after-a-year-of-outflows",
+      "description": "Chinese bonds draw foreign inflows in May after 1 year outflows — Bloomberg"
+    },
+    {
+      "author": "C_Barraud",
+      "url": "https://www.bloomberg.com/news/articles/2026-06-15/macron-rebuffs-trump-s-threats-of-wine-tariffs-as-g7-meets",
+      "description": "Macron brushes off Trump 100% wine tariff at G7 — Bloomberg"
+    },
+    {
+      "author": "DefiLlama",
+      "url": "https://defillama.com/markets",
+      "description": "DefiLlama Markets tool — spot/perps across 3,000+ assets, 45 exchanges"
+    },
+    {
+      "author": "themarketear",
+      "url": "https://www.zerohedge.com/the-market-ear/risk-machine",
+      "description": "Risk Machine — semis, 1997 analog, bull market nobody trusts"
+    },
+    {
+      "author": "EricBalchunas",
+      "url": "https://go.bloomberg.com/attend/invite/buffer-etfs-disrupting-structured-products-or-just-getting-started-in-europe/",
+      "description": "Buffer ETFs in Europe event — BlackRock, Goldman, Bloomberg (Frankfurt Tue)"
+    },
+    {
+      "author": "LizAnnSonders",
+      "url": "https://www.schwab.com/coaching",
+      "description": "LizAnn Sonders live market commentary — Schwab Coaching"
+    },
+    {
+      "author": "LynAldenContact",
+      "url": "https://www.youtube.com/watch?v=6LP8G-oZnEs&feature=youtu.be",
+      "description": "LynAlden: Bitcoin energy debate with Alex de Vries (video)"
+    },
+    {
+      "author": "Polymarket",
+      "url": "https://polymarket.com/event/spacex-closing-market-cap-end-of-ipo-month-20260606222757973?via=x-afr2",
+      "description": "Polymarket: SPCX $3T valuation — 22% probability this month"
+    }
+  ],
+  "coverage": {
+    "authors_covered": 22,
+    "authors_total": 23
+  }
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

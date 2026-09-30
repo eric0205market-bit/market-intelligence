@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "date": "2026-07-20 \u00b7 Bank Research Digest",
+  "report_type": "TWITTER BANK RESEARCH",
+  "collected_at": "2026-07-20T17:23:53Z",
+  "window_days": 4,
+  "freshness_gate": "FRESHNESS GATE PASSED. collected_at 2026-07-20T17:23:53+00:00 (0.4h old)",
+  "input_stats": {
+    "total_tweets": 60,
+    "considered": 60,
+    "kept": 20,
+    "dropped": 40,
+    "deduped": 0
+  },
+  "summary": "Bank-desk chart flow over the last ~16 hours skewed heavily to Goldman Sachs cross-asset research (14 items), almost entirely relayed via @MikeZaccardi: global P/E down to 15.1x on the 24-month view, EPS forecasts still trending higher, tech still dominant YTD, and a July momentum unwind, alongside GS macro calls on slowing core PCE inflation, a weaker June jobs read, upside oil price risk, and slowing H2 consumer spending. LanceRoberts also relayed a GS prime-brokerage positioning note (tech net-sold) and dailychartbook carried a GS credit-vs-equities underperformance chart.\n\nBofA (3 items) covered its 2Q26 earnings-season Week 1 scorecard (88% EPS beat rate) alongside the BofAI Workplace Benefits Report on financial well-being by generation. Apollo/Slok (2 items) flagged record annuity-driven credit demand and NYC weekend subway ridership recovery. Morgan Stanley (1 item) posted a diesel market chart via HFI_Research.\n\nNo Neil Sethi (@neilksethi / @neilksethinew) tweets appeared in this window \u2014 both accounts were monitored but posted nothing in the last 4 days.\n\n**By bank:** Goldman 14, BofA 3, Apollo/Slok 2, Morgan Stanley 1.",
+  "by_bank_counts": {
+    "Goldman": 14,
+    "BofA": 3,
+    "Apollo/Slok": 2,
+    "Morgan Stanley": 1
+  },
+  "banks": [
+    {
+      "bank": "Goldman",
+      "theme": "Valuation compressing toward 15.1x on the 24m view, global EPS still trending higher, and a July momentum unwind \u2014 plus GS macro calls on core PCE, weak June payrolls, oil price risk, and H2 consumer spending",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We Still Expect US Consumer Spending to Slow in H2 https://t.co/syoRplK940",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079182284565995716",
+          "images": [
+            "https://pbs.twimg.com/media/HNq9RRmX0AATErc.jpg"
+          ],
+          "created_at": "2026-07-20T12:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Oil Price Risks Are Tilted to the Upside https://t.co/qKgRP1Tq0k",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079178510082490689",
+          "images": [
+            "https://pbs.twimg.com/media/HNq51jRXwAAtqgv.png"
+          ],
+          "created_at": "2026-07-20T12:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "USA holds at 63% of global market cap $ACWI GS https://t.co/mmaX7dPaCq",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079174734890115491",
+          "images": [
+            "https://pbs.twimg.com/media/HNq2Z08XsAATGo4.png"
+          ],
+          "created_at": "2026-07-20T12:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "A global momentum unwind in July GS https://t.co/jQBGtivkSW",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079170959706050682",
+          "images": [
+            "https://pbs.twimg.com/media/HNqy-GQWAAAEnJE.png"
+          ],
+          "created_at": "2026-07-20T11:46:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "The global P/E is down to 15.1x on the 24m view (17.8x on the standard forward 12m) $ACWI GS https://t.co/Vi6cr7rHyk",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079167185025425447",
+          "images": [
+            "https://pbs.twimg.com/media/HNqviYlXQAABPL7.png"
+          ],
+          "created_at": "2026-07-20T11:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Global EPS forecasts onward &amp; upward GS $ACWI https://t.co/nhFgtTkFlf",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079163409912766682",
+          "images": [
+            "https://pbs.twimg.com/media/HNqsGpnWUAAF_sC.png"
+          ],
+          "created_at": "2026-07-20T11:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We expect year-on-year core PCE inflation to slow to near 2% in 2027 https://t.co/ki4o6D8XsE",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079161145261191474",
+          "images": [
+            "https://pbs.twimg.com/media/HNqqC0rXwAAm_GW.jpg"
+          ],
+          "created_at": "2026-07-20T11:07:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Global return composition: higher earnings, lower multiples GS https://t.co/MBqpY4IpNA",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079159634737156398",
+          "images": [
+            "https://pbs.twimg.com/media/HNqoq6BXUAA3tCd.png"
+          ],
+          "created_at": "2026-07-20T11:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: The weaker-than-expected June employment report has brought our estimate of underlying US job growth down to 73k, from 130k a month earlier. https://t.co/oapwqxbo5a",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079158546210435547",
+          "images": [
+            "https://pbs.twimg.com/media/HNqnrhWWgAEfEP_.jpg"
+          ],
+          "created_at": "2026-07-20T10:56:40.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Tech remains dominant YTD GS https://t.co/enNhYsvM4j",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079157489514246578",
+          "images": [
+            "https://pbs.twimg.com/media/HNqmuAuWcAA2WuY.png"
+          ],
+          "created_at": "2026-07-20T10:52:29.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "24% SPX EPS growth seen this year GS https://t.co/qvT1WafclM",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079157329732190453",
+          "images": [
+            "https://pbs.twimg.com/media/HNqmkvvXUAAOQtc.png"
+          ],
+          "created_at": "2026-07-20T10:51:50.000Z",
+          "relayers": []
+        },
+        {
+          "author": "LanceRoberts",
+          "text": "Information technology was the most net-sold sector among Goldman\u2019s prime brokerage clients, which suggests we are probably getting close to needing to buy it. \n@SoberLook https://t.co/tDevfFdRx4",
+          "tweet_url": "https://x.com/LanceRoberts/status/2079155139131142359",
+          "images": [
+            "https://pbs.twimg.com/media/HNqkT10WYAAacJw.jpg"
+          ],
+          "created_at": "2026-07-20T10:43:08.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "\"Since the onset of the Iran conflict ... Credit has significantly underperformed equities, even on a beta-adjusted basis\"\n\n-Goldman Sachs https://t.co/1j4XRpLFSy",
+          "tweet_url": "https://x.com/dailychartbook/status/2079121718862283028",
+          "images": [
+            "https://pbs.twimg.com/media/HNqGL5WW8AAnGdP.png"
+          ],
+          "created_at": "2026-07-20T08:30:20.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Our Measure of the Breadth of High Inflation Remains Above the Average Over 1990-2019, When Inflation Averaged Roughly 2%, Especially on a Weighted Basis, but Well Below the Pandemic Peak https://t.co/4T5IuDUowk",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2078994432695599365",
+          "images": [
+            "https://pbs.twimg.com/media/HNoSa3EWwAAWt9S.jpg"
+          ],
+          "created_at": "2026-07-20T00:04:33.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "BofA",
+      "theme": "2Q26 earnings-season scorecard (88% EPS beat rate) alongside the BofAI Workplace Benefits Report on financial well-being by generation",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "BofAI: Among generations, Boomers rank their financial well-being the highest. https://t.co/VIvRsUHY6x",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079195550872670479",
+          "images": [
+            "https://pbs.twimg.com/media/HNrJVgDXkAE5LfV.png"
+          ],
+          "created_at": "2026-07-20T13:23:43.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "BofAI: More than half of employees now report positive financial well-being.\n\n2026 Workplace Benefits Report https://t.co/T0ZvqOLgYF",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079195448678498787",
+          "images": [
+            "https://pbs.twimg.com/media/HNrJPilXsAAhhsY.png"
+          ],
+          "created_at": "2026-07-20T13:23:19.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "BofA: 2Q26 Earnings Season: Week 1 Summary...\n-Strong start: 88% beat on EPS, tracking 23% YoY growth\n-Banks beat across the board; capital markets shine\n-Solid reward for beats; 1-day reactions near record high https://t.co/jK0Q1Z7Oty",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079159994532958215",
+          "images": [
+            "https://pbs.twimg.com/media/HNqo_0ZXIAAcuW6.png"
+          ],
+          "created_at": "2026-07-20T11:02:26.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Apollo/Slok",
+      "theme": "Record annuity-driven credit demand and NYC weekend subway ridership recovery",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Strong Demand for Credit Coming From Record-High Annuity Sales\n\nSince the Fed raised interest rates in 2022, annuity sales have basically doubled\n\nTorsten at Apollo https://t.co/DyA6EHvX70",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079164993233154342",
+          "images": [
+            "https://pbs.twimg.com/media/HNqtixjXcAAL_qi.jpg"
+          ],
+          "created_at": "2026-07-20T11:22:18.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "\"Six years after the pandemic, weekend subway ridership in New York has recovered to nearly 90% of its 2019 level while weekdays remain stuck near 75%\"\n\n-Apollo Slok https://t.co/YgudGQq9nB",
+          "tweet_url": "https://x.com/dailychartbook/status/2079129827123085728",
+          "images": [
+            "https://pbs.twimg.com/media/HNqNjz3XYAEzRZZ.jpg"
+          ],
+          "created_at": "2026-07-20T09:02:33.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Morgan Stanley",
+      "theme": "Diesel market chart",
+      "items": [
+        {
+          "author": "HFI_Research",
+          "text": "Morgan Stanley on diesel. https://t.co/o9iNl1zEEq",
+          "tweet_url": "https://x.com/HFI_Research/status/2079112400087994410",
+          "images": [
+            "https://pbs.twimg.com/media/HNp9tSKbAAAChWi.jpg"
+          ],
+          "created_at": "2026-07-20T07:53:18.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ],
+  "topics": [
+    {
+      "topic": "Goldman \u2014 Valuation compressing toward 15.1x on the 24m view, global EPS still trending higher, and a July momentum unwind \u2014 plus GS macro calls on core PCE, weak June payrolls, oil price risk, and H2 consumer spending",
+      "theme": "Valuation compressing toward 15.1x on the 24m view, global EPS still trending higher, and a July momentum unwind \u2014 plus GS macro calls on core PCE, weak June payrolls, oil price risk, and H2 consumer spending",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We Still Expect US Consumer Spending to Slow in H2 https://t.co/syoRplK940",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079182284565995716",
+          "images": [
+            "https://pbs.twimg.com/media/HNq9RRmX0AATErc.jpg"
+          ],
+          "created_at": "2026-07-20T12:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Oil Price Risks Are Tilted to the Upside https://t.co/qKgRP1Tq0k",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079178510082490689",
+          "images": [
+            "https://pbs.twimg.com/media/HNq51jRXwAAtqgv.png"
+          ],
+          "created_at": "2026-07-20T12:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "USA holds at 63% of global market cap $ACWI GS https://t.co/mmaX7dPaCq",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079174734890115491",
+          "images": [
+            "https://pbs.twimg.com/media/HNq2Z08XsAATGo4.png"
+          ],
+          "created_at": "2026-07-20T12:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "A global momentum unwind in July GS https://t.co/jQBGtivkSW",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079170959706050682",
+          "images": [
+            "https://pbs.twimg.com/media/HNqy-GQWAAAEnJE.png"
+          ],
+          "created_at": "2026-07-20T11:46:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "The global P/E is down to 15.1x on the 24m view (17.8x on the standard forward 12m) $ACWI GS https://t.co/Vi6cr7rHyk",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079167185025425447",
+          "images": [
+            "https://pbs.twimg.com/media/HNqviYlXQAABPL7.png"
+          ],
+          "created_at": "2026-07-20T11:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Global EPS forecasts onward &amp; upward GS $ACWI https://t.co/nhFgtTkFlf",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079163409912766682",
+          "images": [
+            "https://pbs.twimg.com/media/HNqsGpnWUAAF_sC.png"
+          ],
+          "created_at": "2026-07-20T11:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We expect year-on-year core PCE inflation to slow to near 2% in 2027 https://t.co/ki4o6D8XsE",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079161145261191474",
+          "images": [
+            "https://pbs.twimg.com/media/HNqqC0rXwAAm_GW.jpg"
+          ],
+          "created_at": "2026-07-20T11:07:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Global return composition: higher earnings, lower multiples GS https://t.co/MBqpY4IpNA",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079159634737156398",
+          "images": [
+            "https://pbs.twimg.com/media/HNqoq6BXUAA3tCd.png"
+          ],
+          "created_at": "2026-07-20T11:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: The weaker-than-expected June employment report has brought our estimate of underlying US job growth down to 73k, from 130k a month earlier. https://t.co/oapwqxbo5a",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079158546210435547",
+          "images": [
+            "https://pbs.twimg.com/media/HNqnrhWWgAEfEP_.jpg"
+          ],
+          "created_at": "2026-07-20T10:56:40.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Tech remains dominant YTD GS https://t.co/enNhYsvM4j",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079157489514246578",
+          "images": [
+            "https://pbs.twimg.com/media/HNqmuAuWcAA2WuY.png"
+          ],
+          "created_at": "2026-07-20T10:52:29.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "24% SPX EPS growth seen this year GS https://t.co/qvT1WafclM",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079157329732190453",
+          "images": [
+            "https://pbs.twimg.com/media/HNqmkvvXUAAOQtc.png"
+          ],
+          "created_at": "2026-07-20T10:51:50.000Z",
+          "relayers": []
+        },
+        {
+          "author": "LanceRoberts",
+          "text": "Information technology was the most net-sold sector among Goldman\u2019s prime brokerage clients, which suggests we are probably getting close to needing to buy it. \n@SoberLook https://t.co/tDevfFdRx4",
+          "tweet_url": "https://x.com/LanceRoberts/status/2079155139131142359",
+          "images": [
+            "https://pbs.twimg.com/media/HNqkT10WYAAacJw.jpg"
+          ],
+          "created_at": "2026-07-20T10:43:08.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "\"Since the onset of the Iran conflict ... Credit has significantly underperformed equities, even on a beta-adjusted basis\"\n\n-Goldman Sachs https://t.co/1j4XRpLFSy",
+          "tweet_url": "https://x.com/dailychartbook/status/2079121718862283028",
+          "images": [
+            "https://pbs.twimg.com/media/HNqGL5WW8AAnGdP.png"
+          ],
+          "created_at": "2026-07-20T08:30:20.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Our Measure of the Breadth of High Inflation Remains Above the Average Over 1990-2019, When Inflation Averaged Roughly 2%, Especially on a Weighted Basis, but Well Below the Pandemic Peak https://t.co/4T5IuDUowk",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2078994432695599365",
+          "images": [
+            "https://pbs.twimg.com/media/HNoSa3EWwAAWt9S.jpg"
+          ],
+          "created_at": "2026-07-20T00:04:33.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "BofA \u2014 2Q26 earnings-season scorecard (88% EPS beat rate) alongside the BofAI Workplace Benefits Report on financial well-being by generation",
+      "theme": "2Q26 earnings-season scorecard (88% EPS beat rate) alongside the BofAI Workplace Benefits Report on financial well-being by generation",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "BofAI: Among generations, Boomers rank their financial well-being the highest. https://t.co/VIvRsUHY6x",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079195550872670479",
+          "images": [
+            "https://pbs.twimg.com/media/HNrJVgDXkAE5LfV.png"
+          ],
+          "created_at": "2026-07-20T13:23:43.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "BofAI: More than half of employees now report positive financial well-being.\n\n2026 Workplace Benefits Report https://t.co/T0ZvqOLgYF",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079195448678498787",
+          "images": [
+            "https://pbs.twimg.com/media/HNrJPilXsAAhhsY.png"
+          ],
+          "created_at": "2026-07-20T13:23:19.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "BofA: 2Q26 Earnings Season: Week 1 Summary...\n-Strong start: 88% beat on EPS, tracking 23% YoY growth\n-Banks beat across the board; capital markets shine\n-Solid reward for beats; 1-day reactions near record high https://t.co/jK0Q1Z7Oty",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079159994532958215",
+          "images": [
+            "https://pbs.twimg.com/media/HNqo_0ZXIAAcuW6.png"
+          ],
+          "created_at": "2026-07-20T11:02:26.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Apollo/Slok \u2014 Record annuity-driven credit demand and NYC weekend subway ridership recovery",
+      "theme": "Record annuity-driven credit demand and NYC weekend subway ridership recovery",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Strong Demand for Credit Coming From Record-High Annuity Sales\n\nSince the Fed raised interest rates in 2022, annuity sales have basically doubled\n\nTorsten at Apollo https://t.co/DyA6EHvX70",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2079164993233154342",
+          "images": [
+            "https://pbs.twimg.com/media/HNqtixjXcAAL_qi.jpg"
+          ],
+          "created_at": "2026-07-20T11:22:18.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "\"Six years after the pandemic, weekend subway ridership in New York has recovered to nearly 90% of its 2019 level while weekdays remain stuck near 75%\"\n\n-Apollo Slok https://t.co/YgudGQq9nB",
+          "tweet_url": "https://x.com/dailychartbook/status/2079129827123085728",
+          "images": [
+            "https://pbs.twimg.com/media/HNqNjz3XYAEzRZZ.jpg"
+          ],
+          "created_at": "2026-07-20T09:02:33.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Morgan Stanley \u2014 Diesel market chart",
+      "theme": "Diesel market chart",
+      "items": [
+        {
+          "author": "HFI_Research",
+          "text": "Morgan Stanley on diesel. https://t.co/o9iNl1zEEq",
+          "tweet_url": "https://x.com/HFI_Research/status/2079112400087994410",
+          "images": [
+            "https://pbs.twimg.com/media/HNp9tSKbAAAChWi.jpg"
+          ],
+          "created_at": "2026-07-20T07:53:18.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

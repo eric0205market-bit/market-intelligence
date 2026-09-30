@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Shitpost Radar</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #d97706;
+  --accent-bg: #fffbeb;
+  --accent-2: #b45309;
+  --bull: #16a34a;
+  --bear: #dc2626;
+  --neutral: #9a9590;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 16px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* VOLUME (one-liner) */
+.volume { background: var(--surface); border: 1px solid var(--border);
+          border-left: 4px solid var(--accent); border-radius: 6px;
+          padding: 10px 14px; margin-bottom: 16px;
+          font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
+          color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.volume strong { color: var(--text); font-weight: 600; }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SECTIONS */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #fef3c7; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px; min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; }
+.section.open .section-body { display: block; }
+
+/* TICKER ROWS */
+.ticker-row { display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+              border-bottom: 1px solid var(--border-light); flex-wrap: wrap; }
+.ticker-row:last-child { border-bottom: none; }
+.ticker-row.is-new { border-left: 3px solid var(--accent); background: var(--accent-bg); }
+.ticker-sym { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600;
+              min-width: 72px; }
+.ticker-mentions { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+                   color: var(--text-3); min-width: 70px; }
+.new-pill { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600;
+            background: var(--accent); color: #fff; padding: 1px 6px; border-radius: 3px;
+            text-transform: uppercase; letter-spacing: .05em; }
+.sentiment { display: flex; gap: 10px; font-family: 'IBM Plex Mono', monospace;
+             font-size: 12px; color: var(--text-2); }
+.sentiment .pair { display: inline-flex; align-items: center; gap: 4px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-bull    { background: var(--bull); }
+.dot-bear    { background: var(--bear); }
+.dot-neutral { background: var(--neutral); }
+.ticker-who { flex: 1 1 100%; font-size: 12.5px; color: var(--text-2);
+              padding-left: 4px; }
+.ticker-who .who-item { margin-right: 10px; }
+.ticker-who .who-item .ctx { color: var(--text-3); font-style: italic; }
+.ticker-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.ticker-author:hover { text-decoration: underline; }
+
+/* OUTLIER CARDS */
+.outlier-card { background: var(--surface); border: 1px solid var(--border);
+                border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.outlier-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+                flex-wrap: wrap; }
+.outlier-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.outlier-author:hover { text-decoration: underline; }
+.outlier-tag { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600;
+               background: var(--accent-bg); color: var(--accent-2); padding: 2px 6px;
+               border-radius: 3px; text-transform: uppercase; letter-spacing: .04em;
+               border: 1px solid var(--accent); }
+.outlier-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.outlier-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                color: var(--accent); text-decoration: none; }
+.outlier-link:hover { text-decoration: underline; }
+.outlier-summary { font-size: 13.5px; line-height: 1.6; color: var(--text);
+                   white-space: pre-wrap; word-wrap: break-word; }
+
+/* THUMBS */
+.thumbs { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.thumb { height: 100px; border: 1px solid var(--border); border-radius: 4px;
+         cursor: zoom-in; background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .outlier-card { margin: 8px 10px; }
+  .ticker-row { gap: 8px; }
+  .ticker-sym { min-width: 56px; font-size: 14px; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Shitpost Radar</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="volume" id="volume"></div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "SHITPOST RADAR",
+  "collected_at": "2026-06-27T17:20:55Z",
+  "volume": {
+    "total_tweets": 67,
+    "active_authors": 21,
+    "total_authors": 217,
+    "silent_authors": 196
+  },
+  "tickers": [
+    {
+      "ticker": "BB",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 1,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "AlessioTMAD",
+          "context": "$BB BlackBerry is going wild this year   A lot of call gamma is sitting on short dated options   New",
+          "sentiment": "bear"
+        }
+      ]
+    },
+    {
+      "ticker": "BTC",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 1,
+      "bear": 0,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "$BTC For bull's \ud83d\udc40 only:  Small sample size but still noteworthy.  Notice the last two oversold RSI d",
+          "sentiment": "bull"
+        }
+      ]
+    },
+    {
+      "ticker": "LINK",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 0,
+      "bear": 1,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "CL207",
+          "context": "how are people commenting \"my next strategy\ud83d\udc47\" with some scam link still on this website lol  @ACssty",
+          "sentiment": "bear"
+        }
+      ]
+    },
+    {
+      "ticker": "MAGS",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "This is interesting:  The $MAGS Magnificent 7 etf the last couple days made a fresh 28 month low rel",
+          "sentiment": "neutral"
+        }
+      ]
+    },
+    {
+      "ticker": "MEME",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "CryptoGodJohn",
+          "context": "First we make meme coins great again  Then we make utility coins great",
+          "sentiment": "neutral"
+        }
+      ]
+    },
+    {
+      "ticker": "MSTR",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 1,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "PeterSchiff",
+          "context": "lor can solve the $STRC problem by selling Bitcoin should read my warning from this Oct. 2024 post. ",
+          "sentiment": "bear"
+        }
+      ]
+    },
+    {
+      "ticker": "NEAR",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 1,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "HFI_Research",
+          "context": "r, total crude inventories are still drawing.  @utopia_escape @TitusArch88 Yes. Canada is operating ",
+          "sentiment": "bear"
+        }
+      ]
+    },
+    {
+      "ticker": "QQQ",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "nteresting:  The $MAGS Magnificent 7 etf the last couple days made a fresh 28 month low relative to ",
+          "sentiment": "neutral"
+        }
+      ]
+    },
+    {
+      "ticker": "SOL",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "blknoiz06",
+          "context": "otocols  good coins, i dont think you can have one or the other btw, without memes in 2023 a lot of ",
+          "sentiment": "neutral"
+        }
+      ]
+    },
+    {
+      "ticker": "STRC",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 1,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "PeterSchiff",
+          "context": "Those of you who think @Saylor can solve the $STRC problem by selling Bitcoin should read my warning",
+          "sentiment": "bear"
+        }
+      ]
+    },
+    {
+      "ticker": "XLV",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "$XLV Healthcare ready for blast off like the last time? https://t.co/k0CQv3SIdN",
+          "sentiment": "neutral"
+        }
+      ]
+    }
+  ],
+  "outliers": [
+    {
+      "author": "blknoiz06",
+      "usual_length": 245,
+      "this_length": 315,
+      "summary": "@CryptoZachLA even if airdrop and unlocks were all maximally sold, which is unlikely, that ~$250M would be going directly to the most active degenerates onchain, it would get blasted into hella coins, in turn bringing back more attention &amp; volume...",
+      "tweet_url": "https://x.com/blknoiz06/status/2070906369041924250",
+      "images": [],
+      "reason": "long tweet (315ch vs 245ch avg)"
+    },
+    {
+      "author": "blknoiz06",
+      "usual_length": 245,
+      "this_length": 1496,
+      "summary": "@feedmycat69 which are your favorite protocols\n\ngood coins, i dont think you can have one or the other btw, without memes in 2023 a lot of solana's onchain volumes wouldve been much lower & sol wouldnt have gotten attention as a valid fast, cheap, pe...",
+      "tweet_url": "https://x.com/blknoiz06/status/2070905529241649300",
+      "images": [],
+      "reason": "long tweet (1496ch vs 245ch avg)"
+    },
+    {
+      "author": "OGDfarmer",
+      "usual_length": 311,
+      "this_length": 311,
+      "summary": "Hey cryptotwitter, what are the best alternatives for Euro customers to Binance for cex/fiat withdrawal, and even more importantly for EU facing crypto cards?\n\n@Anthonyjun7 What would be your top 3 options for cards? Had horrible experience with Bitp...",
+      "tweet_url": "https://x.com/OGDfarmer/status/2070910223150186851",
+      "images": [],
+      "reason": "long tweet (311ch vs 311ch avg)"
+    },
+    {
+      "author": "Mr_Derivatives",
+      "usual_length": 213,
+      "this_length": 765,
+      "summary": "$BTC For bull's \ud83d\udc40 only:\n\nSmall sample size but still noteworthy.\n\nNotice the last two oversold RSI divergences (in orange) formed bottoms.\n\nThe last two recent drops (in blue) had no RSI divergences...\n\nUNTIL NOW...\n\nIs this the one?\n\nJust something ...",
+      "tweet_url": "https://x.com/Mr_Derivatives/status/2070915953538576892",
+      "images": [
+        "https://pbs.twimg.com/media/HL1euiia4AACCU3.png"
+      ],
+      "reason": "long tweet (765ch vs 213ch avg)"
+    },
+    {
+      "author": "Mr_Derivatives",
+      "usual_length": 213,
+      "this_length": 267,
+      "summary": "This is interesting:\n\nThe $MAGS Magnificent 7 etf the last couple days made a fresh 28 month low relative to $QQQ.\n\nIs this a case of the rubber band getting a bit too stretched soon?\n\n@SummitShift I would NOT be surprised we get a massive bounce bac...",
+      "tweet_url": "https://x.com/Mr_Derivatives/status/2070900738138743209",
+      "images": [],
+      "reason": "long tweet (267ch vs 213ch avg)"
+    },
+    {
+      "author": "Mr_Derivatives",
+      "usual_length": 213,
+      "this_length": 220,
+      "summary": "@aqdev @scottmelker Ya but the joke is on him now with his stock down some 50% since saying that lol\n\n@Pittcoin1 @scottmelker Of course no one sold a kidney. But do u see any other CEO joking in that manner outside Elon?",
+      "tweet_url": "https://x.com/Mr_Derivatives/status/2070886613815865745",
+      "images": [],
+      "reason": "long tweet (220ch vs 213ch avg)"
+    },
+    {
+      "author": "SixSigmaCapital",
+      "usual_length": 388,
+      "this_length": 491,
+      "summary": "@Kumar325662 Unsure but for me, they are the  kind of stocks. I don\u2019t really look at as I still plan to own them in 5 to 10 years from now.\n\nThe ones I look more closely at the ones in my trading account, which is a momentum strategy\n\n@HatedMoats Imp...",
+      "tweet_url": "https://x.com/SixSigmaCapital/status/2070892861109784949",
+      "images": [],
+      "reason": "long tweet (491ch vs 388ch avg)"
+    },
+    {
+      "author": "SixSigmaCapital",
+      "usual_length": 388,
+      "this_length": 284,
+      "summary": "@tuslatime Around 9% my investing account and about 55 in my trading account\n\n@CateStonks Brutal reversal because at the start of June it looked like it was the real thing if you just look at Microsoft for example it spent one hour or so trading abov...",
+      "tweet_url": "https://x.com/SixSigmaCapital/status/2070892940398825778",
+      "images": [],
+      "reason": "long tweet (284ch vs 388ch avg)"
+    },
+    {
+      "author": "HFI_Research",
+      "usual_length": 250,
+      "this_length": 386,
+      "summary": "@TitusArch88 @utopia_escape He is using drone data from Kpler showing a build. \n\nIt doesn\u2019t matter, total crude inventories are still drawing.\n\n@utopia_escape @TitusArch88 Yes. Canada is operating near tank bottom. \n\nFlows into PADD 2 and 4 have slow...",
+      "tweet_url": "https://x.com/HFI_Research/status/2070873991238328331",
+      "images": [],
+      "reason": "long tweet (386ch vs 250ch avg)"
+    },
+    {
+      "author": "HFI_Research",
+      "usual_length": 250,
+      "this_length": 353,
+      "summary": "Judging by the messaging out of UAE, I think the Oman route, which the UAE has relied on is coming to an end soon. \n\nThat likely won\u2019t be the end of the confrontation either. IRGC will want to impose control over Fujairah next. \n\nMeaningful for the o...",
+      "tweet_url": "https://x.com/HFI_Research/status/2070867911460499877",
+      "images": [],
+      "reason": "long tweet (353ch vs 250ch avg)"
+    },
+    {
+      "author": "HFI_Research",
+      "usual_length": 250,
+      "this_length": 366,
+      "summary": "Kuwait Prosperity is the first VLCC to have made it through the Oman route following the US strike. https://t.co/S3ki0cNiBX\n\nNavi8 Macallister is using the Oman route. https://t.co/5a7gF8AGA5\n\nFrance C along with three other vessels are going to use ...",
+      "tweet_url": "https://x.com/HFI_Research/status/2070740028574298577",
+      "images": [
+        "https://pbs.twimg.com/media/HLy_FO5bkAAqNr_.jpg",
+        "https://pbs.twimg.com/media/HLy_oDLa4AA_4mF.jpg",
+        "https://pbs.twimg.com/media/HLzNCltaIAAB4wI.jpg"
+      ],
+      "reason": "long tweet (366ch vs 250ch avg)"
+    },
+    {
+      "author": "AlessioTMAD",
+      "usual_length": 154,
+      "this_length": 250,
+      "summary": "$BB BlackBerry is going wild this year \n\nA lot of call gamma is sitting on short dated options \n\nNew features will be available soon https://t.co/dXTMPPbhls\n\n@cpips23 https://t.co/ATZPUQJtkp\n\n@Peletta_33 Most of strike are ATM https://t.co/5zqFBdKoZs",
+      "tweet_url": "https://x.com/AlessioTMAD/status/2070857470809882948",
+      "images": [
+        "https://pbs.twimg.com/media/HL0p5HGXQAAPG4G.jpg",
+        "https://pbs.twimg.com/tweet_video_thumb/HL0qzpvXQAA-7mR.jpg",
+        "https://pbs.twimg.com/media/HL0--CIWIAAz5oA.jpg"
+      ],
+      "reason": "long tweet (250ch vs 154ch avg)"
+    },
+    {
+      "author": "DeeZe",
+      "usual_length": 284,
+      "this_length": 530,
+      "summary": "@cousinvanko i just looked and i bought 92 skins my first year lmfao (2012)\n\n@cousinvanko i took money from my college loans and bought skins dude i was an animal back then \ud83d\ude06\n\nhave like 1k skins across my two main accounts, never running the numbers ...",
+      "tweet_url": "https://x.com/DeeZe/status/2070734974337142923",
+      "images": [],
+      "reason": "long tweet (530ch vs 284ch avg)"
+    },
+    {
+      "author": "DeeZe",
+      "usual_length": 284,
+      "this_length": 385,
+      "summary": "honestly not my best work, would rate my lineup a 4.5/10 https://t.co/PBkwWbTqnW\n\nonly my second mcbride lineup 50 drafts in, had to go the fuck it naked malik after feeling forced into harvey/meyers, was planning on meyers + qb there, working on my ...",
+      "tweet_url": "https://x.com/DeeZe/status/2070731994305069555",
+      "images": [
+        "https://pbs.twimg.com/media/HLy3xdwXYAAk2JA.jpg"
+      ],
+      "reason": "long tweet (385ch vs 284ch avg)"
+    },
+    {
+      "author": "DeeZe",
+      "usual_length": 284,
+      "this_length": 222,
+      "summary": "The NFT thing can't justify itself using that logic. Ultimately, it was just a bunch of kids with massive crypto profits flushing money down the toilet in a stupid (but sometimes funny) online game. https://t.co/kXfSfNVa8u",
+      "tweet_url": "https://x.com/DeeZe/status/2070730127810453875",
+      "images": [
+        "https://pbs.twimg.com/media/HLy11lhWMAATjyO.png"
+      ],
+      "reason": "long tweet (222ch vs 284ch avg)"
+    },
+    {
+      "author": "PeterSchiff",
+      "usual_length": 403,
+      "this_length": 1233,
+      "summary": "Those of you who think @Saylor can solve the $STRC problem by selling Bitcoin should read my warning from this Oct. 2024 post. $MSTR can't sell Bitcoin without crashing the price of Bitcoin. Even if Strategy merely stops buying Bitcoin, that change a...",
+      "tweet_url": "https://x.com/PeterSchiff/status/2070907466359927219",
+      "images": [],
+      "reason": "long tweet (1233ch vs 403ch avg)"
+    },
+    {
+      "author": "PeterSchiff",
+      "usual_length": 403,
+      "this_length": 267,
+      "summary": "@PreacherBTC No, criminals working for the IRS shut down my bank, which its own investigation proved did nothing wrong. See the facts for yourself. https://t.co/g5n3gQmXPy\n\n@chinamaniac I guess once Bicoin is back below $3,800 you guys will have to s...",
+      "tweet_url": "https://x.com/PeterSchiff/status/2070886286458577206",
+      "images": [],
+      "reason": "long tweet (267ch vs 403ch avg)"
+    },
+    {
+      "author": "CL207",
+      "usual_length": 185,
+      "this_length": 623,
+      "summary": "just shipped japan win vs brazil and i moved the odds i think lmeow\n\nentered at 5.2 for 1x2, if ur betting the world cup r32 games just be aware that 1x2 bets ends at 90 whistle, not 120\n\njapan can still qualify via extra time and i lose money but it...",
+      "tweet_url": "https://x.com/CL207/status/2070883524274712700",
+      "images": [],
+      "reason": "long tweet (623ch vs 185ch avg)"
+    },
+    {
+      "author": "CL207",
+      "usual_length": 185,
+      "this_length": 631,
+      "summary": "taremi's ability to just randomly steal a ball will never stop impressing me, ngl when he subbed on in the inter vs barcelona ucl game and started defending yamal and i thought it was genius\n\nyamal actually just got cooked by him, world class defende...",
+      "tweet_url": "https://x.com/CL207/status/2070801537081942518",
+      "images": [
+        "https://pbs.twimg.com/media/HLz4SPVaoAAGlBC.jpg"
+      ],
+      "reason": "long tweet (631ch vs 185ch avg)"
+    },
+    {
+      "author": "CL207",
+      "usual_length": 185,
+      "this_length": 467,
+      "summary": "i just watched the last few minute of iran egypt, what the fuck \ud83d\udc80\ud83d\udc80\ud83d\udc80\ud83d\udc80\ud83d\udc80\ud83d\udc80\ud83d\udc80\n\n@SigmaSquared_ dw i actually know this sport\n\nmore so just iran having 4 shots 5 meters away from the goal (thats like 2-3 expected goals? lol) + 2 crossbars + goal + disallowed...",
+      "tweet_url": "https://x.com/CL207/status/2070798292653666442",
+      "images": [],
+      "reason": "long tweet (467ch vs 185ch avg)"
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'ticker-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- volume ----------
+function renderVolume(v) {
+  if (!v || typeof v !== 'object') {
+    document.getElementById('volume').innerHTML = '<span>no volume data</span>';
+    return;
+  }
+  const parts = [];
+  if (v.total_tweets   != null) parts.push(`<strong>${v.total_tweets}</strong> tweets`);
+  if (v.active_authors != null && v.total_authors != null) {
+    parts.push(`<strong>${v.active_authors}/${v.total_authors}</strong> authors active`);
+  } else if (v.active_authors != null) {
+    parts.push(`<strong>${v.active_authors}</strong> authors active`);
+  }
+  if (v.silent_authors != null) parts.push(`<strong>${v.silent_authors}</strong> silent`);
+  document.getElementById('volume').innerHTML = parts.join('<span style="color:var(--text-3)">·</span>')
+    || '<span>—</span>';
+}
+
+// ---------- tickers ----------
+function renderTickerWho(who) {
+  if (!who || !who.length) return '';
+  return `<div class="ticker-who">` + who.map(w => {
+    const name = w.author || w.author_username || '';
+    const ctx = w.context ? `<span class="ctx">${escapeHtml(w.context)}</span>` : '';
+    return `<span class="who-item filterable" data-author="${escapeAttr(name).toLowerCase()}">${authorTag(name)} ${ctx}</span>`;
+  }).join('') + `</div>`;
+}
+
+function renderTicker(t) {
+  const isNew = t.is_new ? ' is-new' : '';
+  const bull = t.bull ?? 0, bear = t.bear ?? 0, neutral = t.neutral ?? 0;
+  const mentions = (t.mentions != null) ? t.mentions : (bull + bear + neutral);
+  return `
+    <div class="ticker-row${isNew}">
+      <div class="ticker-sym">${escapeHtml(t.ticker || '?')}</div>
+      <div class="ticker-mentions">${mentions} mention${mentions === 1 ? '' : 's'}</div>
+      ${t.is_new ? '<span class="new-pill">new</span>' : ''}
+      <div class="sentiment">
+        <span class="pair"><span class="dot dot-bull"></span>${bull}</span>
+        <span class="pair"><span class="dot dot-bear"></span>${bear}</span>
+        <span class="pair"><span class="dot dot-neutral"></span>${neutral}</span>
+      </div>
+      ${renderTickerWho(t.who)}
+    </div>`;
+}
+
+// ---------- outliers ----------
+function renderThumbs(images) {
+  if (!images || !images.length) return '';
+  return `<div class="thumbs">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="thumb" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderOutlier(o) {
+  const author = o.author || o.author_username || '';
+  const usual = o.usual_length, current = o.this_length;
+  const tag = (usual != null && current != null)
+    ? `<span class="outlier-tag">usual ${usual} · this ${current}</span>` : '';
+  const time = relativeTime(o.created_at);
+  const link = o.tweet_url
+    ? `<a class="outlier-link" href="${escapeAttr(o.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  return `
+    <div class="outlier-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="outlier-head">
+        <span class="outlier-author" onclick="filterAuthor('${escapeAttr(author)}')">@${escapeHtml(author)}</span>
+        ${tag}
+        ${time ? `<span class="outlier-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      <div class="outlier-summary">${escapeHtml(o.summary || '')}</div>
+      ${renderThumbs(o.images)}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+  renderVolume(d.volume);
+
+  const tickersBody = (d.tickers || []).map(renderTicker).join('')
+                   || '<div class="empty">No tickers.</div>';
+  const outliersBody = (d.outliers || []).map(renderOutlier).join('');
+
+  const sections = [
+    renderSection('A', 'Tickers', tickersBody, (d.tickers || []).length),
+    outliersBody ? renderSection('B', 'Outliers', outliersBody, (d.outliers || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No data.</div>';
+
+  // Auto-open all sections (compact dashboard — show everything).
+  document.querySelectorAll('.section').forEach(s => s.classList.add('open'));
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

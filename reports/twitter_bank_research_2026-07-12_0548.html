@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "date": "2026-07-12 · Bank Research Digest",
+  "report_type": "TWITTER BANK RESEARCH",
+  "collected_at": "2026-07-12T05:23:35Z",
+  "window_days": 4,
+  "freshness_gate": "FRESHNESS GATE PASSED. collected_at 2026-07-12T05:23:35+00:00 (0.4h old)",
+  "input_stats": {
+    "total_tweets": 60,
+    "considered": 60,
+    "kept": 23,
+    "dropped": 37,
+    "deduped": 0
+  },
+  "summary": "Heaviest bank-research window of the week: 23 of 60 tracked tweets carried a bank/strategist tag (all via @MikeZaccardi, plus one @dailychartbook relay of Yardeni); the remaining 37 were untagged general-market/personal posts dropped per filter. No @neilksethi / @neilksethinew posts appeared in this collection cycle.\n\nGoldman Sachs dominates with 12 items, nearly all built around the market repricing Fed policy from cuts to hikes -- historical hiking-cycle analogs (the 1997 episode), sector/return playbooks -- alongside AI infrastructure concentration (42% of S&P market cap) and record capex/equity issuance.\n\nApollo (Torsten Slok) contributes 5 items scrutinizing AI capex payback: rising hyperscaler credit spreads, a potential turn to negative forward FCF, and AI capex crowding out private investment.\n\nMorgan Stanley contributes 4 items spanning its Top 2H views, tech-led EPS revisions, a friendlier deficit read, and a take on Fed chair contender Kevin Warsh.\n\nDeutsche Bank (1, M&A themes for 2H26) and Yardeni (1, via @dailychartbook, on persistent inflation risk) round out the window.\n\n**By bank:** Goldman 12, Apollo/Slok 5, Morgan Stanley 4, Deutsche 1, Yardeni 1.",
+  "by_bank_counts": {
+    "Goldman": 12,
+    "Apollo/Slok": 5,
+    "Morgan Stanley": 4,
+    "Deutsche": 1,
+    "Yardeni": 1
+  },
+  "banks": [
+    {
+      "bank": "Goldman",
+      "theme": "Goldman Sachs -- market repricing Fed cuts to hikes, historical S&P hiking-cycle playbooks, and AI capex/market-cap concentration",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: The market is pricing roughly 50 bp of Fed tightening during the next several months https://t.co/uS5Mqurri9",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075909568446574600",
+          "images": [
+            "https://pbs.twimg.com/media/HM8cwJMW4AA3b7z.png"
+          ],
+          "created_at": "2026-07-11T11:46:24.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "US large-cap value leads YTD on the Sharpe stack, bitcoin remains worst -GS https://t.co/gCXFwpEINj",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075911366355947894",
+          "images": [
+            "https://pbs.twimg.com/media/HM8eYxgXoAAlnls.jpg"
+          ],
+          "created_at": "2026-07-11T11:53:32.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Market pricing of the Fed policy outlook has shifted from cuts to hikes since the start of the year\n\nStocks have accepted that just fine https://t.co/oMpHR9EJAV",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075913243973812461",
+          "images": [
+            "https://pbs.twimg.com/media/HM8gGFYXIAA8U5S.png"
+          ],
+          "created_at": "2026-07-11T12:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: The S&amp;P 500 has typically struggled at the start of Fed hiking cycles\n\nOne and done, or the beginning of something tighter? https://t.co/udbF13x7u8",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075917018880987158",
+          "images": [
+            "https://pbs.twimg.com/media/HM8jh0KWYAAhUpm.png"
+          ],
+          "created_at": "2026-07-11T12:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: 1997 analog... The S&amp;P 500 sold off alongside the 25 bp Fed hike in 1997 https://t.co/vtE6WJFYrc",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075920793309966672",
+          "images": [
+            "https://pbs.twimg.com/media/HM8m9hXWcAABjPZ.png"
+          ],
+          "created_at": "2026-07-11T12:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Short-term S&amp;P 500 returns have been weak in previous episodes when the market priced imminent Fed hiking\n\nfew worries so far... https://t.co/SrE4KPpKsl",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075924568401645899",
+          "images": [
+            "https://pbs.twimg.com/media/HM8qZQPXQAATQJU.png"
+          ],
+          "created_at": "2026-07-11T12:46:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Historical sector returns after the market priced a Fed hike\n\nTech best in 9 comps... https://t.co/SlvZH4TK4Y",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075928343543710076",
+          "images": [
+            "https://pbs.twimg.com/media/HM8t1AJXUAAhZlp.png"
+          ],
+          "created_at": "2026-07-11T13:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: AI infrastructure stocks account for 42% of S&amp;P 500 market cap https://t.co/Aon7Ugx7aQ",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075932117838578011",
+          "images": [
+            "https://pbs.twimg.com/media/HM8xQstXMAAuXo9.png"
+          ],
+          "created_at": "2026-07-11T13:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: S&amp;P 500 capex as a % of sales... highest in more than 20 years https://t.co/IIeAL9nas9",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075935892997361787",
+          "images": [
+            "https://pbs.twimg.com/media/HM80sboXwAAYuWn.png"
+          ],
+          "created_at": "2026-07-11T13:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Alongside rising debt issuance, Q2 2026 was a record quarter for equity issuance. https://t.co/rJ8iC0cxZ9",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075939667984134605",
+          "images": [
+            "https://pbs.twimg.com/media/HM84IKwXAAAmaN5.png"
+          ],
+          "created_at": "2026-07-11T13:46:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "S&amp;P 500 returns &amp; 10-year Treasury rates... \n\nGS: Equities typically struggle alongside sharp moves in interest rates... level, speed, direction, and all that... https://t.co/73aMAEaDUP",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075943443142938660",
+          "images": [
+            "https://pbs.twimg.com/media/HM87j5pXcAAfDEY.png"
+          ],
+          "created_at": "2026-07-11T14:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Low Treasury rate volatility is good for the S&amp;P 500, usually https://t.co/TbxyXLmqLr",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075947217634906441",
+          "images": [
+            "https://pbs.twimg.com/media/HM8-_nWW8AAfwoP.png"
+          ],
+          "created_at": "2026-07-11T14:16:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Apollo/Slok",
+      "theme": "Apollo (Torsten Slok) -- AI capex payback risk: rising hyperscaler credit spreads, potential negative forward FCF, and crowding-out of private investment",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Consensus expects today's AI capex to translate into surging free cash flow by 2028\n\nApollo https://t.co/HjJ8VGxm9V",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075917778855268376",
+          "images": [
+            "https://pbs.twimg.com/media/HM8kOCRXsAE6gKO.jpg"
+          ],
+          "created_at": "2026-07-11T12:19:01.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "IG hyperscaler credit spreads on the rise... Torsten at Apollo https://t.co/jEZkJdwRGk",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075922555689374096",
+          "images": [
+            "https://pbs.twimg.com/media/HM8okEYXUAE_xCk.jpg"
+          ],
+          "created_at": "2026-07-11T12:38:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "$NVDA FY 2027 EPS estimate... from $1.50 three years ago to &gt; $9 today \n\nApollo https://t.co/wOKoaWyNXO",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075930105650508227",
+          "images": [
+            "https://pbs.twimg.com/media/HM8vbiTWwAAj8J7.jpg"
+          ],
+          "created_at": "2026-07-11T13:08:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "AI hyperscaler FCF (fwd) could finally turn negative as Q2 reports roll in... \n\nApollo https://t.co/Pr3ivtsQHe",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075934144849232096",
+          "images": [
+            "https://pbs.twimg.com/media/HM8zGpIXwAAn7KR.png"
+          ],
+          "created_at": "2026-07-11T13:24:03.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "AI capex crowding out private investment elsewhere... Apollo https://t.co/DU8RJo2S5L",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075937655213166642",
+          "images": [
+            "https://pbs.twimg.com/media/HM82S_BWkAAwXzA.jpg"
+          ],
+          "created_at": "2026-07-11T13:38:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Morgan Stanley",
+      "theme": "Morgan Stanley -- Top 2H views, tech-led EPS revisions, a friendlier deficit read, and Fed chair contender Warsh",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Morgan Stanley: US tech/cyclicals leading YTD EPS revisions (defensives weak) https://t.co/e3JJe0POUC",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075944483762442646",
+          "images": [
+            "https://pbs.twimg.com/media/HM88gbWW8AEGhMi.jpg"
+          ],
+          "created_at": "2026-07-11T14:05:08.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Morgan Stanley's Top 2H Views... https://t.co/xENlWDAonV",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075960304614138152",
+          "images": [
+            "https://pbs.twimg.com/media/HM9K5VMXQAEZ4xr.jpg"
+          ],
+          "created_at": "2026-07-11T15:08:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Morgan Stanley: US federal budget deficity coming in better than expected https://t.co/ioCfvV9jRl",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075962318580568544",
+          "images": [
+            "https://pbs.twimg.com/media/HM9MujsW8AAX-3B.jpg"
+          ],
+          "created_at": "2026-07-11T15:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Morgan Stanley: Warsh is all about reform, not hawkishness https://t.co/ca2uSEJzqc",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075966093332455579",
+          "images": [
+            "https://pbs.twimg.com/media/HM9QKRKXcAAt1V9.jpg"
+          ],
+          "created_at": "2026-07-11T15:31:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Deutsche",
+      "theme": "Deutsche Bank -- key M&A themes for 2H26",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "DB: Key M&amp;A themes for 2H26 https://t.co/ZPKcwBK8zD",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075941430934032416",
+          "images": [
+            "https://pbs.twimg.com/media/HM85utpXgAAZIeq.jpg"
+          ],
+          "created_at": "2026-07-11T13:53:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Yardeni",
+      "theme": "Yardeni -- inflation risks still outweigh employment risks despite the oil pullback",
+      "items": [
+        {
+          "author": "dailychartbook",
+          "text": "\"Upside risks to inflation continue to outweigh downside risks to employment, and inflation risks extend well beyond oil prices. That explains why, despite a sharp decline in oil prices, FFR futures continue to signal one to two FFR hikes over the next 12 months.\"\n\n@yardeni https://t.co/X9ZNv85kaI",
+          "tweet_url": "https://x.com/dailychartbook/status/2075883436611350712",
+          "images": [
+            "https://pbs.twimg.com/media/HM8E_AIWcAAB8Xw.jpg"
+          ],
+          "created_at": "2026-07-11T10:02:33.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ],
+  "topics": [
+    {
+      "topic": "Goldman -- Goldman Sachs -- market repricing Fed cuts to hikes, historical S&P hiking-cycle playbooks, and AI capex/market-cap concentration",
+      "theme": "Goldman Sachs -- market repricing Fed cuts to hikes, historical S&P hiking-cycle playbooks, and AI capex/market-cap concentration",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: The market is pricing roughly 50 bp of Fed tightening during the next several months https://t.co/uS5Mqurri9",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075909568446574600",
+          "images": [
+            "https://pbs.twimg.com/media/HM8cwJMW4AA3b7z.png"
+          ],
+          "created_at": "2026-07-11T11:46:24.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "US large-cap value leads YTD on the Sharpe stack, bitcoin remains worst -GS https://t.co/gCXFwpEINj",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075911366355947894",
+          "images": [
+            "https://pbs.twimg.com/media/HM8eYxgXoAAlnls.jpg"
+          ],
+          "created_at": "2026-07-11T11:53:32.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Market pricing of the Fed policy outlook has shifted from cuts to hikes since the start of the year\n\nStocks have accepted that just fine https://t.co/oMpHR9EJAV",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075913243973812461",
+          "images": [
+            "https://pbs.twimg.com/media/HM8gGFYXIAA8U5S.png"
+          ],
+          "created_at": "2026-07-11T12:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: The S&amp;P 500 has typically struggled at the start of Fed hiking cycles\n\nOne and done, or the beginning of something tighter? https://t.co/udbF13x7u8",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075917018880987158",
+          "images": [
+            "https://pbs.twimg.com/media/HM8jh0KWYAAhUpm.png"
+          ],
+          "created_at": "2026-07-11T12:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: 1997 analog... The S&amp;P 500 sold off alongside the 25 bp Fed hike in 1997 https://t.co/vtE6WJFYrc",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075920793309966672",
+          "images": [
+            "https://pbs.twimg.com/media/HM8m9hXWcAABjPZ.png"
+          ],
+          "created_at": "2026-07-11T12:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Short-term S&amp;P 500 returns have been weak in previous episodes when the market priced imminent Fed hiking\n\nfew worries so far... https://t.co/SrE4KPpKsl",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075924568401645899",
+          "images": [
+            "https://pbs.twimg.com/media/HM8qZQPXQAATQJU.png"
+          ],
+          "created_at": "2026-07-11T12:46:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Historical sector returns after the market priced a Fed hike\n\nTech best in 9 comps... https://t.co/SlvZH4TK4Y",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075928343543710076",
+          "images": [
+            "https://pbs.twimg.com/media/HM8t1AJXUAAhZlp.png"
+          ],
+          "created_at": "2026-07-11T13:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: AI infrastructure stocks account for 42% of S&amp;P 500 market cap https://t.co/Aon7Ugx7aQ",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075932117838578011",
+          "images": [
+            "https://pbs.twimg.com/media/HM8xQstXMAAuXo9.png"
+          ],
+          "created_at": "2026-07-11T13:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: S&amp;P 500 capex as a % of sales... highest in more than 20 years https://t.co/IIeAL9nas9",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075935892997361787",
+          "images": [
+            "https://pbs.twimg.com/media/HM80sboXwAAYuWn.png"
+          ],
+          "created_at": "2026-07-11T13:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Alongside rising debt issuance, Q2 2026 was a record quarter for equity issuance. https://t.co/rJ8iC0cxZ9",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075939667984134605",
+          "images": [
+            "https://pbs.twimg.com/media/HM84IKwXAAAmaN5.png"
+          ],
+          "created_at": "2026-07-11T13:46:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "S&amp;P 500 returns &amp; 10-year Treasury rates... \n\nGS: Equities typically struggle alongside sharp moves in interest rates... level, speed, direction, and all that... https://t.co/73aMAEaDUP",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075943443142938660",
+          "images": [
+            "https://pbs.twimg.com/media/HM87j5pXcAAfDEY.png"
+          ],
+          "created_at": "2026-07-11T14:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Low Treasury rate volatility is good for the S&amp;P 500, usually https://t.co/TbxyXLmqLr",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075947217634906441",
+          "images": [
+            "https://pbs.twimg.com/media/HM8-_nWW8AAfwoP.png"
+          ],
+          "created_at": "2026-07-11T14:16:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Apollo/Slok -- Apollo (Torsten Slok) -- AI capex payback risk: rising hyperscaler credit spreads, potential negative forward FCF, and crowding-out of private investment",
+      "theme": "Apollo (Torsten Slok) -- AI capex payback risk: rising hyperscaler credit spreads, potential negative forward FCF, and crowding-out of private investment",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Consensus expects today's AI capex to translate into surging free cash flow by 2028\n\nApollo https://t.co/HjJ8VGxm9V",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075917778855268376",
+          "images": [
+            "https://pbs.twimg.com/media/HM8kOCRXsAE6gKO.jpg"
+          ],
+          "created_at": "2026-07-11T12:19:01.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "IG hyperscaler credit spreads on the rise... Torsten at Apollo https://t.co/jEZkJdwRGk",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075922555689374096",
+          "images": [
+            "https://pbs.twimg.com/media/HM8okEYXUAE_xCk.jpg"
+          ],
+          "created_at": "2026-07-11T12:38:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "$NVDA FY 2027 EPS estimate... from $1.50 three years ago to &gt; $9 today \n\nApollo https://t.co/wOKoaWyNXO",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075930105650508227",
+          "images": [
+            "https://pbs.twimg.com/media/HM8vbiTWwAAj8J7.jpg"
+          ],
+          "created_at": "2026-07-11T13:08:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "AI hyperscaler FCF (fwd) could finally turn negative as Q2 reports roll in... \n\nApollo https://t.co/Pr3ivtsQHe",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075934144849232096",
+          "images": [
+            "https://pbs.twimg.com/media/HM8zGpIXwAAn7KR.png"
+          ],
+          "created_at": "2026-07-11T13:24:03.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "AI capex crowding out private investment elsewhere... Apollo https://t.co/DU8RJo2S5L",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075937655213166642",
+          "images": [
+            "https://pbs.twimg.com/media/HM82S_BWkAAwXzA.jpg"
+          ],
+          "created_at": "2026-07-11T13:38:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Morgan Stanley -- Morgan Stanley -- Top 2H views, tech-led EPS revisions, a friendlier deficit read, and Fed chair contender Warsh",
+      "theme": "Morgan Stanley -- Top 2H views, tech-led EPS revisions, a friendlier deficit read, and Fed chair contender Warsh",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Morgan Stanley: US tech/cyclicals leading YTD EPS revisions (defensives weak) https://t.co/e3JJe0POUC",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075944483762442646",
+          "images": [
+            "https://pbs.twimg.com/media/HM88gbWW8AEGhMi.jpg"
+          ],
+          "created_at": "2026-07-11T14:05:08.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Morgan Stanley's Top 2H Views... https://t.co/xENlWDAonV",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075960304614138152",
+          "images": [
+            "https://pbs.twimg.com/media/HM9K5VMXQAEZ4xr.jpg"
+          ],
+          "created_at": "2026-07-11T15:08:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Morgan Stanley: US federal budget deficity coming in better than expected https://t.co/ioCfvV9jRl",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075962318580568544",
+          "images": [
+            "https://pbs.twimg.com/media/HM9MujsW8AAX-3B.jpg"
+          ],
+          "created_at": "2026-07-11T15:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Morgan Stanley: Warsh is all about reform, not hawkishness https://t.co/ca2uSEJzqc",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075966093332455579",
+          "images": [
+            "https://pbs.twimg.com/media/HM9QKRKXcAAt1V9.jpg"
+          ],
+          "created_at": "2026-07-11T15:31:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Deutsche -- Deutsche Bank -- key M&A themes for 2H26",
+      "theme": "Deutsche Bank -- key M&A themes for 2H26",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "DB: Key M&amp;A themes for 2H26 https://t.co/ZPKcwBK8zD",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2075941430934032416",
+          "images": [
+            "https://pbs.twimg.com/media/HM85utpXgAAZIeq.jpg"
+          ],
+          "created_at": "2026-07-11T13:53:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Yardeni -- Yardeni -- inflation risks still outweigh employment risks despite the oil pullback",
+      "theme": "Yardeni -- inflation risks still outweigh employment risks despite the oil pullback",
+      "items": [
+        {
+          "author": "dailychartbook",
+          "text": "\"Upside risks to inflation continue to outweigh downside risks to employment, and inflation risks extend well beyond oil prices. That explains why, despite a sharp decline in oil prices, FFR futures continue to signal one to two FFR hikes over the next 12 months.\"\n\n@yardeni https://t.co/X9ZNv85kaI",
+          "tweet_url": "https://x.com/dailychartbook/status/2075883436611350712",
+          "images": [
+            "https://pbs.twimg.com/media/HM8E_AIWcAAB8Xw.jpg"
+          ],
+          "created_at": "2026-07-11T10:02:33.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

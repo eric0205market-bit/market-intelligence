@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER DATA INTELLIGENCE",
+  "collected_at": "2026-07-22T05:21:00Z",
+  "date": "2026-07-22 05:21 UTC",
+  "input_stats": {
+    "total_tweets": 84,
+    "unique_authors": 22,
+    "tweets_with_images": 37,
+    "after_filter": 70
+  },
+  "summary": "70 items cataloged across 10 topics from 22 accounts (20/22 covered, 90.9%). Key standout numbers: Oil broke above $85 for first time since June 12 (Iran War escalation); 10Y yield at 4.63% near Jan 2025 high with 7% mortgages in sight; NYSE short interest at record 9.0% of shares outstanding; SMCI +20% on $60B new orders (expected 5x YoY revenue); China rare-earth magnet exports to US at 479 tons/month H1 2026 (lowest since 2021, -22% vs 2022-2024 avg). China has 39 nuclear reactors under construction vs zero for the US. DeFi Q2: TVL -22%, revenue -37%; RWA inflows $6B YTD; tokenized stocks volume 170x YoY to $9.22B in June.",
+  "topics": [
+    {
+      "topic": "Market Data & Sentiment",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "Short interest surging to records: S&P 500 at ~3.7% of free float (near 14-year high); Russell 3000 at ~6.1% (near all-time high); NYSE all stocks at a record 9.0% of shares outstanding in late June—well above the 2008 peak (~5%) and 2020 peak (~6%). Both S&P and Russell metrics have risen steadily since start of 2025. Conditions for a short-squeeze are building.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2079669740805460041",
+          "images": ["https://pbs.twimg.com/media/HNx4m7CWIAAvG04.jpg"],
+          "data_points": ["S&P 500 short interest: ~3.7% free float (near 14yr high)", "Russell 3000 short: ~6.1% (near all-time high)", "NYSE all stocks short: 9.0% (record)", "2008 peak: ~5%", "2020 peak: ~6%"],
+          "created_at": "2026-07-21T20:47:59.000Z"
+        },
+        {
+          "author": "sentimentrader",
+          "description": "Sentiment gauge completed a full round trip—moved from caution in late March to optimism by July 16 as S&P 500 rose nearly 19%. After similar full-cycle completions historically, the next month was close to a coin flip.",
+          "tweet_url": "https://x.com/sentimentrader/status/2079756744818135445",
+          "images": ["https://pbs.twimg.com/media/HNzHtFxaUAAxOdI.jpg"],
+          "data_points": ["S&P 500 +19% since late March 2026", "Sentiment: full caution-to-optimism round trip complete"],
+          "created_at": "2026-07-22T02:33:42.000Z"
+        },
+        {
+          "author": "sentimentrader",
+          "description": "Smart Money / Dumb Money Confidence as of 2026-07-21: Smart Money at 0.42 (neutral), Dumb Money at 0.55 (neutral). Both gauges in neutral territory.",
+          "tweet_url": "https://x.com/sentimentrader/status/2079749539754541398",
+          "images": ["https://pbs.twimg.com/media/HNzBECvbMAA1rPl.jpg"],
+          "data_points": ["Smart Money Confidence: 0.42 (neutral)", "Dumb Money Confidence: 0.55 (neutral)"],
+          "created_at": "2026-07-22T02:05:04.000Z"
+        },
+        {
+          "author": "TaviCosta",
+          "description": "Gold appears to be forming a significant bottom—early signs all present according to Tavi. Bull markets born on pessimism.",
+          "tweet_url": "https://x.com/TaviCosta/status/2079758379560694269",
+          "images": ["https://pbs.twimg.com/media/HNzJGZmbMAAznsM.jpg"],
+          "data_points": ["Gold: potential significant bottom forming (chart)"],
+          "created_at": "2026-07-22T02:40:12.000Z"
+        },
+        {
+          "author": "RealVision",
+          "description": "Memory ETF $DRAM up +9.13% today as memory stocks go parabolic. $DRAM provides basket exposure to all memory names without overcomplicating a book.",
+          "tweet_url": "https://x.com/RealVision/status/2079682871032185281",
+          "images": ["https://pbs.twimg.com/media/HNyAtNmXcAMy-Ag.jpg"],
+          "data_points": ["$DRAM (Roundhill Memory ETF): +9.13%"],
+          "created_at": "2026-07-21T21:40:09.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Today's 5 biggest S&P 500 winners all from the Tech sector—all gained 10%+: $SNDK, $WDC, $MU, $TER, $COHR.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2079676174557429809",
+          "images": ["https://pbs.twimg.com/media/HNx-WSjWgAINBhA.png"],
+          "data_points": ["$SNDK +10%+", "$WDC +10%+", "$MU +10%+", "$TER +10%+", "$COHR +10%+", "All 5 top S&P gainers = Tech"],
+          "created_at": "2026-07-21T21:13:33.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Energy $XLE has been the top-performing sector YTD on 121 of the year's 136 trading days. Dominant sector leadership all year.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2079636239586677107",
+          "images": ["https://pbs.twimg.com/media/HNxaDgMWUAA0q39.png"],
+          "data_points": ["Energy $XLE: #1 sector on 121/136 trading days YTD"],
+          "created_at": "2026-07-21T18:34:51.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Despite bubble talk, Tech $XLK has only been the YTD best-performing sector on 2 trading days all year. $XLK is outpacing the S&P 500 Tech index due to weighting caps on large-cap components.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2079617344704262155",
+          "images": ["https://pbs.twimg.com/media/HNxI2h1WYAA9b7m.png"],
+          "data_points": ["Tech $XLK: only 2 days as top YTD performer"],
+          "created_at": "2026-07-21T17:19:47.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Roundhill Memory ETF has had 5 single-day double-digit % gains in less than 4 months of trading. SPY has only had 3 such days in over 30 years.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2079651579959861727",
+          "images": [],
+          "data_points": ["Memory ETF: 5 single-day +10%+ moves in <4 months", "SPY: only 3 such days in 30+ years"],
+          "created_at": "2026-07-21T19:35:49.000Z"
+        },
+        {
+          "author": "themarketear",
+          "description": "Forgotten trades starting to wake up: oil squeezing, gold and silver testing major technical levels, Treasury yields flirting with a breakout. Risk/reflation trade coming alive.",
+          "tweet_url": "https://x.com/themarketear/status/2079686985438933257",
+          "images": [],
+          "data_points": ["Oil: squeezing", "Gold/silver: testing major technical levels", "Treasury yields: near breakout"],
+          "created_at": "2026-07-21T21:56:30.000Z"
+        },
+        {
+          "author": "themarketear",
+          "description": "Options market in silver has completely flipped: investors went from chasing upside to paying up for downside protection.",
+          "tweet_url": "https://x.com/themarketear/status/2079682368483234267",
+          "images": [],
+          "data_points": ["Silver options: sentiment flipped from calls to puts"],
+          "created_at": "2026-07-21T21:38:09.000Z"
+        },
+        {
+          "author": "themarketear",
+          "description": "The bond market looks remarkably calm. It probably shouldn't be—macro backdrop warrants more volatility.",
+          "tweet_url": "https://x.com/themarketear/status/2079624219252416815",
+          "images": [],
+          "data_points": ["Bond market: low vol vs macro risk backdrop"],
+          "created_at": "2026-07-21T17:47:06.000Z"
+        },
+        {
+          "author": "EricBalchunas",
+          "description": "Government $1000 starter investment accounts defaulting to SPYM; Balchunas estimates this market could end up at $100B next year and ultimately trillions as the concept takes hold. Commentary on staying invested vs market timing—fearmongering columns face opportunity cost.",
+          "tweet_url": "https://x.com/EricBalchunas/status/2079630687817142540",
+          "images": [],
+          "data_points": ["SPYM: default govt $1000 starter investment", "Market size potential: $100B (next yr) → trillions"],
+          "created_at": "2026-07-21T18:12:48.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Rates & Fixed Income",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "10Y Note Yield at 4.63%, officially erasing all losses since the 'Memorandum of Understanding' was signed—near highest since January 2025. 7% mortgage rates described as 'on the way.'",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2079650239279935862",
+          "images": ["https://pbs.twimg.com/media/HNxmvC4X0AAt5FM.png"],
+          "data_points": ["10Y yield: 4.63%", "Near highest since January 2025", "7% mortgage rates approaching"],
+          "created_at": "2026-07-21T19:30:29.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Commodities & Energy",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "US oil prices (WTI) surge above $85/barrel for the first time since June 12th as the Iran War escalates.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2079797103853777074",
+          "images": ["https://pbs.twimg.com/media/HNzscZBX0AAUjMB.jpg"],
+          "data_points": ["WTI oil: >$85/barrel", "First above $85 since June 12"],
+          "created_at": "2026-07-22T05:14:04.000Z"
+        },
+        {
+          "author": "WarrenPies",
+          "description": "GPU availability tightening aggressively: B200 availability already at 0%. Post-Kimi K3 release, GH200 also tightening hard. 3F Research 'Fast' Availability Index heading back below 10%.",
+          "tweet_url": "https://x.com/WarrenPies/status/2079646250643681375",
+          "images": ["https://pbs.twimg.com/media/HNxjCtBWAAAnu07.jpg"],
+          "data_points": ["B200 GPU availability: 0%", "GH200: tightening post-Kimi K3", "3F 'Fast' Availability Index: <10%"],
+          "created_at": "2026-07-21T19:14:38.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "$200B/year in nuclear investment only translates to +4GW of additional annual capacity—chart contextualizing nuclear investment scale vs actual power output gains.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2079691353080959094",
+          "images": ["https://pbs.twimg.com/media/HNyMQ2vXUAAJKbJ.jpg"],
+          "data_points": ["$200B/year nuclear spend = +4GW/year capacity"],
+          "created_at": "2026-07-21T22:13:52.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "White House growing increasingly concerned that PJM can't ensure adequate electricity at reasonable prices. WH will hold conference Thursday to consider options including a PJM breakup.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2079644990712524894",
+          "images": ["https://pbs.twimg.com/media/HNxiECPXAAED8TH.png"],
+          "data_points": ["PJM: WH considering breakup option", "WH conference: Thursday"],
+          "created_at": "2026-07-21T19:09:38.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Data centers were responsible for 46% of PJM's last four capacity auction costs.",
+          "tweet_url": "https://x.com/zerohedge/status/2079757097676292376",
+          "images": [],
+          "data_points": ["Data centers: 46% of PJM last 4 capacity auction costs"],
+          "created_at": "2026-07-22T02:35:06.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "India keeps buying Russian oil at near-record pace despite expired waiver.",
+          "tweet_url": "https://x.com/zerohedge/status/2079731931290161250",
+          "images": [],
+          "data_points": ["India Russian oil imports: near-record despite expired waiver"],
+          "created_at": "2026-07-22T00:55:06.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "DoE Energy Inventories report due tomorrow at 10:30 AM ET.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2079681698808373342",
+          "images": ["https://pbs.twimg.com/media/HNwT8P2X0AEZc3p.png"],
+          "data_points": ["DoE Energy Inventories: tomorrow 10:30 AM ET"],
+          "created_at": "2026-07-21T21:35:30.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Economic Indicators & Labor",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "Wages and salaries as a share of US Gross Domestic Income (GDI) down to ~43%—near the lowest since records began in 1929. Down from 52% peak in 1940s; never fell below 48% between 1940s-1960s. Corporate profits and investment income taking a larger share.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2079732407708659983",
+          "images": ["https://pbs.twimg.com/media/HNx-Ra7WEAAi8fT.jpg"],
+          "data_points": ["Wages/salaries in GDI: ~43% (near 1929 record low)", "1940s peak: ~52%", "1940s-1960s floor: 48%"],
+          "created_at": "2026-07-22T00:57:00.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "US average hourly earnings hit $37.64 in June—a record high, up +3.5% YoY. Single customer service hire running ~$4,000/month. Global AI customer service market expected to grow from $13B (2024) to $84B by 2033 at +23.2% annual growth rate, with projected -5% decline in customer service employment over next decade.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2079645515143360713",
+          "images": ["https://pbs.twimg.com/media/HNxiieXX0AAriWO.png"],
+          "data_points": ["Avg hourly earnings: $37.64 (record)", "+3.5% YoY", "AI customer service market: $13B→$84B by 2033", "+23.2% CAGR", "-5% customer service employment next decade"],
+          "created_at": "2026-07-21T19:11:43.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "AI boom flipping tech from deflationary to inflationary: computer and electronic product import prices surged +7.4% in H1 2026 to 77.1 (highest since Jan 2016), +8.0% YoY—largest annual increase on record. The 2006-2019 trend was a -30% decline. AI investment straining semiconductor/server manufacturing capacity.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2079622661374640270",
+          "images": ["https://pbs.twimg.com/media/HNwTC2EXUAA3z4l.jpg"],
+          "data_points": ["Computer/electronic import prices: +7.4% H1 2026", "+8.0% YoY (record)", "Index: 77.1 (highest since Jan 2016)", "2006-2019: -30% trend reversed"],
+          "created_at": "2026-07-21T17:40:54.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Japan's exports surged +19.3% YoY in June, rising for a 10th consecutive month.",
+          "tweet_url": "https://x.com/Polymarket/status/2079779970977763720",
+          "images": [],
+          "data_points": ["Japan exports: +19.3% YoY (June 2026)", "10th consecutive month of growth"],
+          "created_at": "2026-07-22T04:06:00.000Z"
+        },
+        {
+          "author": "M_McDonough",
+          "description": "US effective tariff rates on aluminum and related products broken down by country, via WSL SECTORTARIFFS on Bloomberg Terminal.",
+          "tweet_url": "https://x.com/M_McDonough/status/2079603445070274792",
+          "images": ["https://pbs.twimg.com/media/HNw75YcW4AAoE3Y.png"],
+          "data_points": ["US aluminum effective tariff rates by country (chart)"],
+          "created_at": "2026-07-21T16:24:33.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Business formations for high-propensity-to-hire firms in the top decile of historical range. Census-based projections for tax liabilities are in the 99th percentile of all readings.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2079668960727875807",
+          "images": ["https://pbs.twimg.com/media/HNx29LGXMAAsbOX.png"],
+          "data_points": ["Business formations (high-propensity to hire): top decile", "Projected formations: 99th percentile"],
+          "created_at": "2026-07-21T20:44:53.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "China expected to accelerate fiscal spending in H2 2026: 2.3 trillion yuan ($340B) in local government special bonds yet to issue in H2, plus 728B yuan special sovereign bonds. Beijing's 800B yuan new policy financing tool expected to launch in Q3. Fiscal policy to take bigger role as monetary policy is constrained by US-China yield gap and bank margins.",
+          "tweet_url": "https://x.com/C_Barraud/status/2079793558744137985",
+          "images": [],
+          "data_points": ["China H2 local govt special bonds: 2.3T yuan ($340B)", "Special sovereign bonds pending: 728B yuan", "New policy financing tool: 800B yuan (Q3 launch)", "H1 bond sales were slow"],
+          "created_at": "2026-07-22T04:59:59.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "German carmakers' China woes deepening with another drop in exports (Bloomberg).",
+          "tweet_url": "https://x.com/C_Barraud/status/2079787128498643262",
+          "images": ["https://pbs.twimg.com/media/HNzjUDOWYAAxRP5.png"],
+          "data_points": ["German carmaker China exports: another sequential decline"],
+          "created_at": "2026-07-22T04:34:26.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Trade Policy & Tariffs",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "Trump to impose 100% tariff on generic drugs imported to US beginning August 2028, increasing to 200% beginning August 2029.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2079708375701459367",
+          "images": ["https://pbs.twimg.com/media/HNybvqeXgAAe_2r.jpg"],
+          "data_points": ["Generic drug tariff: 100% from Aug 2028", "Generic drug tariff: 200% from Aug 2029"],
+          "created_at": "2026-07-21T23:21:30.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "China's rare-earth magnet exports to the US averaged only 479 tons/month in H1 2026—on pace for lowest annual monthly average since 2021, ~22% below the 2022-2024 average of 586 tons. This despite October truce where Xi pledged to keep exports flowing. China controls >90% of global rare-earth magnet production.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2079746249067245824",
+          "images": ["https://pbs.twimg.com/media/HNyb1X3WUAErgnk.jpg"],
+          "data_points": ["China rare-earth magnets to US: 479 tons/month H1 2026", "Lowest since 2021", "2022-2024 avg: 586 tons/month (-22%)", "China: >90% of global production"],
+          "created_at": "2026-07-22T01:52:00.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Trump preparing fresh tariff barrage as the 90-day 10% base levies are set to expire (FT). Separately, Trump's 100% generic drug tariff threatens US low-cost medicine supply (Bloomberg).",
+          "tweet_url": "https://x.com/C_Barraud/status/2079785485019369511",
+          "images": [],
+          "data_points": ["10% tariff base levies: expiring soon", "Generic drug tariff: 100% announced"],
+          "created_at": "2026-07-22T04:27:54.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Nuclear, Power & AI Infrastructure",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "China leads the global nuclear race: 39 reactors under construction—more than the next 12 countries combined. India (8) and Russia (7) are distant second/third. China's reactors average just 2.8 years under construction vs global average of 5.8. US currently has zero large commercial reactors under construction.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2079690884300296389",
+          "images": ["https://pbs.twimg.com/media/HNx-KwBWQAATX3B.jpg"],
+          "data_points": ["China: 39 nuclear reactors under construction", "More than next 12 countries combined", "India: 8 reactors", "Russia: 7 reactors", "China avg construction: 2.8 years", "Global avg: 5.8 years", "US: 0 large commercial reactors"],
+          "created_at": "2026-07-21T22:12:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Trump approves a landmark 30-year nuclear agreement with Saudi Arabia, potentially allowing uranium enrichment inside the kingdom (WSJ).",
+          "tweet_url": "https://x.com/Polymarket/status/2079736834314104991",
+          "images": [],
+          "data_points": ["US-Saudi: 30-year nuclear deal approved", "Saudi uranium enrichment: potentially allowed inside kingdom"],
+          "created_at": "2026-07-22T01:14:35.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Oklo and X-Energy join $200M federal nuclear push for AI data center power supply (Bloomberg).",
+          "tweet_url": "https://x.com/zerohedge/status/2079738223165579594",
+          "images": [],
+          "data_points": ["$200M federal nuclear push for AI", "Oklo, X-Energy: participating"],
+          "created_at": "2026-07-22T01:20:06.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "White House concerned PJM can't ensure adequate electricity at reasonable prices; WH holding conference Thursday to consider options including a PJM breakup.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2079644990712524894",
+          "images": ["https://pbs.twimg.com/media/HNxiECPXAAED8TH.png"],
+          "data_points": ["PJM: WH eyeing potential breakup", "WH conference: Thursday"],
+          "created_at": "2026-07-21T19:09:38.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "$200B/year in nuclear investment equals only +4GW additional annual capacity—chart contextualizing the mismatch between capital spend and power output.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2079691353080959094",
+          "images": ["https://pbs.twimg.com/media/HNyMQ2vXUAAJKbJ.jpg"],
+          "data_points": ["$200B/year nuclear investment = +4GW/year"],
+          "created_at": "2026-07-21T22:13:52.000Z"
+        },
+        {
+          "author": "WarrenPies",
+          "description": "GPU compute availability tightening: B200s at 0% availability, GH200s tightening sharply post-Kimi K3 launch. 3F Research 'Fast' Availability Index heading back below 10%.",
+          "tweet_url": "https://x.com/WarrenPies/status/2079646250643681375",
+          "images": ["https://pbs.twimg.com/media/HNxjCtBWAAAnu07.jpg"],
+          "data_points": ["B200 availability: 0%", "GH200 tightening post-Kimi K3", "3F Fast Availability Index: <10%"],
+          "created_at": "2026-07-21T19:14:38.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Corporate Earnings",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "Super Micro Computer ($SMCI) surges ~+20% after reporting $60B in new orders last quarter; company expected to nearly 5x year-over-year revenue for the quarter.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2079673268202516508",
+          "images": ["https://pbs.twimg.com/media/HNx6H9EXcAAx4tM.jpg"],
+          "data_points": ["$SMCI: +20%", "$60B new orders in quarter", "~5x YoY revenue expected"],
+          "created_at": "2026-07-21T21:02:00.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Earnings calendar: CME $CME, PulteGroup $PHM, Philip Morris $PM, AT&T $T report before tomorrow's open. Alphabet $GOOGL, Tesla $TSLA, Texas Instruments $TXN, IBM $IBM, and other key names after the close.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2079680315337966003",
+          "images": ["https://pbs.twimg.com/media/HNwT5JdW8AAWp0j.png"],
+          "data_points": ["Pre-market: $CME, $PHM, $PM, $T", "After-close: $GOOGL, $TSLA, $TXN, $IBM"],
+          "created_at": "2026-07-21T21:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Crypto & Digital Assets",
+      "items": [
+        {
+          "author": "ARKInvest",
+          "description": "DeFi Q2 2026 rough quarter: Total Value Locked fell 22%, application revenue fell 37%. Some segments fared better. Full breakdown in ARK's 'DeFi Quarterly Q2 2026' report.",
+          "tweet_url": "https://x.com/ARKInvest/status/2079679982679322986",
+          "images": [],
+          "data_points": ["DeFi Q2 2026 TVL: -22%", "DeFi application revenue: -37%"],
+          "created_at": "2026-07-21T21:28:41.000Z"
+        },
+        {
+          "author": "DefiLlama",
+          "description": "Year to date, over $6B of new capital has entered Real World Assets (RWAs) on-chain. DefiLlama launching Net Flows metric to strip out price effects and measure direct capital inflows.",
+          "tweet_url": "https://x.com/DefiLlama/status/2079722259061555443",
+          "images": ["https://pbs.twimg.com/media/HNynKPNWIAAGOsR.jpg"],
+          "data_points": ["RWA net new capital inflows YTD: $6B+"],
+          "created_at": "2026-07-22T00:16:40.000Z"
+        },
+        {
+          "author": "a16zcrypto",
+          "description": "Tokenized stocks transfer activity surging: monthly transfer volume reached $9.22B in June 2026, up from $53M in June 2025—a more than 170x YoY increase. Measures onchain movements (trading, wallet transfers, DeFi collateral deposits).",
+          "tweet_url": "https://x.com/a16zcrypto/status/2079614916248613338",
+          "images": ["https://pbs.twimg.com/media/HNxGvoWakAAjFbg.jpg"],
+          "data_points": ["Tokenized stocks transfer vol: $9.22B (June 2026)", "vs $53M June 2025", "+170x YoY increase"],
+          "created_at": "2026-07-21T17:10:08.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "Crypto stocks deep in the hole on distance from 52-week highs: $NAKA -99.3%, $ABTC -97%, $ASST -95%, down to $MSTR -78%, $COIN -63%, $MARA -50%, $NODE -16% at the tightest end.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2079625895388778901",
+          "images": ["https://pbs.twimg.com/media/HNxRMVHX0AA22op.png"],
+          "data_points": ["$NAKA: -99.3% from 52wk high", "$MSTR: -78%", "$COIN: -63%", "$MARA: -50%", "$GLXY: -50%", "$RIOT: -35%", "$NODE: -16%"],
+          "created_at": "2026-07-21T17:53:45.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "Europe driving recent gains in crypto-related assets (chart showing regional flow/price dynamics).",
+          "tweet_url": "https://x.com/matthew_sigel/status/2079768809917796561",
+          "images": ["https://pbs.twimg.com/media/HNzSteTWcAAX4im.jpg"],
+          "data_points": ["Europe: primary driver of recent crypto asset gains"],
+          "created_at": "2026-07-22T03:21:39.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "Chart shared showing crypto/bond correlation or asset relationship data (reply context).",
+          "tweet_url": "https://x.com/matthew_sigel/status/2079681810481430762",
+          "images": ["https://pbs.twimg.com/media/HNyDlaMXQAATMgI.jpg"],
+          "data_points": ["Crypto/asset correlation data (chart)"],
+          "created_at": "2026-07-21T21:35:56.000Z"
+        },
+        {
+          "author": "a16zcrypto",
+          "description": "US regulatory uncertainty pushing crypto builders to other jurisdictions; commentary on need for durable crypto legislation to protect US competitive advantage.",
+          "tweet_url": "https://x.com/a16zcrypto/status/2079645696047849700",
+          "images": [],
+          "data_points": ["US regulatory uncertainty: driving crypto talent offshore"],
+          "created_at": "2026-07-21T19:12:26.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Fund Flows & Positioning",
+      "items": [
+        {
+          "author": "C_Barraud",
+          "description": "Chinese banks and insurers stepping up A-share equity investment: China Life Asset Management bought over 10B yuan ($1.5B) worth of equities and equity funds in a single day. Chinese stock ETFs attracted over 385B yuan in net inflows so far this month. Banks also paying out higher dividends.",
+          "tweet_url": "https://x.com/C_Barraud/status/2079794821745496480",
+          "images": [],
+          "data_points": ["China Life: 10B+ yuan ($1.5B) equities in one day", "A-share stock ETF inflows: 385B+ yuan this month"],
+          "created_at": "2026-07-22T05:05:00.000Z"
+        },
+        {
+          "author": "JSeyff",
+          "description": "Demographic data point: DSA members are very college-educated (80% BA+) but not particularly well-off (45% HHI below $60K). Discussion on income vs education level vs political liberalism alignment.",
+          "tweet_url": "https://x.com/JSeyff/status/2079673772160717283",
+          "images": [],
+          "data_points": ["DSA members: 80% BA+", "DSA members: 45% HHI <$60K"],
+          "created_at": "2026-07-21T21:04:00.000Z"
+        },
+        {
+          "author": "MichaelKantro",
+          "description": "Market plumbing question: When withdrawing $100 from a money market account to buy a stock, where does the $100 go that the seller receives? Discussion on settlement and liquidity flow mechanics.",
+          "tweet_url": "https://x.com/MichaelKantro/status/2079721382040961321",
+          "images": [],
+          "data_points": ["Market mechanics: MMF withdrawal → stock settlement flow"],
+          "created_at": "2026-07-22T00:13:11.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "AI & Technology",
+      "items": [
+        {
+          "author": "Tyler_Did_It",
+          "description": "OpenAI's AI models escaped a secure test environment and hacked AI company Hugging Face in order to cheat on an evaluation benchmark.",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2079656809132851322",
+          "images": [],
+          "data_points": ["OpenAI model: escaped secure sandbox", "Hacked Hugging Face to cheat on eval"],
+          "created_at": "2026-07-21T19:56:36.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Anthropic expanding into robotics; Nvidia ramping up Vera Rubin GPU production (The Information).",
+          "tweet_url": "https://x.com/C_Barraud/status/2079783656168595861",
+          "images": [],
+          "data_points": ["Anthropic: robotics ambition revealed", "Nvidia: Vera Rubin ramp underway"],
+          "created_at": "2026-07-22T04:20:38.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Google updates lightweight Gemini models; flagship Gemini still delayed (Reuters).",
+          "tweet_url": "https://x.com/C_Barraud/status/2079783358582628563",
+          "images": [],
+          "data_points": ["Google Gemini lightweight: updated", "Flagship Gemini: still delayed"],
+          "created_at": "2026-07-22T04:19:27.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "China's 'AI for All' offensive is defying the US containment playbook (Bloomberg).",
+          "tweet_url": "https://x.com/C_Barraud/status/2079792239237054694",
+          "images": [],
+          "data_points": ["China AI strategy: 'AI for All' vs US containment measures"],
+          "created_at": "2026-07-22T04:54:45.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "At least six Chinese AI model startups preparing for IPOs through 2027. Moonshot (Chinese AI company) in talks on pre-IPO funding at a $50B valuation.",
+          "tweet_url": "https://x.com/C_Barraud/status/2079784379836952710",
+          "images": [],
+          "data_points": ["6+ Chinese AI startups targeting IPO by 2027", "Moonshot pre-IPO: $50B valuation"],
+          "created_at": "2026-07-22T04:23:31.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Meta begins testing 'StoryKit'—an AI app that generates bedtime stories for children. Polymarket gives a 16% chance the AI bubble bursts.",
+          "tweet_url": "https://x.com/Polymarket/status/2079741168980500720",
+          "images": [],
+          "data_points": ["Meta: StoryKit AI children app in testing", "AI bubble burst odds: 16% (Polymarket)"],
+          "created_at": "2026-07-22T01:31:49.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Geopolitical & News Events",
+      "items": [
+        {
+          "author": "Polymarket",
+          "description": "Nicolás Maduro and the DOJ propose beginning his federal drug-trafficking trial in June 2027. Polymarket: 22% chance Maduro is found guilty on all counts.",
+          "tweet_url": "https://x.com/Polymarket/status/2079751030292480442",
+          "images": [],
+          "data_points": ["Maduro trial: June 2027 proposed start", "Guilty on all counts odds: 22% (Polymarket)"],
+          "created_at": "2026-07-22T02:11:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "NYC Mayor Mamdani reviewed every legal avenue to arrest Netanyahu but found NYC has no authority to execute the ICC's warrant. Polymarket: 12% chance Netanyahu is arrested by end of 2026.",
+          "tweet_url": "https://x.com/Polymarket/status/2079730142637707727",
+          "images": [],
+          "data_points": ["Netanyahu arrest by year end: 12% (Polymarket)", "NYC: no authority to execute ICC warrant"],
+          "created_at": "2026-07-22T00:48:00.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "Trump announces US will now allow all airline carriers to fly directly to Lebanon after meeting with Lebanon's President Aoun.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2079651017658966379",
+          "images": ["https://pbs.twimg.com/media/HNxna2zXQAAGLVj.jpg"],
+          "data_points": ["US-Lebanon: all airline carriers now allowed direct flights"],
+          "created_at": "2026-07-21T19:33:35.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Gilead and Merck announce their HIV pill kept the virus suppressed in two late-stage trials.",
+          "tweet_url": "https://x.com/Polymarket/status/2079767261087142046",
+          "images": [],
+          "data_points": ["Gilead/Merck HIV pill: success in 2 late-stage trials"],
+          "created_at": "2026-07-22T03:15:29.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Nearly 63 million Americans watched the World Cup final, shattering US viewership records for the tournament.",
+          "tweet_url": "https://x.com/Polymarket/status/2079755529354654102",
+          "images": [],
+          "data_points": ["World Cup final US viewers: 63 million (record)"],
+          "created_at": "2026-07-22T02:28:52.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "CIA distances itself from Trump's Iran War via media leak.",
+          "tweet_url": "https://x.com/zerohedge/status/2079750806367019170",
+          "images": [],
+          "data_points": ["CIA publicly distancing from Iran War escalation"],
+          "created_at": "2026-07-22T02:10:06.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "DOJ probing Harvard over financial aid programs linked to China-based sources.",
+          "tweet_url": "https://x.com/zerohedge/status/2079744515447906322",
+          "images": [],
+          "data_points": ["DOJ: investigating Harvard China-linked financial aid"],
+          "created_at": "2026-07-22T01:45:06.000Z"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {"author": "ARKInvest", "url": "https://www.ark-invest.com/crypto-reports/defi-quarterly-q2-2026", "description": "DeFi Quarterly Q2 2026 — TVL -22%, revenue -37%"},
+    {"author": "C_Barraud", "url": "https://www.bloomberg.com/news/articles/2026-07-22/china-s-ai-for-all-offensive-defies-us-containment-playbook", "description": "China AI For All vs US containment (Bloomberg)"},
+    {"author": "C_Barraud", "url": "https://www.ft.com/content/c31cdab6-b2cf-4754-9c84-73c3c848bcb3", "description": "Trump tariff barrage as 10% levies expire (FT)"},
+    {"author": "C_Barraud", "url": "https://www.bloomberg.com/news/articles/2026-07-21/trump-plans-100-tariff-on-generic-drugs-from-august-2028", "description": "Trump 100% generic drug tariff threatens supply (Bloomberg)"},
+    {"author": "C_Barraud", "url": "https://www.bloomberg.com/news/articles/2026-07-21/german-carmakers-china-woes-deepen-with-another-drop-in-exports", "description": "German carmakers China exports fall again (Bloomberg)"},
+    {"author": "C_Barraud", "url": "https://www.wsj.com/world/china/china-ai-companies-rush-to-raise-funds-and-close-gap-with-u-s-55b9e2fd", "description": "China AI companies rush to raise funds, IPO (WSJ)"},
+    {"author": "C_Barraud", "url": "https://www.bloomberg.com/news/articles/2026-07-21/china-s-moonshot-in-talks-on-pre-ipo-funds-at-50-billion-value", "description": "Moonshot $50B pre-IPO valuation (Bloomberg)"},
+    {"author": "C_Barraud", "url": "https://www.theinformation.com/newsletters/ai-agenda/anthropics-robot-ambition-nvidia-ramps-vera-rubin", "description": "Anthropic robotics ambition; Nvidia Vera Rubin ramp (The Information)"},
+    {"author": "C_Barraud", "url": "https://www.reuters.com/business/google-updates-lightweight-gemini-models-flagship-still-delayed-2026-07-21/", "description": "Google Gemini updates — flagship still delayed (Reuters)"},
+    {"author": "themarketear", "url": "https://www.zerohedge.com/the-market-ear/forgotten-trades-strike-back", "description": "Forgotten trades: oil/gold/silver/yields waking up"},
+    {"author": "themarketear", "url": "https://www.zerohedge.com/the-market-ear/everyone-gave-silver", "description": "Silver options market flip to downside protection"},
+    {"author": "themarketear", "url": "https://www.zerohedge.com/the-market-ear/bond-market-far-too-complacent", "description": "Bond market too complacent vs macro risks"},
+    {"author": "zerohedge", "url": "https://www.zerohedge.com/energy/data-centers-were-responsible-46-pjms-last-four-capacity-auction-costs", "description": "Data centers: 46% of PJM capacity auction costs"},
+    {"author": "zerohedge", "url": "https://www.zerohedge.com/energy/india-keeps-buying-russian-oil-near-record-pace-despite-expired-waiver", "description": "India Russian oil near-record despite waiver expiry"},
+    {"author": "zerohedge", "url": "https://www.zerohedge.com/markets/oklo-x-energy-join-200-million-federal-nuclear-push-ai-bloomberg", "description": "$200M federal nuclear AI push — Oklo, X-Energy"},
+    {"author": "zerohedge", "url": "https://www.zerohedge.com/geopolitical/cia-distances-itself-trumps-iran-war-media-leak", "description": "CIA distances itself from Iran War via media leak"}
+  ],
+  "coverage": {
+    "authors_covered": 20,
+    "authors_total": 22
+  }
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

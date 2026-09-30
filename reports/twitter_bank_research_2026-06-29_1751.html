@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER BANK RESEARCH",
+  "collected_at": "2026-06-29T17:22:51Z",
+  "window_days": 4,
+  "date": "2026-06-29 17:22 UTC · Bank Research",
+  "input_stats": {
+    "total_tweets": 60,
+    "considered": 60,
+    "kept": 14,
+    "dropped": 46,
+    "deduped": 0
+  },
+  "summary": "Goldman dominates with 8 items: record June US equity inflows, leveraged-fund AuM surging exponentially since late April, tech/industrial fund flows rising as AI optimism proxy, Japan dividend growth highlighted, South Korean firms set to supply ~30% of global humanoid production by 2035, H1 2026 corporate issuance at ~$120B (matching the full-year 2021 record pace), and a +130k payrolls forecast for Thursday (+95k private, unemployment rate steady at 4.3%).\n\nApollo/Slok: trade policy uncertainty is declining rapidly; tokenized real-world asset market reached ~$32B (US Treasuries 47%, private credit 19%).\n\nYardeni: S&P 500 IT sector long-term earnings growth expectations (LTEG) hit a record 43.5% last week, lifting overall S&P 500 LTEG to 25.5%; margin debt as a share of market cap remains historically low.\n\nBofA calls for a summer pullback mid-July through October before a possible year-end rally. Evercore ISI flags the highest count of negative-beta stocks since 2001.\n\n**By bank: Goldman 8, Apollo/Slok 2, Yardeni 2, BofA 1, Evercore 1.**",
+  "by_bank_counts": {"Goldman": 8, "Apollo/Slok": 2, "Yardeni": 2, "BofA": 1, "Evercore": 1},
+  "topics": [
+    {
+      "topic": "Goldman — record equity flows, leveraged positioning surge, humanoids & payrolls forecast",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Want dividend growth? Go to Japan. GS https://t.co/1Ia0x2ORG2",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071583463744881045",
+          "images": ["https://pbs.twimg.com/media/HL--LtHWIAAetkh.png"],
+          "created_at": "2026-06-29T13:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Incredible June US equity inflows... GS https://t.co/n1BYUw7FzZ",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071553264865181818",
+          "images": ["https://pbs.twimg.com/media/HL-it5sXwAELdGr.png"],
+          "created_at": "2026-06-29T11:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Leveraged funds' AuM has grown exponentially since the end of April https://t.co/5a0DFRoHkC",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071552006557249868",
+          "images": ["https://pbs.twimg.com/media/HL-hkpsWcAAmbIx.png"],
+          "created_at": "2026-06-29T11:11:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: US Tech and Industrial funds flows surged as a proxy for AI optimism https://t.co/job1sRrtQ6",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071548635196666102",
+          "images": ["https://pbs.twimg.com/media/HL-egahXMAAmobU.png"],
+          "created_at": "2026-06-29T10:57:36.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Flows into US equities have been remarkably strong so far\n\n...More signs of levered US exceptionalism positioning https://t.co/EWoIhdg7Hw",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071548551386091744",
+          "images": ["https://pbs.twimg.com/media/HL-ebiuXsAE_8DJ.png"],
+          "created_at": "2026-06-29T10:57:16.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "South Korean \"companies are estimated to account for 30% of global humanoid production by 2035, both through direct manufacturing and by supplying critical components like actuator\"\n\n-Goldman Sachs https://t.co/bGeqYjAUVL",
+          "tweet_url": "https://x.com/dailychartbook/status/2071526501183369715",
+          "images": ["https://pbs.twimg.com/media/HL-KYCvW0AAgIBZ.png"],
+          "created_at": "2026-06-29T09:29:39.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "\"At just the halfway mark of the year, 2026 is already roughly tied with the full-year record set in 2021, with about $120 billion in issuance.\"\n\n-Goldman Sachs https://t.co/L5WNGliSmj",
+          "tweet_url": "https://x.com/dailychartbook/status/2071519383264842215",
+          "images": ["https://pbs.twimg.com/media/HL-D5u2XUAAb-i1.png"],
+          "created_at": "2026-06-29T09:01:22.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Jobs Thursday... Goldman thinks +130k headline, +95k private, UR steady at 4.3% https://t.co/xYykAmDBKE",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071384477696209245",
+          "images": ["https://pbs.twimg.com/media/HL8JNJfWsAAsXBf.png"],
+          "created_at": "2026-06-29T00:05:18.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Apollo/Slok — trade uncertainty fading, tokenized RWA market at $32B",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Trade policy uncertainty is rapidly declining\n\nTorsten at Apollo https://t.co/ntCeQRccym",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071550236074373389",
+          "images": ["https://pbs.twimg.com/media/HL-f9kPWoAApQey.jpg"],
+          "created_at": "2026-06-29T11:03:58.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "\"The tokenized real-world asset market has grown to nearly $32 billion, highlighting increasing institutional adoption of blockchain-based asset infrastructure. US Treasuries (47%) and private credit (19%) account for approximately 66% of the market\"\n\n-Apollo Slok https://t.co/O82uStzV23",
+          "tweet_url": "https://x.com/dailychartbook/status/2071541560009761054",
+          "images": ["https://pbs.twimg.com/media/HL-YEilWMAAv33o.jpg"],
+          "created_at": "2026-06-29T10:29:29.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Yardeni — S&P tech LTEG at record 43.5%, margin debt subdued",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Margin debt as a percent of market cap is very low @yardeni https://t.co/BXcFjA2mfs",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071548823046918500",
+          "images": ["https://pbs.twimg.com/media/HL-erU3X0AEl4-g.jpg"],
+          "created_at": "2026-06-29T10:58:21.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "\"Consensus-expected long-term earnings growth (LTEG) rose to a record 43.5% for the S&P 500 Information Technology sector last week. That boosted the LTEG of the S&P 500 to a record 25.5%.\"\n\n@yardeni https://t.co/6ZS0cUmnG3",
+          "tweet_url": "https://x.com/dailychartbook/status/2071504037028000027",
+          "images": ["https://pbs.twimg.com/media/HL918ZwXkAEFWvV.jpg"],
+          "created_at": "2026-06-29T08:00:23.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "BofA — summer pullback expected mid-July through October, year-end rally possible",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Bank of America sees summer stock market pullback before possible year-end rally @seekingalpha \n\nMid-July through October of the midterm year is the sketchiest period https://t.co/phOBUfwc57",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071349148582850695",
+          "images": ["https://pbs.twimg.com/media/HL7pEwRWAAAiGZT.png"],
+          "created_at": "2026-06-28T21:44:55.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Evercore ISI — negative-beta stock count at highest since 2001",
+      "items": [
+        {
+          "author": "LanceRoberts",
+          "text": "We haven't seen a period with this many stocks having negative beta since 2001. \nh/t Evercore ISI https://t.co/MFWDBG0Q47",
+          "tweet_url": "https://x.com/LanceRoberts/status/2071545236648567022",
+          "images": ["https://pbs.twimg.com/media/HL-bIvnWYAArJ0e.jpg"],
+          "created_at": "2026-06-29T10:44:06.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ],
+  "banks": [
+    {
+      "bank": "Goldman",
+      "theme": "Record equity flows, leveraged positioning surge, humanoids & payrolls forecast",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Want dividend growth? Go to Japan. GS https://t.co/1Ia0x2ORG2",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071583463744881045",
+          "images": ["https://pbs.twimg.com/media/HL--LtHWIAAetkh.png"],
+          "created_at": "2026-06-29T13:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Incredible June US equity inflows... GS https://t.co/n1BYUw7FzZ",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071553264865181818",
+          "images": ["https://pbs.twimg.com/media/HL-it5sXwAELdGr.png"],
+          "created_at": "2026-06-29T11:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Leveraged funds' AuM has grown exponentially since the end of April https://t.co/5a0DFRoHkC",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071552006557249868",
+          "images": ["https://pbs.twimg.com/media/HL-hkpsWcAAmbIx.png"],
+          "created_at": "2026-06-29T11:11:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: US Tech and Industrial funds flows surged as a proxy for AI optimism https://t.co/job1sRrtQ6",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071548635196666102",
+          "images": ["https://pbs.twimg.com/media/HL-egahXMAAmobU.png"],
+          "created_at": "2026-06-29T10:57:36.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Flows into US equities have been remarkably strong so far\n\n...More signs of levered US exceptionalism positioning https://t.co/EWoIhdg7Hw",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071548551386091744",
+          "images": ["https://pbs.twimg.com/media/HL-ebiuXsAE_8DJ.png"],
+          "created_at": "2026-06-29T10:57:16.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "South Korean \"companies are estimated to account for 30% of global humanoid production by 2035, both through direct manufacturing and by supplying critical components like actuator\"\n\n-Goldman Sachs https://t.co/bGeqYjAUVL",
+          "tweet_url": "https://x.com/dailychartbook/status/2071526501183369715",
+          "images": ["https://pbs.twimg.com/media/HL-KYCvW0AAgIBZ.png"],
+          "created_at": "2026-06-29T09:29:39.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "\"At just the halfway mark of the year, 2026 is already roughly tied with the full-year record set in 2021, with about $120 billion in issuance.\"\n\n-Goldman Sachs https://t.co/L5WNGliSmj",
+          "tweet_url": "https://x.com/dailychartbook/status/2071519383264842215",
+          "images": ["https://pbs.twimg.com/media/HL-D5u2XUAAb-i1.png"],
+          "created_at": "2026-06-29T09:01:22.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Jobs Thursday... Goldman thinks +130k headline, +95k private, UR steady at 4.3% https://t.co/xYykAmDBKE",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071384477696209245",
+          "images": ["https://pbs.twimg.com/media/HL8JNJfWsAAsXBf.png"],
+          "created_at": "2026-06-29T00:05:18.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Apollo/Slok",
+      "theme": "Trade uncertainty fading, tokenized RWA market at $32B",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Trade policy uncertainty is rapidly declining\n\nTorsten at Apollo https://t.co/ntCeQRccym",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071550236074373389",
+          "images": ["https://pbs.twimg.com/media/HL-f9kPWoAApQey.jpg"],
+          "created_at": "2026-06-29T11:03:58.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "\"The tokenized real-world asset market has grown to nearly $32 billion, highlighting increasing institutional adoption of blockchain-based asset infrastructure. US Treasuries (47%) and private credit (19%) account for approximately 66% of the market\"\n\n-Apollo Slok https://t.co/O82uStzV23",
+          "tweet_url": "https://x.com/dailychartbook/status/2071541560009761054",
+          "images": ["https://pbs.twimg.com/media/HL-YEilWMAAv33o.jpg"],
+          "created_at": "2026-06-29T10:29:29.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Yardeni",
+      "theme": "S&P tech LTEG at record 43.5%, margin debt subdued",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Margin debt as a percent of market cap is very low @yardeni https://t.co/BXcFjA2mfs",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071548823046918500",
+          "images": ["https://pbs.twimg.com/media/HL-erU3X0AEl4-g.jpg"],
+          "created_at": "2026-06-29T10:58:21.000Z",
+          "relayers": []
+        },
+        {
+          "author": "dailychartbook",
+          "text": "\"Consensus-expected long-term earnings growth (LTEG) rose to a record 43.5% for the S&P 500 Information Technology sector last week. That boosted the LTEG of the S&P 500 to a record 25.5%.\"\n\n@yardeni https://t.co/6ZS0cUmnG3",
+          "tweet_url": "https://x.com/dailychartbook/status/2071504037028000027",
+          "images": ["https://pbs.twimg.com/media/HL918ZwXkAEFWvV.jpg"],
+          "created_at": "2026-06-29T08:00:23.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "BofA",
+      "theme": "Summer pullback expected mid-July through October, year-end rally possible",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Bank of America sees summer stock market pullback before possible year-end rally @seekingalpha \n\nMid-July through October of the midterm year is the sketchiest period https://t.co/phOBUfwc57",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2071349148582850695",
+          "images": ["https://pbs.twimg.com/media/HL7pEwRWAAAiGZT.png"],
+          "created_at": "2026-06-28T21:44:55.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Evercore",
+      "theme": "Negative-beta stock count at highest since 2001",
+      "items": [
+        {
+          "author": "LanceRoberts",
+          "text": "We haven't seen a period with this many stocks having negative beta since 2001. \nh/t Evercore ISI https://t.co/MFWDBG0Q47",
+          "tweet_url": "https://x.com/LanceRoberts/status/2071545236648567022",
+          "images": ["https://pbs.twimg.com/media/HL-bIvnWYAArJ0e.jpg"],
+          "created_at": "2026-06-29T10:44:06.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  const s = d.input_stats;
+  if (s) parts.push(`kept <strong>${s.kept}</strong> / considered <strong>${s.considered}</strong> / total <strong>${s.total_tweets}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

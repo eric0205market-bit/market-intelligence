@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER BANK RESEARCH",
+  "collected_at": "2026-06-16T17:23:01Z",
+  "window_days": 4,
+  "date": "2026-06-16 17:23 UTC",
+  "input_stats": {
+    "total_tweets": 60,
+    "considered": 60,
+    "kept": 11,
+    "dropped": 49,
+    "deduped": 0
+  },
+  "summary": "Goldman leads with 6 items covering a broad macro sweep: Brent crude forecast cut to $80 for Q4 2026 (from $90), housing starts weakest since May 2020 with Q2 GDP tracking unchanged at +2.4%, import prices above expectations with core PCE estimated at +0.31% in May, AI hyperscaler capex pegged at ~$755B in 2026, asset-heavy vs. asset-light equity divergence, and declining labour share vs. rising profit share in the 21st century.\n\nBarclays presents a detailed oil market brief: ~4.6 mb/d cumulative inventory draw implies a 7.3 mb/d underlying deficit on a seasonally adjusted basis; near-term price risks skewed to the upside despite current spot weakness; China demand conservatively forecast with potential for rebound if the Strait normalizes.\n\nMorgan Stanley's oil team is flagged for lucid analysis amid geopolitical chaos. Evercore lays out a bull case with SPX 9000 on record sideline cash. Wells Fargo highlights divergence: strong SPX and EM earnings revisions vs. weak Russell 2000. Citi's Surprise gauge points to economists lagging actual economic deterioration — rough slogging possible ahead.\n\n**Counts — Goldman 6 | Barclays 1 | Citi 1 | Evercore 1 | Morgan Stanley 1 | Wells Fargo 1**",
+  "by_bank_counts": {
+    "Goldman": 6,
+    "Barclays": 1,
+    "Citi": 1,
+    "Evercore": 1,
+    "Morgan Stanley": 1,
+    "Wells Fargo": 1
+  },
+  "topics": [
+    {
+      "topic": "Goldman — macro data, oil forecast cut, AI capex, equity labour/profit structure",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We are reducing our 2026Q4 Brent forecast to $80 (vs. $90 previously) and to $75 (vs. $80 prior) for the 2027 average",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066838955467661711",
+          "images": [
+            "https://pbs.twimg.com/media/HK7jE-wWYAAirs4.png"
+          ],
+          "created_at": "2026-06-16T11:03:01.000Z",
+          "relayers": [],
+          "data_points": [
+            "Goldman",
+            "Brent $80 Q4 2026",
+            "oil forecast cut"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Housing Starts Well Below Expectations Due to Volatile Multi-Family Starts\n\nWe left our Q2 GDP tracking estimate unchanged at +2.4%",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066889635490414756",
+          "images": [
+            "https://pbs.twimg.com/media/HK8RK8iWoAAWxqi.png"
+          ],
+          "created_at": "2026-06-16T14:24:24.000Z",
+          "relayers": [],
+          "data_points": [
+            "Goldman",
+            "Housing Starts",
+            "Q2 GDP +2.4%"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Import Prices Above Expectations\n\nWe estimate that the core PCE price index rose 0.31% in May",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066889545539375591",
+          "images": [
+            "https://pbs.twimg.com/media/HK8RFtYWgAA8zK5.png"
+          ],
+          "created_at": "2026-06-16T14:24:03.000Z",
+          "relayers": [],
+          "data_points": [
+            "Goldman",
+            "Import Prices",
+            "Core PCE +0.31% May"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: AI hyperscalers are expected to spend c.$755 billion on capex in 2026",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066839537699946656",
+          "images": [
+            "https://pbs.twimg.com/media/HK7jm2hXwAAj08p.png"
+          ],
+          "created_at": "2026-06-16T11:05:20.000Z",
+          "relayers": [],
+          "data_points": [
+            "Goldman",
+            "AI capex $755B 2026",
+            "hyperscalers"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Asset-heavy vs. asset-light indexed performance - US stocks GS",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066839426374762571",
+          "images": [
+            "https://pbs.twimg.com/media/HK7jgY1X0AAbiI_.png"
+          ],
+          "created_at": "2026-06-16T11:04:53.000Z",
+          "relayers": [],
+          "data_points": [
+            "Goldman",
+            "asset-heavy vs asset-light"
+          ]
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Labour share declines as profit share dominates in the 21st century",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066839228386803809",
+          "images": [
+            "https://pbs.twimg.com/media/HK7jU3XXMAA9aqQ.png"
+          ],
+          "created_at": "2026-06-16T11:04:06.000Z",
+          "relayers": [],
+          "data_points": [
+            "Goldman",
+            "labour share decline",
+            "profit share"
+          ]
+        }
+      ]
+    },
+    {
+      "topic": "Barclays — oil inventory deficit, Strait disruption risk, China demand outlook",
+      "items": [
+        {
+          "author": "HFI_Research",
+          "text": "“Translating the observed ~4.6 mb/d cumulative inventory draw over this period using the historical beta between inventory changes and market imbalance implies an underlying deficit of roughly 7.3 mb/d on a seasonally adjusted basis.”\n\n“Even if the Strait normalizes by month-end, we expect this tightening trend to persist at least through July. Moreover, unlike in 2022, current US SPR releases are structured as loans rather than outright supply additions.”\n\n“This raises a key question: with commercial inventories entering peak demand season at historically tight levels and the cyclical demand impulse the strongest since 2022, why should prices not be materially higher? Around 60% of oil demand is tied to the production and movement of goods. While a gradual easing toward $80/b Brent by end-2027 appears plausible, we see near-term risks to prices as skewed to the upside.\n\nOne potential justification for current pricing is the assumption that war-related inventory losses will be rapidly reversed as supply recovers faster than demand. While possible, we see this as unlikely. Rerouting shipping, clearing logistical bottlenecks, and restarting production will take time, and the risk of renewed flare-ups and further supply disruptions remains non-trivial.\n\nLast, our demand estimates for China are on the conservative side. Based on the preliminary estimate for May, we estimate China’s oil demand fell 200 kb/d y/y on average during the first five months of the year, but our forecast is a 370 kb/d decline for the full year, assuming the Strait normalizes by the end of this month. If the current capex cycle largely holds, we would expect a strong rebound in Chinese demand.”\n\nBarclays",
+          "tweet_url": "https://x.com/HFI_Research/status/2066784462994899253",
+          "images": [
+            "https://pbs.twimg.com/media/HK6xgYxbYAAtjZq.jpg",
+            "https://pbs.twimg.com/media/HK6xgYxbsAAdj31.jpg"
+          ],
+          "created_at": "2026-06-16T07:26:29.000Z",
+          "relayers": [],
+          "data_points": [
+            "Barclays",
+            "oil deficit 7.3 mb/d",
+            "Strait disruption",
+            "China demand"
+          ]
+        }
+      ]
+    },
+    {
+      "topic": "Citi — Surprise gauge signals economist lag, rough slogging potentially ahead",
+      "items": [
+        {
+          "author": "LanceRoberts",
+          "text": "This makes complete sense, as the Citi Surprise gauge is just a measure of whether economic data exceed economists’ expectations.  Economists tend to be slow to adjust their outlooks in response to actual economic changes.  It suggests we could be in for a bit of rough slogging coming up, though.",
+          "tweet_url": "https://x.com/LanceRoberts/status/2066832582134612202",
+          "images": [
+            "https://pbs.twimg.com/media/HK7cmNbWUAAGgdv.jpg"
+          ],
+          "created_at": "2026-06-16T10:37:42.000Z",
+          "relayers": [],
+          "data_points": [
+            "Citi",
+            "Citi Surprise gauge",
+            "economist lag"
+          ]
+        }
+      ]
+    },
+    {
+      "topic": "Evercore — bull case SPX 9000, record cash on sidelines as potential fuel",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Evercore: Bull case SPX 9000...record cash on sidelines could fuel next leg higher @seekingalpha https://t.co/jGz9Dkd7Ef",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066910267473088883",
+          "images": [
+            "https://pbs.twimg.com/media/HK8j74CXkAABb1Q.png"
+          ],
+          "created_at": "2026-06-16T15:46:23.000Z",
+          "relayers": [],
+          "data_points": [
+            "Evercore",
+            "SPX 9000 bull case",
+            "record cash sidelines"
+          ]
+        }
+      ]
+    },
+    {
+      "topic": "Morgan Stanley — oil team analysis amid geopolitical chaos",
+      "items": [
+        {
+          "author": "HFI_Research",
+          "text": "Some wild stuff and kudos to Morgan Stanley’s oil team for having lucid thoughts amidst the chaos.",
+          "tweet_url": "https://x.com/HFI_Research/status/2066740305362391048",
+          "images": [
+            "https://pbs.twimg.com/media/HK6JRxkaQAAsinn.jpg",
+            "https://pbs.twimg.com/media/HK6JU18a0AAdWaM.jpg"
+          ],
+          "created_at": "2026-06-16T04:31:01.000Z",
+          "relayers": [],
+          "data_points": [
+            "Morgan Stanley",
+            "oil market",
+            "geopolitical chaos"
+          ]
+        }
+      ]
+    },
+    {
+      "topic": "Wells Fargo — SPX and EM earnings revisions diverge from small-cap IWM",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Wells Fargo: Strong SPX, EM earnings revisions... not for $IWM $RTY though https://t.co/3FEmhL8mBI",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066893689041940834",
+          "images": [
+            "https://pbs.twimg.com/media/HK8U23vWcAAYMpZ.jpg"
+          ],
+          "created_at": "2026-06-16T14:40:31.000Z",
+          "relayers": [],
+          "data_points": [
+            "Wells Fargo",
+            "SPX earnings revisions",
+            "EM revisions",
+            "IWM lagging"
+          ]
+        }
+      ]
+    }
+  ],
+  "banks": [
+    {
+      "bank": "Goldman",
+      "theme": "Macro data surprises, Brent oil forecast cut, AI hyperscaler capex, equity labour/profit structural shifts",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We are reducing our 2026Q4 Brent forecast to $80 (vs. $90 previously) and to $75 (vs. $80 prior) for the 2027 average",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066838955467661711",
+          "images": [
+            "https://pbs.twimg.com/media/HK7jE-wWYAAirs4.png"
+          ],
+          "created_at": "2026-06-16T11:03:01.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Housing Starts Well Below Expectations Due to Volatile Multi-Family Starts\n\nWe left our Q2 GDP tracking estimate unchanged at +2.4%",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066889635490414756",
+          "images": [
+            "https://pbs.twimg.com/media/HK8RK8iWoAAWxqi.png"
+          ],
+          "created_at": "2026-06-16T14:24:24.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Import Prices Above Expectations\n\nWe estimate that the core PCE price index rose 0.31% in May",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066889545539375591",
+          "images": [
+            "https://pbs.twimg.com/media/HK8RFtYWgAA8zK5.png"
+          ],
+          "created_at": "2026-06-16T14:24:03.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: AI hyperscalers are expected to spend c.$755 billion on capex in 2026",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066839537699946656",
+          "images": [
+            "https://pbs.twimg.com/media/HK7jm2hXwAAj08p.png"
+          ],
+          "created_at": "2026-06-16T11:05:20.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Asset-heavy vs. asset-light indexed performance - US stocks GS",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066839426374762571",
+          "images": [
+            "https://pbs.twimg.com/media/HK7jgY1X0AAbiI_.png"
+          ],
+          "created_at": "2026-06-16T11:04:53.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Labour share declines as profit share dominates in the 21st century",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066839228386803809",
+          "images": [
+            "https://pbs.twimg.com/media/HK7jU3XXMAA9aqQ.png"
+          ],
+          "created_at": "2026-06-16T11:04:06.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Barclays",
+      "theme": "Oil inventory deficit 7.3 mb/d, Strait disruption risk, near-term upside price skew, China demand uncertainty",
+      "items": [
+        {
+          "author": "HFI_Research",
+          "text": "“Translating the observed ~4.6 mb/d cumulative inventory draw over this period using the historical beta between inventory changes and market imbalance implies an underlying deficit of roughly 7.3 mb/d on a seasonally adjusted basis.”\n\n“Even if the Strait normalizes by month-end, we expect this tightening trend to persist at least through July. Moreover, unlike in 2022, current US SPR releases are structured as loans rather than outright supply additions.”\n\n“This raises a key question: with commercial inventories entering peak demand season at historically tight levels and the cyclical demand impulse the strongest since 2022, why should prices not be materially higher? Around 60% of oil demand is tied to the production and movement of goods. While a gradual easing toward $80/b Brent by end-2027 appears plausible, we see near-term risks to prices as skewed to the upside.\n\nOne potential justification for current pricing is the assumption that war-related inventory losses will be rapidly reversed as supply recovers faster than demand. While possible, we see this as unlikely. Rerouting shipping, clearing logistical bottlenecks, and restarting production will take time, and the risk of renewed flare-ups and further supply disruptions remains non-trivial.\n\nLast, our demand estimates for China are on the conservative side. Based on the preliminary estimate for May, we estimate China’s oil demand fell 200 kb/d y/y on average during the first five months of the year, but our forecast is a 370 kb/d decline for the full year, assuming the Strait normalizes by the end of this month. If the current capex cycle largely holds, we would expect a strong rebound in Chinese demand.”\n\nBarclays",
+          "tweet_url": "https://x.com/HFI_Research/status/2066784462994899253",
+          "images": [
+            "https://pbs.twimg.com/media/HK6xgYxbYAAtjZq.jpg",
+            "https://pbs.twimg.com/media/HK6xgYxbsAAdj31.jpg"
+          ],
+          "created_at": "2026-06-16T07:26:29.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Citi",
+      "theme": "Citi Surprise gauge: economists lag actual economic changes, rough slogging ahead",
+      "items": [
+        {
+          "author": "LanceRoberts",
+          "text": "This makes complete sense, as the Citi Surprise gauge is just a measure of whether economic data exceed economists’ expectations.  Economists tend to be slow to adjust their outlooks in response to actual economic changes.  It suggests we could be in for a bit of rough slogging coming up, though.",
+          "tweet_url": "https://x.com/LanceRoberts/status/2066832582134612202",
+          "images": [
+            "https://pbs.twimg.com/media/HK7cmNbWUAAGgdv.jpg"
+          ],
+          "created_at": "2026-06-16T10:37:42.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Evercore",
+      "theme": "Bull case SPX 9000, record cash on sidelines as potential equity fuel",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Evercore: Bull case SPX 9000...record cash on sidelines could fuel next leg higher @seekingalpha https://t.co/jGz9Dkd7Ef",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066910267473088883",
+          "images": [
+            "https://pbs.twimg.com/media/HK8j74CXkAABb1Q.png"
+          ],
+          "created_at": "2026-06-16T15:46:23.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Morgan Stanley",
+      "theme": "Oil team analysis amid geopolitical chaos in energy markets",
+      "items": [
+        {
+          "author": "HFI_Research",
+          "text": "Some wild stuff and kudos to Morgan Stanley’s oil team for having lucid thoughts amidst the chaos.",
+          "tweet_url": "https://x.com/HFI_Research/status/2066740305362391048",
+          "images": [
+            "https://pbs.twimg.com/media/HK6JRxkaQAAsinn.jpg",
+            "https://pbs.twimg.com/media/HK6JU18a0AAdWaM.jpg"
+          ],
+          "created_at": "2026-06-16T04:31:01.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Wells Fargo",
+      "theme": "Strong SPX and EM earnings revisions diverge from weak Russell 2000 / IWM",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Wells Fargo: Strong SPX, EM earnings revisions... not for $IWM $RTY though https://t.co/3FEmhL8mBI",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2066893689041940834",
+          "images": [
+            "https://pbs.twimg.com/media/HK8U23vWcAAYMpZ.jpg"
+          ],
+          "created_at": "2026-06-16T14:40:31.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

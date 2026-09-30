@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "date": "2026-05-30 · Bank Research Digest",
+  "report_type": "TWITTER BANK RESEARCH",
+  "collected_at": "2026-05-30T10:59:48Z",
+  "window_days": 4,
+  "freshness_gate": "FRESHNESS GATE PASSED. collected_at 2026-05-30T10:59:48+00:00 (2.4h old)",
+  "input_stats": {
+    "total_tweets": 60,
+    "considered": 60,
+    "kept": 24,
+    "dropped": 36,
+    "deduped": 0
+  },
+  "summary": "Goldman led coverage with 8 items: IPO market revival (Q2 average first-day return +21%, YTD gross proceeds $28B — best since 2021), Q2 GDP tracking steady at 2.0%, strongest earnings revision breadth since 2021, and FIFA World Cup 2026 predictions. BofA flagged Canada's technical recession following back-to-back GDP contractions. JPMorgan's Dimon acknowledged market exuberance while flagging risks. Ned Davis noted global debt back to pre-pandemic levels at 231% of GDP.\n\nNeil Sethi (13 items) covered the full May/week/day wrap: SPX +5.2% and Nasdaq +8.4% in May (9th straight weekly gain), $IGV software ETF up 36% over 7 weeks, MSCI Asia-Pacific +40% over the last 12 months, BoJ rate hike at ~77% probability for June, Canada GDP contraction, and 91% of consumers still concerned about high prices.\n\n**By bank:** Goldman 8, BofA 1, JPM 1, Ned Davis 1.",
+  "by_bank_counts": {
+    "Goldman": 8,
+    "BofA": 1,
+    "JPM": 1,
+    "Ned Davis": 1
+  },
+  "banks": [
+    {
+      "bank": "Goldman",
+      "theme": "GS on IPO revival, Q2 GDP at 2.0%, earnings revision breadth — multi-item burst",
+      "items": [
+        {
+          "author": "HFI_Research",
+          "text": "I guess Goldman will need to update this chart now.\n\n🤷‍♂️ https://t.co/5WbHp1bM7v",
+          "tweet_url": "https://x.com/HFI_Research/status/2060602808664273095",
+          "images": [
+            "https://pbs.twimg.com/media/HJi7Uq9bsAAM3fT.png"
+          ],
+          "created_at": "2026-05-30T06:02:48.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: First-day returns of recent IPOs indicate a healthy appetite for new issuance, with the average IPO in Q2 rising by 21% on its first trading day, in line with the historical average. https://t.co/A1JwXlFZoT",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060511759245414407",
+          "images": [
+            "https://pbs.twimg.com/media/HJhohsyWAAI-g4w.png"
+          ],
+          "created_at": "2026-05-30T00:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: US IPOs have raised $28 billion in gross proceeds YTD, the largest total at this point in the year since 2021 https://t.co/DNo2nGACpB",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060508629686456343",
+          "images": [
+            "https://pbs.twimg.com/media/HJhlrfkWoAMpN0F.png"
+          ],
+          "created_at": "2026-05-29T23:48:34.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: IPO activity is continuing to recover after four years of muted issuance https://t.co/DgeLD48V1V",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060508548799328410",
+          "images": [
+            "https://pbs.twimg.com/media/HJhlmzuWoAUAvaQ.png"
+          ],
+          "created_at": "2026-05-29T23:48:15.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Goldman hard at work on this summer-ish Friday: FIFA World Cup 2026 predictions by GS https://t.co/fAXieibIHL",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060422464010641501",
+          "images": [
+            "https://pbs.twimg.com/media/HJgXUANWQAIGaoh.jpg"
+          ],
+          "created_at": "2026-05-29T18:06:10.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Goldman notes it's not just the current fiscal year but the next one also that has seen the strongest earnings revision breadth since 2021. https://t.co/UO60nyvgvy",
+          "tweet_url": "https://x.com/neilksethi/status/2060403293822636471",
+          "images": [
+            "https://pbs.twimg.com/media/HJgAVloWQAE_FX1.png"
+          ],
+          "created_at": "2026-05-29T16:50:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Q2 GDP tracking estimate unchanged at +2.0% https://t.co/tDDWK8B8Xw",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060390214913204682",
+          "images": [
+            "https://pbs.twimg.com/media/HJf5-1LXMAEJ3b-.jpg"
+          ],
+          "created_at": "2026-05-29T15:58:02.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Apparently the smaller than expected goods trade deficit wasn't enough to move the needle (even along with a larger than expected inventory build) with Goldman leaving their 2Q GDP estimate at 2%. https://t.co/QGoF17sQn4",
+          "tweet_url": "https://x.com/neilksethi/status/2060385677125234878",
+          "images": [
+            "https://pbs.twimg.com/media/HJfv3BAX0AMe63D.png"
+          ],
+          "created_at": "2026-05-29T15:40:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "BofA",
+      "theme": "Canada enters technical recession after back-to-back GDP contractions",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Canada enters a technical recession after a second consecutive GDP contraction BofA https://t.co/rCPVuah2M1",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060447738328731688",
+          "images": [
+            "https://pbs.twimg.com/media/HJguTLJWAAgMmTT.png"
+          ],
+          "created_at": "2026-05-29T19:46:36.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "JPM",
+      "theme": "Dimon on market exuberance — \"not bad\" but risks flagged",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "JPMorgan's Jamie Dimon says market exuberance 'not bad,' but warns of risks @seekingalpha https://t.co/IkAh3JxQhP",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060445643143791103",
+          "images": [
+            "https://pbs.twimg.com/media/HJgsZN5WgAE2RRs.png"
+          ],
+          "created_at": "2026-05-29T19:38:17.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Ned Davis",
+      "theme": "Global debt ratios at 231% of GDP, back to pre-pandemic level",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Ned Davis: Global debt ratios have fallen back to pre-pandemic levels, reaching 231% of GDP https://t.co/yunQ8nwbX4",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060466461005529271",
+          "images": [
+            "https://pbs.twimg.com/media/HJg_U-jWMAYrusJ.png"
+          ],
+          "created_at": "2026-05-29T21:01:00.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ],
+  "topics": [
+    {
+      "topic": "Goldman — GS on IPO revival, Q2 GDP at 2.0%, earnings revision breadth — multi-item burst",
+      "theme": "GS on IPO revival, Q2 GDP at 2.0%, earnings revision breadth — multi-item burst",
+      "items": [
+        {
+          "author": "HFI_Research",
+          "text": "I guess Goldman will need to update this chart now.\n\n🤷‍♂️ https://t.co/5WbHp1bM7v",
+          "tweet_url": "https://x.com/HFI_Research/status/2060602808664273095",
+          "images": [
+            "https://pbs.twimg.com/media/HJi7Uq9bsAAM3fT.png"
+          ],
+          "created_at": "2026-05-30T06:02:48.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: First-day returns of recent IPOs indicate a healthy appetite for new issuance, with the average IPO in Q2 rising by 21% on its first trading day, in line with the historical average. https://t.co/A1JwXlFZoT",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060511759245414407",
+          "images": [
+            "https://pbs.twimg.com/media/HJhohsyWAAI-g4w.png"
+          ],
+          "created_at": "2026-05-30T00:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: US IPOs have raised $28 billion in gross proceeds YTD, the largest total at this point in the year since 2021 https://t.co/DNo2nGACpB",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060508629686456343",
+          "images": [
+            "https://pbs.twimg.com/media/HJhlrfkWoAMpN0F.png"
+          ],
+          "created_at": "2026-05-29T23:48:34.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: IPO activity is continuing to recover after four years of muted issuance https://t.co/DgeLD48V1V",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060508548799328410",
+          "images": [
+            "https://pbs.twimg.com/media/HJhlmzuWoAUAvaQ.png"
+          ],
+          "created_at": "2026-05-29T23:48:15.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Goldman hard at work on this summer-ish Friday: FIFA World Cup 2026 predictions by GS https://t.co/fAXieibIHL",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060422464010641501",
+          "images": [
+            "https://pbs.twimg.com/media/HJgXUANWQAIGaoh.jpg"
+          ],
+          "created_at": "2026-05-29T18:06:10.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Goldman notes it's not just the current fiscal year but the next one also that has seen the strongest earnings revision breadth since 2021. https://t.co/UO60nyvgvy",
+          "tweet_url": "https://x.com/neilksethi/status/2060403293822636471",
+          "images": [
+            "https://pbs.twimg.com/media/HJgAVloWQAE_FX1.png"
+          ],
+          "created_at": "2026-05-29T16:50:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Q2 GDP tracking estimate unchanged at +2.0% https://t.co/tDDWK8B8Xw",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060390214913204682",
+          "images": [
+            "https://pbs.twimg.com/media/HJf5-1LXMAEJ3b-.jpg"
+          ],
+          "created_at": "2026-05-29T15:58:02.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Apparently the smaller than expected goods trade deficit wasn't enough to move the needle (even along with a larger than expected inventory build) with Goldman leaving their 2Q GDP estimate at 2%. https://t.co/QGoF17sQn4",
+          "tweet_url": "https://x.com/neilksethi/status/2060385677125234878",
+          "images": [
+            "https://pbs.twimg.com/media/HJfv3BAX0AMe63D.png"
+          ],
+          "created_at": "2026-05-29T15:40:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "BofA — Canada enters technical recession after back-to-back GDP contractions",
+      "theme": "Canada enters technical recession after back-to-back GDP contractions",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Canada enters a technical recession after a second consecutive GDP contraction BofA https://t.co/rCPVuah2M1",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060447738328731688",
+          "images": [
+            "https://pbs.twimg.com/media/HJguTLJWAAgMmTT.png"
+          ],
+          "created_at": "2026-05-29T19:46:36.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "JPM — Dimon on market exuberance — \"not bad\" but risks flagged",
+      "theme": "Dimon on market exuberance — \"not bad\" but risks flagged",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "JPMorgan's Jamie Dimon says market exuberance 'not bad,' but warns of risks @seekingalpha https://t.co/IkAh3JxQhP",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060445643143791103",
+          "images": [
+            "https://pbs.twimg.com/media/HJgsZN5WgAE2RRs.png"
+          ],
+          "created_at": "2026-05-29T19:38:17.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Ned Davis — Global debt ratios at 231% of GDP, back to pre-pandemic level",
+      "theme": "Global debt ratios at 231% of GDP, back to pre-pandemic level",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Ned Davis: Global debt ratios have fallen back to pre-pandemic levels, reaching 231% of GDP https://t.co/yunQ8nwbX4",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2060466461005529271",
+          "images": [
+            "https://pbs.twimg.com/media/HJg_U-jWMAYrusJ.png"
+          ],
+          "created_at": "2026-05-29T21:01:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Neil Sethi — May/week/day market wrap — indices, BoJ/BoC policy, Asia outperformance, consumer prices",
+      "theme": "May/week/day market wrap — indices, BoJ/BoC policy, Asia outperformance, consumer prices",
+      "items": [
+        {
+          "author": "neilksethi",
+          "text": "From the Friday morning update, sub here to get it in your inbox each morning (free subscribers get the whole note) https://t.co/q0o89SNAmO\n\nBBG - Canada edged into a technical recession as weak business and government spending drove a slight contraction in the first quarter. Economists surveyed by Bloomberg were anticipating a 1.5% annualized increase in the first quarter, aligning with the Bank of Canada’s projection.\n\nInstead, real gross domestic product fell by 0.1% on an annualized basis during the first three months of the year, Statistics Canada reported on Friday. That follows a 1% contraction in the fourth quarter, a downward revision from a 0.6% decrease previously reported by the federal agency.\n\nThe last time Canada recorded two consecutive quarters of negative growth was in 2020 during the Covid-19 pandemic. Before that, it was in 2015 amid low oil prices.\n\nBusiness capital investment in the first quarter posted a fifth consecutive decline, shrinking 3% on an annualized basis, driven by lower spending on engineering structures.\n\nGovernment capital investment also shrank 9.6% annualized after a sharp increase in spending on weapons systems in the fourth quarter. StatCan noted that despite this decrease, the C$8.3 billion ($6 billion) outlay on weapons systems in the first quarter was still well above the average quarterly spending recorded since 1981.\n\nHousehold spending increased 1.5% annualized in the first quarter, led by higher spending on financial services, but the household saving rate slowed to 3.5%, reaching its lowest level since the first quarter of 2024. Exports fell 0.5%, led by a decline in passenger cars and light trucks, which have been battered by US tariffs.\n\n“There’s no sense sugar-coating this sour result, as the economy has clearly been struggling to grow since the start of the trade war, with headline growth also blunted by the rapid slowdown in population,” Doug Porter, chief economist at Bank of Montreal, said in a report to investors. “Overall, this should really throw a wet blanket on rate-hike talk, as the economy is in no condition to deal with higher rates,” Porter added.\n\nThe “surprising” first quarter data means Canada has only seen growth in one of the last four quarters, pointed out Charles St-Arnaud, chief economist at Servus Credit Union.\n\nIn better news, a flash estimate for industry-based data in April suggests the economy bounced back with 0.4% growth, driven by increases in mining, quarrying and oil and gas extraction and manufacturing, as well as transportation and warehousing, although that was less than estimates. That followed a 0.1% decline in March.\n\n“No wonder the Bank of Canada sounds so hesitant to hike rates,” said Win Thin, chief economist at Bank of Nassau 1982. “With April inflation data coming in softer than expected, the bank is on hold for the time being.”",
+          "tweet_url": "https://x.com/neilksethi/status/2060670052941336883",
+          "images": [
+            "https://pbs.twimg.com/media/HJh4qzqWoAMAttF.png"
+          ],
+          "created_at": "2026-05-30T10:30:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "From the Friday morning update, sub here to get it in your inbox each morning (free subscribers get the whole note) https://t.co/q0o89SNAmO\n\nBBG - Tokyo’s key inflation gauge unexpectedly cooled to the slowest pace in four years, complicating the messaging while not necessarily derailing an expected interest-rate hike from the Bank of Japan as early as next month.\n\nThe consumer price index excluding fresh food rose 1.3% in May from a year earlier in the capital, according to the Ministry of Internal Affairs and Communications Friday. That marked a sixth straight month of cooling and was lower than all but one estimate in a Bloomberg survey of economists. The metric is considered a cleaner read of price trends because it strips out distortions related to subsidies, however it remains skewed by some food price comparisons after items such as rice saw an unprecedented surge last year. The Tokyo CPI is considered a leading indicator for nationwide price trends.\n\nMeantime, a measure that excludes both fresh food and energy — closely watched by the BOJ as a gauge of underlying inflation — increased 1.6% while the overall CPI climbed 1.4%.\n\nThe CPI was restrained by the price of processed foods, which rose at a slower rate than last year, as well as a steep drop in fees for water services. Energy prices continued to fall thanks to gasoline subsidies implemented by Prime Minister Sanae Takaichi.\n\nService prices — a key indicator of demand-driven inflation — rose 1.1% from a year earlier. Food prices excluding fresh items increased 4.1%, slower than the previous month. Rice prices fell 1%, the first decline since August 2022 and a far cry from last year when they surged nearly 94%.\n\nAs of Friday morning, traders were assigning a roughly 77% probability of a hike at that gathering, according to overnight index swaps.\n\n“We think the Bank of Japan will look through the weaker headline reading and stay alert to upside inflation risks from higher oil prices. We continue to expect the BOJ to hike rates by 25 basis points to 1% in June.” — Taro Kimura.",
+          "tweet_url": "https://x.com/neilksethi/status/2060662506025263396",
+          "images": [
+            "https://pbs.twimg.com/media/HJh6IffXkAE7-Ca.jpg"
+          ],
+          "created_at": "2026-05-30T10:00:01.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "From the Markets Update (https://t.co/9vUw5AcbqF):\n\nFriday all about Tech.\n\nDespite the SPX gain, sector breadth was one of the weakest of the month with just 2 of 11 sectors higher according to CME Cash Indices with just one up 1% or more, but again it was heavyweight Tech +1.9%, keeping the index afloat.\n\nIn contrast five sectors down around -1% more led by Staples -2% (and Comm Services was -1.7%). Energy down for the 6th day in 7.",
+          "tweet_url": "https://x.com/neilksethi/status/2060537930557411498",
+          "images": [
+            "https://pbs.twimg.com/media/HJh7zuYWIAMjvDj.jpg"
+          ],
+          "created_at": "2026-05-30T01:45:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Markets Update - 5/29/26\nA detailed look at what happened today impacting US equity, Treasury, and selected commodity markets, and what to watch for next week.\n\nhttps://t.co/YwUQuigufP https://t.co/M8iTqO4vdv",
+          "tweet_url": "https://x.com/neilksethi/status/2060532644266332346",
+          "images": [
+            "https://pbs.twimg.com/media/HJh7g-TXUAELGdB.jpg"
+          ],
+          "created_at": "2026-05-30T01:23:59.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "$NTAP A lot of attention on Dell having its best day since returning to the public market in 2019, but software name NetApp had its best day since 2002 up +22.4% following its earnings.",
+          "tweet_url": "https://x.com/neilksethi/status/2060462069938332069",
+          "images": [
+            "https://pbs.twimg.com/media/HJg7KN9WwAM6Nao.jpg"
+          ],
+          "created_at": "2026-05-29T20:43:33.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "For the month, if we weren't coming off the best months since 2020 for the Nasdaq and SPX, it would have been the best since 2023 at +8.4% and +5.2% respectively. \n\nRUT was a robust +4.3%, and even the DJIA had a very strong month +2.8%. https://t.co/leV45fYyzC",
+          "tweet_url": "https://x.com/neilksethi/status/2060458150847770711",
+          "images": [
+            "https://pbs.twimg.com/media/HJg3fL-WcAQezNe.jpg"
+          ],
+          "created_at": "2026-05-29T20:27:59.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "For the week, just the DJIA saw negative territory at any point, while the Nasdaq, RUT, and SPX jumped at the open Tuesday and would add to that Thursday. \n\nThe RUT would give up its lead Friday to finish +1.9% behind the Nasdaq's +2.5%. SPX was +1.4% while the DJIA was +0.9%. https://t.co/MwJlyURfD9",
+          "tweet_url": "https://x.com/neilksethi/status/2060456623282258387",
+          "images": [
+            "https://pbs.twimg.com/media/HJg1_UBXgAE_apb.jpg"
+          ],
+          "created_at": "2026-05-29T20:21:55.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "US equity indices opened with large caps modestly higher and small caps modestly lower and would stay that way throughout the session with the DJIA taking the lead +0.7%, SPX/Nasdaq +0.2%, but RUT -0.6%. https://t.co/FcuGRXDoFY",
+          "tweet_url": "https://x.com/neilksethi/status/2060454406399656406",
+          "images": [
+            "https://pbs.twimg.com/media/HJg0W_OXgAMYHRr.png"
+          ],
+          "created_at": "2026-05-29T20:13:06.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "As of 3pm the Nasdaq was up around 8.4% for the month, following a 15.3% gain in April. \n\nThis two-month percentage gain of 23.7% would be the index's largest since April 2009 when it was up 24.6%. https://t.co/SDTLVPwYC4",
+          "tweet_url": "https://x.com/neilksethi/status/2060439783672107106",
+          "images": [
+            "https://pbs.twimg.com/media/HJgidZeXwAQjEbf.png"
+          ],
+          "created_at": "2026-05-29T19:15:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Make it 9. https://t.co/74ge4QKKnk",
+          "tweet_url": "https://x.com/neilksethi/status/2060433662219313556",
+          "images": [
+            "https://pbs.twimg.com/media/HJghfKzWAAM1N36.png"
+          ],
+          "created_at": "2026-05-29T18:50:40.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "The share of consumers concerned about high prices was unchanged in 2025 vs 2024 at 91%. https://t.co/zPAWVKLB5q",
+          "tweet_url": "https://x.com/neilksethi/status/2060427452258918873",
+          "images": [
+            "https://pbs.twimg.com/media/HJgAk2-XcAA0n-m.png"
+          ],
+          "created_at": "2026-05-29T18:26:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "The MSCI Asia-Pacific index is up over 40% over the last 12 months vs 28% for the SPX and 15% for the Euro Stoxx 6000. https://t.co/SUCtXjk94w",
+          "tweet_url": "https://x.com/neilksethi/status/2060412101383110916",
+          "images": [
+            "https://pbs.twimg.com/media/HJgAaoZWYAA0mni.png"
+          ],
+          "created_at": "2026-05-29T17:25:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "I thought software was dead?  $IGV Software ETF on pace for 7th straight weekly gain up 36% over that span. https://t.co/s02oRug7vA",
+          "tweet_url": "https://x.com/neilksethi/status/2060397088056263063",
+          "images": [
+            "https://pbs.twimg.com/media/HJf__MxWEAI9WRN.png"
+          ],
+          "created_at": "2026-05-29T16:25:20.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

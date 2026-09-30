@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER BANK RESEARCH",
+  "date": "2026-06-04 17:22 UTC",
+  "collected_at": "2026-06-04T17:22:49Z",
+  "window_days": 4,
+  "input_stats": {
+    "total_tweets": 60,
+    "considered": 60,
+    "kept": 15,
+    "dropped": 45,
+    "deduped": 0
+  },
+  "summary": "**BofA 5, Goldman 4, Yardeni 2, Citi 1** — 15 kept items from June 4 2026 (4-day window).\n\nBofA dominates: above-consensus May NFP call (95k vs 85k consensus), Taylor Rule analysis showing tariff-adjusted inflation supports Fed on-hold near term, and BofA card data showing +5.2% y/y spend (ex-gas +4.1%) with electronics up +19.1% and resilience across income cohorts.\n\nGoldman: below-consensus NFP forecast (60k), healthy Q1 consumer per S&P 500 company results (+9% y/y discretionary, +5% staples), post-Iran ceasefire market pricing analysis (growth shock fully unwound, policy/inflation still hawkishly priced), and commodity-driven core PCE peaking ~0.35pp in Q4 2026.\n\nYardeni raised a near-term pullback flag while holding 8250 S&P 500 year-end target; S&P 500 forward earnings +26.6% y/y — historically only seen post-recession. Citi Economic Surprise Index hit its highest reading since October 2023.\n\nKey macro (Neil Sethi): Challenger cuts at highest May total since 2020 led by AI/Tech; all three FOMC dissenters (Logan, Kashkari, Hammack) signaling possible 2H 2026 hikes; initial claims edge up to 225k (still low); Broadcom (-14.5%) AI revenue guidance miss on $AVGO weighs on semis.",
+  "by_bank_counts": {
+    "BofA": 5,
+    "Goldman": 4,
+    "Yardeni": 2,
+    "Citi": 1
+  },
+  "banks": [
+    {
+      "bank": "BofA",
+      "theme": "BofA — May NFP 95k call (above consensus), Taylor Rule & Fed hold case, card spend +5.2% y/y (ex-gas +4.1%)",
+      "items": [
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062550275777266119",
+          "text": "BoA on NFP: After job growth surged in Mar and Apr, we look for May NFP to print at a solid, above consensus 95k (private: 100k), which would be comfortably above breakeven. \n\nEducation & health should continue to lead, followed by trade & transport and leisure & hospitality, but it is likely we get some job growth broadening. \n\nRisks are tilted to the upside, with claims still benign, strong weekly ADP data and early World Cup hiring.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-mcurXAAAOUlf.png"
+          ],
+          "created_at": "2026-06-04T15:01:20.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062534841695129647",
+          "text": "BoA: Spending on BoA cards (credit+debit) up +5.2% y/y in the week through May 30th, decelerating slightly from +5.7% the prior week with ex-gasoline spending (gasoline was +25.2% y/y) remaining very healthy at +4.1% (+4.5% the prior week and +3.5% the week before that). \n\nGains continued to be led by electronics, up +19.1% (after >+20% the prior two weeks). Airlines and general merchandise both up over 6% while clothing and dining out were up around 3.5%. \n\nMore categories down y/y though after only two (department stores and entertainment) the prior week. Spending continues to be led by higher income households.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-KStBWkAAZLlZ.png"
+          ],
+          "created_at": "2026-06-04T14:00:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062529805892075839",
+          "text": "BoA continues: So, why [if the Fed's models say the Fed should be hiking] isn't the Fed raising rates? \n\nFormer Fed chair Powell has been explicit that the  Fed would be hiking if it weren't looking through tariff-driven inflation as a one-off increase in price levels that should roll off the y/y rate over the next few quarters. \n\nWe estimate that tariffs have added nearly 70bp to y/y core PCE inflation (Exhibit 2). Therefore, underlying inflation is still above target, but not egregiously so. If we plug our ex-tariff inflation estimates into the above Taylor Rules, we find that policy was loose last year – justifying the rate cuts in 2H 2025 – and is now right where it “should” be (Exhibit 3). \n\nTo be clear, the Fed does not strictly follow the Taylor Rule. But our analysis shows how  Chair Warsh can still make a strong case for staying on hold in the near term, as we expect him to do at the June press conference.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-IySlWsAAaLl8.jpg"
+          ],
+          "created_at": "2026-06-04T13:40:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2062490495520018874",
+          "text": "BofA: ex-gas spending remains resilient to the surge in gas prices.\n\nIn many categories, y/y spending growth per HH has actually been stronger in recent weeks than it was before the Iran conflict began",
+          "images": [
+            "https://pbs.twimg.com/media/HJ9wLSMWsAA8_qG.png"
+          ],
+          "created_at": "2026-06-04T11:03:48.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2062490160504131872",
+          "text": "BofA card spending +5.2% W/E May 30, ex-gas +4.1%\n\nHigher-income households continue to see stronger growth than other cohorts in total card ex-gas spending",
+          "images": [
+            "https://pbs.twimg.com/media/HJ9v3zNWYAAXP1H.png"
+          ],
+          "created_at": "2026-06-04T11:02:28.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Goldman",
+      "theme": "Goldman — May NFP 60k forecast, Q1 consumer health, post-Iran ceasefire market pricing, commodity PCE peak Q4 2026",
+      "items": [
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062579382443720832",
+          "text": "Goldman on NFP: We estimate nonfarm payrolls rose by 60k in May, below consensus of +85k but slightly above the three-month average of +48k. We estimate that private payrolls increased by 65k, below consensus of 86k.\n\nWe estimate average hourly earnings rose 0.4% month-over-month in May, reflecting positive calendar effects.\n\nWe estimate that the unemployment rate was unchanged on a rounded basis at 4.3% in May. On one hand, continuing claims declined further between survey weeks. But on the other hand, the May unemployment rate appears to suffer from modest positive residual seasonality—the unrounded unemployment rate has increased in each of the last three Mays by an average of 0.12pp—and the bar for rounding up to 4.4% is not high from an unrounded 4.34% in April.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-zUi7WwAA1_Z8.png"
+          ],
+          "created_at": "2026-06-04T16:57:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062542388468576695",
+          "text": "Goldman: Despite the sharp rise in oil prices, company commentary and results suggest that the consumer remained healthy in the first quarter. \n\nSales growth among consumer-facing companies improved—sales increased 9% year-over-year among the median S&P 500 consumer discretionary company and 5% for the median consumer staples company. \n\nThat message from company results is corroborated by the official statistics and alternative data: Exhibit 2 shows that monthly measures of nominal consumer spending—including those that exclude gasoline purchases—have continued to grow at roughly the same rate for the last few months.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-KPL1X0AAcLpN.png"
+          ],
+          "created_at": "2026-06-04T14:30:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062524772664361200",
+          "text": "Goldman: The market has already priced significant relief since the Iran ceasefire. Our macro tools that decompose the joint movement of equities and bond yields into estimated “growth” and “policy” shocks that are driving the market (Exhibit 1) suggest that the market has more than fully unwound the negative growth downgrade that the market began pricing in February, but that the market is still pricing a more hawkish view of policy/inflation risks than before the start of the war.\n\nOur baseline forecasts assume a reopening of the Strait and normalization of oil flows by the end of June, though no further sustained downside in oil prices.... Our growth pricing estimates suggest that the market is pricing US growth at 2.6%, which is above even our economists better growth outlook for 2027, so—taking these literally—our tools would suggest that the market is already pricing a more optimistic growth outlook than our baseline forecasts. \n\nOur interest rate forecasts [though] are dovish to market pricing (which is already priced for hikes), as are our inflation forecasts, so our baseline forecasts suggest some room for policy relief from here.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-KKIDXgAAYPE_.jpg"
+          ],
+          "created_at": "2026-06-04T13:20:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "LanceRoberts",
+          "tweet_url": "https://x.com/LanceRoberts/status/2062483978590769616",
+          "text": "Goldman estimates that the boost from commodity price increases to year-over-year core PCE inflation will peak around 0.35 percentage points in Q4 2026 in the baseline scenario for oil prices. Inflation will then start to revert back towards its normalized growth trend of 2%ish, matching the economic growth rate.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ9p9AoXoAAVA6Z.jpg",
+            "https://pbs.twimg.com/media/HJ9p9w_WYAAl812.png"
+          ],
+          "created_at": "2026-06-04T10:37:54.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Yardeni",
+      "theme": "Yardeni — near-term pullback flag, 8250 S&P year-end target maintained, FEMO at post-recession levels",
+      "items": [
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062514706087371221",
+          "text": "Yardeni: Yesterday, we raised the caution flag, suggesting a possible pullback over the next few weeks... we view any pullback as a buying opportunity and maintain our 8250 target for the S&P 500 by year-end.\n...\nMight there be more FEMO ahead? Yes, but it might already be discounted by the market, making it vulnerable to even slight disappointments. A case in point is Broadcom's ... after-hours sell-off... when the company's solid earnings report was somewhat weaker than expected.\n\nS&P 500 forward earnings is up 26.6% y/y through May. That's as good as FEMO gets historically, with the exception of post-recession recoveries (chart).",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-D-2ZW4AANaJl.jpg"
+          ],
+          "created_at": "2026-06-04T12:40:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2062502398493401232",
+          "text": "Citi Economic Surprise Index... highest since October 2023 @yardeni",
+          "images": [
+            "https://pbs.twimg.com/media/HJ97AGjWsAA9kHG.jpg"
+          ],
+          "created_at": "2026-06-04T11:51:05.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Citi",
+      "theme": "Citi — Economic Surprise Index at highest since October 2023",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2062502398493401232",
+          "text": "Citi Economic Surprise Index... highest since October 2023 @yardeni",
+          "images": [
+            "https://pbs.twimg.com/media/HJ97AGjWsAA9kHG.jpg"
+          ],
+          "created_at": "2026-06-04T11:51:05.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ],
+  "topics": [
+    {
+      "topic": "BofA — May NFP 95k call (above consensus), Taylor Rule & Fed hold case, card spend +5.2% y/y (ex-gas +4.1%)",
+      "items": [
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062550275777266119",
+          "text": "BoA on NFP: After job growth surged in Mar and Apr, we look for May NFP to print at a solid, above consensus 95k (private: 100k), which would be comfortably above breakeven. \n\nEducation & health should continue to lead, followed by trade & transport and leisure & hospitality, but it is likely we get some job growth broadening. \n\nRisks are tilted to the upside, with claims still benign, strong weekly ADP data and early World Cup hiring.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-mcurXAAAOUlf.png"
+          ],
+          "created_at": "2026-06-04T15:01:20.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062534841695129647",
+          "text": "BoA: Spending on BoA cards (credit+debit) up +5.2% y/y in the week through May 30th, decelerating slightly from +5.7% the prior week with ex-gasoline spending (gasoline was +25.2% y/y) remaining very healthy at +4.1% (+4.5% the prior week and +3.5% the week before that). \n\nGains continued to be led by electronics, up +19.1% (after >+20% the prior two weeks). Airlines and general merchandise both up over 6% while clothing and dining out were up around 3.5%. \n\nMore categories down y/y though after only two (department stores and entertainment) the prior week. Spending continues to be led by higher income households.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-KStBWkAAZLlZ.png"
+          ],
+          "created_at": "2026-06-04T14:00:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062529805892075839",
+          "text": "BoA continues: So, why [if the Fed's models say the Fed should be hiking] isn't the Fed raising rates? \n\nFormer Fed chair Powell has been explicit that the  Fed would be hiking if it weren't looking through tariff-driven inflation as a one-off increase in price levels that should roll off the y/y rate over the next few quarters. \n\nWe estimate that tariffs have added nearly 70bp to y/y core PCE inflation (Exhibit 2). Therefore, underlying inflation is still above target, but not egregiously so. If we plug our ex-tariff inflation estimates into the above Taylor Rules, we find that policy was loose last year – justifying the rate cuts in 2H 2025 – and is now right where it “should” be (Exhibit 3). \n\nTo be clear, the Fed does not strictly follow the Taylor Rule. But our analysis shows how  Chair Warsh can still make a strong case for staying on hold in the near term, as we expect him to do at the June press conference.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-IySlWsAAaLl8.jpg"
+          ],
+          "created_at": "2026-06-04T13:40:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2062490495520018874",
+          "text": "BofA: ex-gas spending remains resilient to the surge in gas prices.\n\nIn many categories, y/y spending growth per HH has actually been stronger in recent weeks than it was before the Iran conflict began",
+          "images": [
+            "https://pbs.twimg.com/media/HJ9wLSMWsAA8_qG.png"
+          ],
+          "created_at": "2026-06-04T11:03:48.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2062490160504131872",
+          "text": "BofA card spending +5.2% W/E May 30, ex-gas +4.1%\n\nHigher-income households continue to see stronger growth than other cohorts in total card ex-gas spending",
+          "images": [
+            "https://pbs.twimg.com/media/HJ9v3zNWYAAXP1H.png"
+          ],
+          "created_at": "2026-06-04T11:02:28.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Goldman — May NFP 60k forecast, Q1 consumer health, post-Iran ceasefire market pricing, commodity PCE peak Q4 2026",
+      "items": [
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062579382443720832",
+          "text": "Goldman on NFP: We estimate nonfarm payrolls rose by 60k in May, below consensus of +85k but slightly above the three-month average of +48k. We estimate that private payrolls increased by 65k, below consensus of 86k.\n\nWe estimate average hourly earnings rose 0.4% month-over-month in May, reflecting positive calendar effects.\n\nWe estimate that the unemployment rate was unchanged on a rounded basis at 4.3% in May. On one hand, continuing claims declined further between survey weeks. But on the other hand, the May unemployment rate appears to suffer from modest positive residual seasonality—the unrounded unemployment rate has increased in each of the last three Mays by an average of 0.12pp—and the bar for rounding up to 4.4% is not high from an unrounded 4.34% in April.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-zUi7WwAA1_Z8.png"
+          ],
+          "created_at": "2026-06-04T16:57:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062542388468576695",
+          "text": "Goldman: Despite the sharp rise in oil prices, company commentary and results suggest that the consumer remained healthy in the first quarter. \n\nSales growth among consumer-facing companies improved—sales increased 9% year-over-year among the median S&P 500 consumer discretionary company and 5% for the median consumer staples company. \n\nThat message from company results is corroborated by the official statistics and alternative data: Exhibit 2 shows that monthly measures of nominal consumer spending—including those that exclude gasoline purchases—have continued to grow at roughly the same rate for the last few months.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-KPL1X0AAcLpN.png"
+          ],
+          "created_at": "2026-06-04T14:30:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062524772664361200",
+          "text": "Goldman: The market has already priced significant relief since the Iran ceasefire. Our macro tools that decompose the joint movement of equities and bond yields into estimated “growth” and “policy” shocks that are driving the market (Exhibit 1) suggest that the market has more than fully unwound the negative growth downgrade that the market began pricing in February, but that the market is still pricing a more hawkish view of policy/inflation risks than before the start of the war.\n\nOur baseline forecasts assume a reopening of the Strait and normalization of oil flows by the end of June, though no further sustained downside in oil prices.... Our growth pricing estimates suggest that the market is pricing US growth at 2.6%, which is above even our economists better growth outlook for 2027, so—taking these literally—our tools would suggest that the market is already pricing a more optimistic growth outlook than our baseline forecasts. \n\nOur interest rate forecasts [though] are dovish to market pricing (which is already priced for hikes), as are our inflation forecasts, so our baseline forecasts suggest some room for policy relief from here.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-KKIDXgAAYPE_.jpg"
+          ],
+          "created_at": "2026-06-04T13:20:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "LanceRoberts",
+          "tweet_url": "https://x.com/LanceRoberts/status/2062483978590769616",
+          "text": "Goldman estimates that the boost from commodity price increases to year-over-year core PCE inflation will peak around 0.35 percentage points in Q4 2026 in the baseline scenario for oil prices. Inflation will then start to revert back towards its normalized growth trend of 2%ish, matching the economic growth rate.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ9p9AoXoAAVA6Z.jpg",
+            "https://pbs.twimg.com/media/HJ9p9w_WYAAl812.png"
+          ],
+          "created_at": "2026-06-04T10:37:54.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Yardeni — near-term pullback flag, 8250 S&P year-end target maintained, FEMO at post-recession levels",
+      "items": [
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062514706087371221",
+          "text": "Yardeni: Yesterday, we raised the caution flag, suggesting a possible pullback over the next few weeks... we view any pullback as a buying opportunity and maintain our 8250 target for the S&P 500 by year-end.\n...\nMight there be more FEMO ahead? Yes, but it might already be discounted by the market, making it vulnerable to even slight disappointments. A case in point is Broadcom's ... after-hours sell-off... when the company's solid earnings report was somewhat weaker than expected.\n\nS&P 500 forward earnings is up 26.6% y/y through May. That's as good as FEMO gets historically, with the exception of post-recession recoveries (chart).",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-D-2ZW4AANaJl.jpg"
+          ],
+          "created_at": "2026-06-04T12:40:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2062502398493401232",
+          "text": "Citi Economic Surprise Index... highest since October 2023 @yardeni",
+          "images": [
+            "https://pbs.twimg.com/media/HJ97AGjWsAA9kHG.jpg"
+          ],
+          "created_at": "2026-06-04T11:51:05.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Citi — Economic Surprise Index at highest since October 2023",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2062502398493401232",
+          "text": "Citi Economic Surprise Index... highest since October 2023 @yardeni",
+          "images": [
+            "https://pbs.twimg.com/media/HJ97AGjWsAA9kHG.jpg"
+          ],
+          "created_at": "2026-06-04T11:51:05.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Macro / General — Challenger cuts, Fed hawks (Logan/Kashkari/Hammack), jobless claims, AVGO AI miss",
+      "items": [
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062572261278671153",
+          "text": "Challenger Job Cuts/Hires - May 2026\nChallenger May announced job cuts up 3% y/y to highest May total since 2020 led by Tech and AI cuts as well as economic conditions. Hiring plans remain subdued.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-6ajhW0AESpaU.jpg",
+            "https://pbs.twimg.com/media/HJ-6bLDWQAAQ_2X.jpg",
+            "https://pbs.twimg.com/media/HJ-6b8HXMAABoOu.jpg",
+            "https://pbs.twimg.com/media/HJ-6ciDWUAAcpM5.jpg"
+          ],
+          "created_at": "2026-06-04T16:28:42.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062562679043350909",
+          "text": "After regional Fed presidents Kashkari and Hammack, two of the three dissenters from the April #FOMC decision who wanted to remove the \"easing bias\" from the Fed's statement, came out with hawkish speeches last week, the third of that group, Dallas Fed President Laurie Logan, in a speech in Texas Wednesday was the first to put a more specific timeline on when she needs to see inflation improving materially towards the 2% target saying \"higher interest rates could be necessary later this year to fully restore price stability and appropriately balance both sides of the Fed's dual mandate.\"\n\nWhile a 2026 hike might be inferred from the wording used by others, such as  \"in the near future,\" it is increasingly looking like we might be getting votes for hikes in the second half.\n\nAfter noting that \"economic activity remains strong,\" \"consumer spending... robust,\" \"corporate earnings [in aggregate] are going gangbusters,\" \"financial conditions are accommodative... AI investment continues to boom,\" she says \"conditions indicate that monetary policy is not restraining the economy.\"",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-xkd5WEAA-spF.png"
+          ],
+          "created_at": "2026-06-04T15:50:37.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062518967059599672",
+          "text": "Initial jobless claims edge up to the highest since February but still very low historically.\n\nContinuing claims around the least since since Jan 2024.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-KBapWsAAeJNa.jpg",
+            "https://pbs.twimg.com/media/HJ-KB9zXkAA12cF.jpg"
+          ],
+          "created_at": "2026-06-04T12:56:56.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "tweet_url": "https://x.com/neilksethi/status/2062510738405576879",
+          "text": "$AVGO Semiconductor seller Broadcom, the 6th largest component of the S&P 500 with an over $2 trillion market cap is shedding -14.5% of that this morning, the biggest drop in 16 months, after a disappointing forecast for AI revenue seeing $16 billion for the current quarter vs expectations for $17.2 billion. \n\nChief Executive Officer Hock Tan said Broadcom will sell $56 billion in AI chips in the fiscal year that ends in October. That forecast fell short of the average estimate of $57.6 billion. \n\nTotal revenue in the period ending in July will be about $29.4 billion, Broadcom said. While analysts estimated $28.6 billion on average, whisper numbers were higher.\n\nStill with a recent run-up the decline just takes shares back to where they were two weeks ago. \n\nIn the fiscal second quarter, which ended May 3, sales rose 48% to $22.2 billion. Analysts had projected $22.1 billion on average. Earnings climbed to $2.44 a share, excluding some items. That compared with an estimate of $2.39.\n\nAI semiconductor revenue was $10.8 billion, compared with an average estimate of $10.7 billion.",
+          "images": [
+            "https://pbs.twimg.com/media/HJ-CIQuWYAAsp3G.png"
+          ],
+          "created_at": "2026-06-04T12:24:14.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

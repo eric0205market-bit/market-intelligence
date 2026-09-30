@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Shitpost Radar</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #d97706;
+  --accent-bg: #fffbeb;
+  --accent-2: #b45309;
+  --bull: #16a34a;
+  --bear: #dc2626;
+  --neutral: #9a9590;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 16px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* VOLUME (one-liner) */
+.volume { background: var(--surface); border: 1px solid var(--border);
+          border-left: 4px solid var(--accent); border-radius: 6px;
+          padding: 10px 14px; margin-bottom: 16px;
+          font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
+          color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.volume strong { color: var(--text); font-weight: 600; }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SECTIONS */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #fef3c7; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px; min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; }
+.section.open .section-body { display: block; }
+
+/* TICKER ROWS */
+.ticker-row { display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+              border-bottom: 1px solid var(--border-light); flex-wrap: wrap; }
+.ticker-row:last-child { border-bottom: none; }
+.ticker-row.is-new { border-left: 3px solid var(--accent); background: var(--accent-bg); }
+.ticker-sym { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600;
+              min-width: 72px; }
+.ticker-mentions { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+                   color: var(--text-3); min-width: 70px; }
+.new-pill { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600;
+            background: var(--accent); color: #fff; padding: 1px 6px; border-radius: 3px;
+            text-transform: uppercase; letter-spacing: .05em; }
+.sentiment { display: flex; gap: 10px; font-family: 'IBM Plex Mono', monospace;
+             font-size: 12px; color: var(--text-2); }
+.sentiment .pair { display: inline-flex; align-items: center; gap: 4px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-bull    { background: var(--bull); }
+.dot-bear    { background: var(--bear); }
+.dot-neutral { background: var(--neutral); }
+.ticker-who { flex: 1 1 100%; font-size: 12.5px; color: var(--text-2);
+              padding-left: 4px; }
+.ticker-who .who-item { margin-right: 10px; }
+.ticker-who .who-item .ctx { color: var(--text-3); font-style: italic; }
+.ticker-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.ticker-author:hover { text-decoration: underline; }
+
+/* OUTLIER CARDS */
+.outlier-card { background: var(--surface); border: 1px solid var(--border);
+                border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.outlier-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+                flex-wrap: wrap; }
+.outlier-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.outlier-author:hover { text-decoration: underline; }
+.outlier-tag { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600;
+               background: var(--accent-bg); color: var(--accent-2); padding: 2px 6px;
+               border-radius: 3px; text-transform: uppercase; letter-spacing: .04em;
+               border: 1px solid var(--accent); }
+.outlier-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.outlier-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                color: var(--accent); text-decoration: none; }
+.outlier-link:hover { text-decoration: underline; }
+.outlier-summary { font-size: 13.5px; line-height: 1.6; color: var(--text);
+                   white-space: pre-wrap; word-wrap: break-word; }
+
+/* THUMBS */
+.thumbs { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.thumb { height: 100px; border: 1px solid var(--border); border-radius: 4px;
+         cursor: zoom-in; background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .outlier-card { margin: 8px 10px; }
+  .ticker-row { gap: 8px; }
+  .ticker-sym { min-width: 56px; font-size: 14px; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Shitpost Radar</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="volume" id="volume"></div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "SHITPOST RADAR",
+  "collected_at": "2026-06-09T17:20:41Z",
+  "volume": {
+    "total_tweets": 87,
+    "active_authors": 23,
+    "total_authors": 216,
+    "silent_authors": 193
+  },
+  "tickers": [
+    {
+      "ticker": "BTC",
+      "mentions": 8,
+      "is_new": false,
+      "bull": 3,
+      "bear": 1,
+      "neutral": 4,
+      "who": [
+        {
+          "author": "CryptoKaleo",
+          "context": "gm\n\nOne day closer to the MSTR ponzi Strategy collapsing  https://t.co/xIDlLP8WN9\n\n@CryptoLaise Sayl"
+        },
+        {
+          "author": "ByzGeneral",
+          "context": "Damn $BTC is already rolling over, we don't even get a serious relief bounce.\n\nThere are"
+        },
+        {
+          "author": "PeterSchiff",
+          "context": "ready down over $6 million on the 1,550 BTC it just purchased. Worse, the buy actually reduced Bitco..."
+        }
+      ]
+    },
+    {
+      "ticker": "MSTR",
+      "mentions": 8,
+      "is_new": false,
+      "bull": 3,
+      "bear": 2,
+      "neutral": 3,
+      "who": [
+        {
+          "author": "CryptoKaleo",
+          "context": "gm\n\nOne day closer to the MSTR ponzi Strategy collapsing  https://t.co/xIDlLP8WN9\n\n@CryptoLaise Sayl..."
+        },
+        {
+          "author": "PeterSchiff",
+          "context": "creating a negative Bitcoin yield. So $MSTR shareholders lost twice. Even if you are bullish on Bitc..."
+        },
+        {
+          "author": "saylor",
+          "context": "luded, the transaction was accretive to MSTR shareholders."
+        }
+      ]
+    },
+    {
+      "ticker": "MYTHOS",
+      "mentions": 5,
+      "is_new": true,
+      "bull": 1,
+      "bear": 2,
+      "neutral": 2,
+      "who": [
+        {
+          "author": "OGDfarmer",
+          "context": "If today is for the Mythos shit, I\u2019m quite happy for the results. We\u2019ll know soon enough. I think it"
+        },
+        {
+          "author": "CryptoKaleo",
+          "context": "With Mythos dropping tomorrow -\n\nWhat\u2019s the next ZCash?"
+        },
+        {
+          "author": "DeeZe",
+          "context": "Live now with this week's episode of Under Exposed with @Tyler_Did_It + @PeterJennings88 \n\nTopics in"
+        }
+      ]
+    },
+    {
+      "ticker": "STRC",
+      "mentions": 3,
+      "is_new": true,
+      "bull": 1,
+      "bear": 1,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "CryptoKaleo",
+          "context": "o bearish on Saylor and his Strategy / $STRC ponzi.\n\nHe got greedy and overleveraged, which has forc..."
+        }
+      ]
+    },
+    {
+      "ticker": "SPX",
+      "mentions": 2,
+      "is_new": false,
+      "bull": 2,
+      "bear": 0,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "$SPX That 50dma \u201csupport\u201d quickly approaching.."
+        },
+        {
+          "author": "ByzGeneral",
+          "context": "y a hidden bull div playing out on the $SPX. https://t.co/szDbKGyZWG"
+        }
+      ]
+    },
+    {
+      "ticker": "SOL",
+      "mentions": 2,
+      "is_new": false,
+      "bull": 1,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "ByzGeneral",
+          "context": "And people wonder why $SOL is dumping so much. https://t.co/L3OV1kaNx1\n\nAnd yeah I know it's bear ma..."
+        },
+        {
+          "author": "awawat",
+          "context": "@FabianoSolana @maybeltr"
+        }
+      ]
+    },
+    {
+      "ticker": "QCOM",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "nsen Huang literally telling us to buy $QCOM and $MRVL.\n\nKoreans creating fake shopping websites to ..."
+        }
+      ]
+    },
+    {
+      "ticker": "MRVL",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "literally telling us to buy $QCOM and $MRVL.\n\nKoreans creating fake shopping websites to get dopamin..."
+        }
+      ]
+    },
+    {
+      "ticker": "META",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 1,
+      "bear": 0,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "$META Still green on the day. Barely, but still.\n\nWhat is this sorcery?!"
+        }
+      ]
+    },
+    {
+      "ticker": "VIX",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "$VIX has not made fresh monthly highs even though $SPY has made fresh monthly lows.."
+        }
+      ]
+    },
+    {
+      "ticker": "SPY",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "t made fresh monthly highs even though $SPY has made fresh monthly lows...\n\nSlight divergence.\n\n@Dou..."
+        }
+      ]
+    },
+    {
+      "ticker": "AAPL",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 0,
+      "bear": 1,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "Note to self:\n\nUnless $AAPL comes out with a cure to cancer at next year\u2019s WWDC, buy rumor sell news..."
+        }
+      ]
+    },
+    {
+      "ticker": "SCO",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "HFI_Research",
+          "context": "Retail is mostly short oil via $SCO. \n\nNice."
+        }
+      ]
+    },
+    {
+      "ticker": "QQQ",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "AlessioTMAD",
+          "context": "$QQQ snapped back below our algorithmic resistance \n\nGood day for panicans https://t"
+        }
+      ]
+    },
+    {
+      "ticker": "ZEC",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 1,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "DeeZe",
+          "context": "clude:\n\n- SpaceX IPO\n- Mythos release\n- ZEC drama recap\n- what are we trading? \n\n+ more \n\nhttps://t...."
+        }
+      ]
+    }
+  ],
+  "outliers": [
+    {
+      "author": "CryptoKaleo",
+      "usual_length": 220,
+      "this_length": 1541,
+      "summary": "Read this if you're wondering why I'm so bearish on Saylor and his Strategy / $STRC ponzi.\n\nHe got greedy and overleveraged, which has forced him to break foundational promises and make every $MSTR ho...",
+      "tweet_url": "https://x.com/CryptoKaleo/status/2064362223380603005",
+      "images": [],
+      "has_thesis": true,
+      "reasons": [
+        "length (1541 chars >> 220 baseline)",
+        "unusually long (1541 vs 220 avg)"
+      ]
+    },
+    {
+      "author": "HFI_Research",
+      "usual_length": 139,
+      "this_length": 589,
+      "summary": "Take this from the guy that told you Cushing will tank bottom at the end of June. \n\nCushing\u2019s relevance to global oil prices wasn\u2019t what it was like before. \n\nUS has access to landlocked crude from Ca...",
+      "tweet_url": "https://x.com/HFI_Research/status/2064318374923124936",
+      "images": [],
+      "has_thesis": false,
+      "reasons": [
+        "length (589 chars >> 139 baseline)",
+        "unusually long (589 vs 139 avg)"
+      ]
+    },
+    {
+      "author": "gmoneyNFT",
+      "usual_length": 92,
+      "this_length": 363,
+      "summary": "i'm glad nyc is so passionate about the series, but really hate that spurs fans were getting beat up around the city after the game last night.\n\nsports should be bringing us together, not tearing us a...",
+      "tweet_url": "https://x.com/gmoneyNFT/status/2064335645829415405",
+      "images": [],
+      "has_thesis": false,
+      "reasons": [
+        "length (363 chars >> 92 baseline)",
+        "unusually long (363 vs 92 avg)"
+      ]
+    },
+    {
+      "author": "koreanjewcrypto",
+      "usual_length": 125,
+      "this_length": 358,
+      "summary": "Race war guy that posts about \u201cthe uncivilized animals\u201d in nyc last night is (intentionally) unaware of football hooligans\n\nPassion leading to violence in sports is not unique to one race https://t.co...",
+      "tweet_url": "https://x.com/koreanjewcrypto/status/2064318764913496514",
+      "images": [
+        "https://pbs.twimg.com/media/HKXu9qYXMAAWak4.jpg",
+        "https://pbs.twimg.com/media/HKXu9qUXkAA-84G.jpg",
+        "https://pbs.twimg.com/media/HKXu9qXXMAAVuLl.jpg"
+      ],
+      "has_thesis": false,
+      "reasons": [
+        "length (358 chars >> 125 baseline)",
+        "unusually long (358 vs 125 avg)"
+      ]
+    },
+    {
+      "author": "blknoiz06",
+      "usual_length": 80,
+      "this_length": 286,
+      "summary": "not sure why ppl are obsessing over the nav on existing investments when the bet is on robotics growing 100x & robostrategy being the entity that allocates the most efficiently into that industry, its...",
+      "tweet_url": "https://x.com/blknoiz06/status/2064378838025372091",
+      "images": [],
+      "has_thesis": false,
+      "reasons": [
+        "length (286 chars >> 80 baseline)",
+        "unusually long (286 vs 80 avg)"
+      ]
+    },
+    {
+      "author": "CryptoKaleo",
+      "usual_length": 220,
+      "this_length": 414,
+      "summary": "He can\u2019t sell STRC when it\u2019s depegged\n\nWould be a poison pill selling $100 for any significant discount just to get cash in hand today (would also add pref dividend obligations in the process)\n\nBest t...",
+      "tweet_url": "https://x.com/CryptoKaleo/status/2064383212172742745",
+      "images": [],
+      "has_thesis": false,
+      "reasons": [
+        "length (414 chars >> 220 baseline)"
+      ]
+    },
+    {
+      "author": "Mr_Derivatives",
+      "usual_length": 111,
+      "this_length": 260,
+      "summary": "Most massive IPO in history in SpaceX.\n\nJensen Huang literally telling us to buy $QCOM and $MRVL.\n\nKoreans creating fake shopping websites to get dopamine hits because daily +/- 8% moves in the KOSPI ...",
+      "tweet_url": "https://x.com/Mr_Derivatives/status/2064385596362207671",
+      "images": [],
+      "has_thesis": false,
+      "reasons": [
+        "length (260 chars >> 111 baseline)"
+      ]
+    },
+    {
+      "author": "ByzGeneral",
+      "usual_length": 93,
+      "this_length": 230,
+      "summary": "And people wonder why $SOL is dumping so much. https://t.co/L3OV1kaNx1\n\nAnd yeah I know it's bear market, everything's dumping.\n\nBut Pumpfun is a cancer to humanity and it permanently stained Solana a...",
+      "tweet_url": "https://x.com/ByzGeneral/status/2064382663616606314",
+      "images": [
+        "https://pbs.twimg.com/media/HKYo5jNWEAAz48G.png",
+        "https://pbs.twimg.com/media/HKYo5jdWYAAsvx9.jpg"
+      ],
+      "has_thesis": false,
+      "reasons": [
+        "length (230 chars >> 93 baseline)",
+        "images (unusual for text-focused author)"
+      ]
+    },
+    {
+      "author": "DeeZe",
+      "usual_length": 96,
+      "this_length": 213,
+      "summary": "Live now with this week's episode of Under Exposed with @Tyler_Did_It + @PeterJennings88 \n\nTopics include:\n\n- SpaceX IPO\n- Mythos release\n- ZEC drama recap\n- what are we trading? \n\n+ more \n\nhttps://t....",
+      "tweet_url": "https://x.com/DeeZe/status/2064378716675871166",
+      "images": [],
+      "has_thesis": false,
+      "reasons": [
+        "length (213 chars >> 96 baseline)"
+      ]
+    },
+    {
+      "author": "saylor",
+      "usual_length": 145,
+      "this_length": 250,
+      "summary": "@mattkratter BTC Yield measures the increase in BTC per share, not total shareholder accretion. Last week Strategy added \u20bf1,550 of BTC and $100 million of USD Reserve. When both assets are included, t...",
+      "tweet_url": "https://x.com/saylor/status/2064391524415066324",
+      "images": [],
+      "has_thesis": false,
+      "reasons": [
+        "length (250 chars >> 145 baseline)"
+      ]
+    },
+    {
+      "author": "PeterSchiff",
+      "usual_length": 383,
+      "this_length": 487,
+      "summary": "Strategy is already down over $6 million on the 1,550 BTC it just purchased. Worse, the buy actually reduced Bitcoin per share, creating a negative Bitcoin yield. So $MSTR shareholders lost twice. Eve...",
+      "tweet_url": "https://x.com/PeterSchiff/status/2064355082871742686",
+      "images": [],
+      "has_thesis": false,
+      "reasons": [
+        "length (487 chars >> 383 baseline)"
+      ]
+    },
+    {
+      "author": "ByzGeneral",
+      "usual_length": 93,
+      "this_length": 181,
+      "summary": "Damn $BTC is already rolling over, we don't even get a serious relief bounce.\n\nThere are some bids around 59k-60k though. Let's see if demand kicks in there. https://t.co/MAAVgAN1nV",
+      "tweet_url": "https://x.com/ByzGeneral/status/2064359203938984210",
+      "images": [
+        "https://pbs.twimg.com/media/HKYTlNdXMAAHSdk.jpg"
+      ],
+      "has_thesis": false,
+      "reasons": [
+        "images (unusual for text-focused author)"
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'ticker-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- volume ----------
+function renderVolume(v) {
+  if (!v || typeof v !== 'object') {
+    document.getElementById('volume').innerHTML = '<span>no volume data</span>';
+    return;
+  }
+  const parts = [];
+  if (v.total_tweets   != null) parts.push(`<strong>${v.total_tweets}</strong> tweets`);
+  if (v.active_authors != null && v.total_authors != null) {
+    parts.push(`<strong>${v.active_authors}/${v.total_authors}</strong> authors active`);
+  } else if (v.active_authors != null) {
+    parts.push(`<strong>${v.active_authors}</strong> authors active`);
+  }
+  if (v.silent_authors != null) parts.push(`<strong>${v.silent_authors}</strong> silent`);
+  document.getElementById('volume').innerHTML = parts.join('<span style="color:var(--text-3)">·</span>')
+    || '<span>—</span>';
+}
+
+// ---------- tickers ----------
+function renderTickerWho(who) {
+  if (!who || !who.length) return '';
+  return `<div class="ticker-who">` + who.map(w => {
+    const name = w.author || w.author_username || '';
+    const ctx = w.context ? `<span class="ctx">${escapeHtml(w.context)}</span>` : '';
+    return `<span class="who-item filterable" data-author="${escapeAttr(name).toLowerCase()}">${authorTag(name)} ${ctx}</span>`;
+  }).join('') + `</div>`;
+}
+
+function renderTicker(t) {
+  const isNew = t.is_new ? ' is-new' : '';
+  const bull = t.bull ?? 0, bear = t.bear ?? 0, neutral = t.neutral ?? 0;
+  const mentions = (t.mentions != null) ? t.mentions : (bull + bear + neutral);
+  return `
+    <div class="ticker-row${isNew}">
+      <div class="ticker-sym">${escapeHtml(t.ticker || '?')}</div>
+      <div class="ticker-mentions">${mentions} mention${mentions === 1 ? '' : 's'}</div>
+      ${t.is_new ? '<span class="new-pill">new</span>' : ''}
+      <div class="sentiment">
+        <span class="pair"><span class="dot dot-bull"></span>${bull}</span>
+        <span class="pair"><span class="dot dot-bear"></span>${bear}</span>
+        <span class="pair"><span class="dot dot-neutral"></span>${neutral}</span>
+      </div>
+      ${renderTickerWho(t.who)}
+    </div>`;
+}
+
+// ---------- outliers ----------
+function renderThumbs(images) {
+  if (!images || !images.length) return '';
+  return `<div class="thumbs">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="thumb" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderOutlier(o) {
+  const author = o.author || o.author_username || '';
+  const usual = o.usual_length, current = o.this_length;
+  const tag = (usual != null && current != null)
+    ? `<span class="outlier-tag">usual ${usual} · this ${current}</span>` : '';
+  const time = relativeTime(o.created_at);
+  const link = o.tweet_url
+    ? `<a class="outlier-link" href="${escapeAttr(o.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  return `
+    <div class="outlier-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="outlier-head">
+        <span class="outlier-author" onclick="filterAuthor('${escapeAttr(author)}')">@${escapeHtml(author)}</span>
+        ${tag}
+        ${time ? `<span class="outlier-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      <div class="outlier-summary">${escapeHtml(o.summary || '')}</div>
+      ${renderThumbs(o.images)}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+  renderVolume(d.volume);
+
+  const tickersBody = (d.tickers || []).map(renderTicker).join('')
+                   || '<div class="empty">No tickers.</div>';
+  const outliersBody = (d.outliers || []).map(renderOutlier).join('');
+
+  const sections = [
+    renderSection('A', 'Tickers', tickersBody, (d.tickers || []).length),
+    outliersBody ? renderSection('B', 'Outliers', outliersBody, (d.outliers || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No data.</div>';
+
+  // Auto-open all sections (compact dashboard — show everything).
+  document.querySelectorAll('.section').forEach(s => s.classList.add('open'));
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

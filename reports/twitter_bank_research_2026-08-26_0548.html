@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER BANK RESEARCH",
+  "collected_at": "2026-08-26T05:23:07Z",
+  "window_days": 4,
+  "input_stats": {
+    "total_tweets": 60,
+    "considered": 60,
+    "kept": 19,
+    "dropped": 41,
+    "deduped": 0
+  },
+  "summary": "19 research items kept across 5 banks/strategists in the last 4 days (all relayed by @MikeZaccardi; no @neilksethi/@neilksethinew tweets in this window). Goldman Sachs dominates the window (12 items) with a cautious-2026 through-line: soft real income/spending growth forecasts, weak consumer confidence labor differentials, but resilient household balance sheets on asset appreciation. BofA Institute data (4 items) tracks consumer spending patterns \u2014 Gen Z restaurant outperformance and rising auto-loan burden. Citi/Yardeni Economic Surprise Index (2 items, same charts cross-tagged) shows US surprises fading from the June high while the global gauge holds near 2022 highs. Barclays (1 item) flags a rising share of unprofitable Russell 2000 names despite the earnings boom. Per-bank counts: Goldman 12, BofA 4, Citi 2, Yardeni 2, Barclays 1.",
+  "by_bank_counts": {
+    "Goldman": 12,
+    "BofA": 4,
+    "Citi": 2,
+    "Yardeni": 2,
+    "Barclays": 1
+  },
+  "banks": [
+    {
+      "bank": "Goldman",
+      "theme": "GS economics desk \u2014 soft 2026 income/spending forecasts, resilient balance sheets, cautious payrolls outlook",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "$NVDA September conferences shouldn't go unnoticed... and don't forget that Goldman Sachs Communacopia + Technology Conference in SF Sept 8-10 \n@wallsthorizon @christinelshort \nhttps://t.co/ABTMIGBZ6a https://t.co/7YbR0gR2Kd",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092400583219056674",
+          "images": [
+            "https://pbs.twimg.com/media/HQmzPhLWQAAzf5S.png"
+          ],
+          "created_at": "2026-08-25T23:55:48.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Sub-Prime Auto Delinquencies Continue to Rise https://t.co/vDPbejDuSn",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092386792406147319",
+          "images": [
+            "https://pbs.twimg.com/media/HQmmszPXsAA08np.png"
+          ],
+          "created_at": "2026-08-25T23:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Household Balance Sheets Remain Healthy Due to Strong Asset Price Appreciation\n\nTop 1% has gained a whopping 10.5% in wealth YoY https://t.co/ZPmcsoMOH3",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092383017360581098",
+          "images": [
+            "https://pbs.twimg.com/media/HQmjREjW0AASitc.png"
+          ],
+          "created_at": "2026-08-25T22:46:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We Forecast Only 1.1% Real Income Growth in 2026 (With Middle Income Outperformance)... better next year though https://t.co/WJVgBLwaPG",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092379242361167972",
+          "images": [
+            "https://pbs.twimg.com/media/HQmf1VnWUAAFxBo.png"
+          ],
+          "created_at": "2026-08-25T22:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Goldman forecasts Q4 payrolls growth of about 50k jobs (3mo avg) https://t.co/v9tXIm6CH9",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092375468427149367",
+          "images": [
+            "https://pbs.twimg.com/media/HQmcZn1WkAAZLFQ.png"
+          ],
+          "created_at": "2026-08-25T22:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: We Forecast Only 1.5% Real Spending Growth in 2026 on a Q4/Q4 Basis https://t.co/U4MEH1rnvi",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092371692672704984",
+          "images": [
+            "https://pbs.twimg.com/media/HQmY94eXQAA8_zT.png"
+          ],
+          "created_at": "2026-08-25T22:01:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Our US Consumer Dashboard Points to Weak Income Growth and Consumer Confidence but Strong Balance Sheets https://t.co/lTN5gjJFJh",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092367918625394984",
+          "images": [
+            "https://pbs.twimg.com/media/HQmViLOXcAAWR73.png"
+          ],
+          "created_at": "2026-08-25T21:46:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS on Consumer Confidence: The labor differential rebounded after reaching its lowest level in July since February 2021 https://t.co/KFyvPqNJw2",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092338657709412548",
+          "images": [
+            "https://pbs.twimg.com/media/HQl66-1XYAIMtU7.png"
+          ],
+          "created_at": "2026-08-25T19:49:44.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Retailer verbatims... The consumer continues to seek out value and convenience amidst inflation and higher energy prices. GS $XRT @jeffmacke @christinelshort @wallsthorizon https://t.co/DrljXeeCor",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092238314367504873",
+          "images": [
+            "https://pbs.twimg.com/media/HQkfqOrWoAAviwu.png"
+          ],
+          "created_at": "2026-08-25T13:11:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "2026 global GDP forecasts from Goldman... https://t.co/DqJjiEj9fK",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092225731384266908",
+          "images": [
+            "https://pbs.twimg.com/media/HQkUNzfW8AASYWQ.jpg"
+          ],
+          "created_at": "2026-08-25T12:21:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: Long-term consumer and business inflation expectations are back to where they were in the mid-2000s https://t.co/g3XHEWJHgj",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092223215007371299",
+          "images": [
+            "https://pbs.twimg.com/media/HQkR7VhWIAAYpPX.png"
+          ],
+          "created_at": "2026-08-25T12:11:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "How did EUR/USD move around Fed Chair Jackson Hole addresses?\n\nHard to grab signal from this... GS @soberlook \nhttps://t.co/EGLX7QmA3x https://t.co/Cr2Yo0AVGr",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092216923756941802",
+          "images": [
+            "https://pbs.twimg.com/media/HQkMNHCWUAA98rT.jpg"
+          ],
+          "created_at": "2026-08-25T11:46:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "BofA",
+      "theme": "BofA Institute consumer tracker \u2014 Gen Z restaurant spend outperforming, rising auto-loan burden, softening confidence",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "BofAI: Gen Z\u2019s restaurant spending has outpaced all other generations since November 2025 https://t.co/NMINH6zjlI",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092352818715762942",
+          "images": [
+            "https://pbs.twimg.com/media/HQmHzQTXEAA0ZJy.jpg"
+          ],
+          "created_at": "2026-08-25T20:46:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Consumers expect to spend less at restaurants, per today's Consumer Confidence report\n\n... of course, BofAI data this week shows that folks have increased their food-away-from-home discretionary spending recently https://t.co/kQzFOeXx1w",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092255920843624550",
+          "images": [
+            "https://pbs.twimg.com/media/HQkvrEcWQAAakzg.png"
+          ],
+          "created_at": "2026-08-25T14:20:58.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "The Conference Board: On a six-month moving-average basis, confidence across all age groups trended slightly downward, remaining highest among consumers under 35. https://t.co/ZfBKqxpYcr",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092255039070810136",
+          "images": [
+            "https://pbs.twimg.com/media/HQku3sNXIAAVlf4.png"
+          ],
+          "created_at": "2026-08-25T14:17:28.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "BofAI: More than 1 in 5 households have a $1,000/mo vehicle loan https://t.co/ADax3qjmiv",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092215664614207923",
+          "images": [
+            "https://pbs.twimg.com/media/HQkLD22WMAA8t4X.png"
+          ],
+          "created_at": "2026-08-25T11:41:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Citi",
+      "theme": "Citi Economic Surprise Index \u2014 US sliding from June high, global holding near 2022 highs",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Citi US Economic Surprise Index: Down sharply from the June high @yardeni https://t.co/qRnEA7LzdB",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092243538742264182",
+          "images": [
+            "https://pbs.twimg.com/media/HQkkaTSXQAAkc7u.jpg"
+          ],
+          "created_at": "2026-08-25T13:31:46.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Citi Global Economic Surprise Index: near the highest since 2022 @yardeni https://t.co/hNHEKe5td4",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092230767174648061",
+          "images": [
+            "https://pbs.twimg.com/media/HQkYyxeWQAAxIbN.jpg"
+          ],
+          "created_at": "2026-08-25T12:41:01.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Yardeni",
+      "theme": "Yardeni-sourced Citi Surprise Index charts \u2014 US surprises fading, global gauge elevated",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Citi US Economic Surprise Index: Down sharply from the June high @yardeni https://t.co/qRnEA7LzdB",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092243538742264182",
+          "images": [
+            "https://pbs.twimg.com/media/HQkkaTSXQAAkc7u.jpg"
+          ],
+          "created_at": "2026-08-25T13:31:46.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "Citi Global Economic Surprise Index: near the highest since 2022 @yardeni https://t.co/hNHEKe5td4",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092230767174648061",
+          "images": [
+            "https://pbs.twimg.com/media/HQkYyxeWQAAxIbN.jpg"
+          ],
+          "created_at": "2026-08-25T12:41:01.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Barclays",
+      "theme": "Barclays \u2014 rising share of unprofitable Russell 2000 names despite the earnings boom",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "The share of unprofitable names in the Russell 2000 has picked up... pretty wild given the earnings boom\n\nBarclays via @RonStoeferle @soberlook $IWM \nhttps://t.co/EGLX7QmA3x https://t.co/BE86rpOT1R",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2092343867513143562",
+          "images": [
+            "https://pbs.twimg.com/media/HQl_qMJW8AAs8yg.jpg"
+          ],
+          "created_at": "2026-08-25T20:10:26.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

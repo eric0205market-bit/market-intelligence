@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Shitpost Radar</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #d97706;
+  --accent-bg: #fffbeb;
+  --accent-2: #b45309;
+  --bull: #16a34a;
+  --bear: #dc2626;
+  --neutral: #9a9590;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 16px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* VOLUME (one-liner) */
+.volume { background: var(--surface); border: 1px solid var(--border);
+          border-left: 4px solid var(--accent); border-radius: 6px;
+          padding: 10px 14px; margin-bottom: 16px;
+          font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
+          color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.volume strong { color: var(--text); font-weight: 600; }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SECTIONS */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #fef3c7; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px; min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; }
+.section.open .section-body { display: block; }
+
+/* TICKER ROWS */
+.ticker-row { display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+              border-bottom: 1px solid var(--border-light); flex-wrap: wrap; }
+.ticker-row:last-child { border-bottom: none; }
+.ticker-row.is-new { border-left: 3px solid var(--accent); background: var(--accent-bg); }
+.ticker-sym { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600;
+              min-width: 72px; }
+.ticker-mentions { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+                   color: var(--text-3); min-width: 70px; }
+.new-pill { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600;
+            background: var(--accent); color: #fff; padding: 1px 6px; border-radius: 3px;
+            text-transform: uppercase; letter-spacing: .05em; }
+.sentiment { display: flex; gap: 10px; font-family: 'IBM Plex Mono', monospace;
+             font-size: 12px; color: var(--text-2); }
+.sentiment .pair { display: inline-flex; align-items: center; gap: 4px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-bull    { background: var(--bull); }
+.dot-bear    { background: var(--bear); }
+.dot-neutral { background: var(--neutral); }
+.ticker-who { flex: 1 1 100%; font-size: 12.5px; color: var(--text-2);
+              padding-left: 4px; }
+.ticker-who .who-item { margin-right: 10px; }
+.ticker-who .who-item .ctx { color: var(--text-3); font-style: italic; }
+.ticker-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.ticker-author:hover { text-decoration: underline; }
+
+/* OUTLIER CARDS */
+.outlier-card { background: var(--surface); border: 1px solid var(--border);
+                border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.outlier-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+                flex-wrap: wrap; }
+.outlier-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.outlier-author:hover { text-decoration: underline; }
+.outlier-tag { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600;
+               background: var(--accent-bg); color: var(--accent-2); padding: 2px 6px;
+               border-radius: 3px; text-transform: uppercase; letter-spacing: .04em;
+               border: 1px solid var(--accent); }
+.outlier-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.outlier-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                color: var(--accent); text-decoration: none; }
+.outlier-link:hover { text-decoration: underline; }
+.outlier-summary { font-size: 13.5px; line-height: 1.6; color: var(--text);
+                   white-space: pre-wrap; word-wrap: break-word; }
+
+/* THUMBS */
+.thumbs { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.thumb { height: 100px; border: 1px solid var(--border); border-radius: 4px;
+         cursor: zoom-in; background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .outlier-card { margin: 8px 10px; }
+  .ticker-row { gap: 8px; }
+  .ticker-sym { min-width: 56px; font-size: 14px; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Shitpost Radar</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="volume" id="volume"></div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "date": "2026-08-04 05:21 UTC",
+  "report_type": "SHITPOST RADAR",
+  "collected_at": "2026-08-04T05:21:07Z",
+  "volume": {
+    "total_tweets": 123,
+    "active_authors": 27,
+    "total_authors": 217,
+    "silent_authors": 190
+  },
+  "tickers": [
+    {
+      "ticker": "BTC",
+      "mentions": 11,
+      "is_new": false,
+      "bull": 3,
+      "bear": 1,
+      "neutral": 7,
+      "who": [
+        {
+          "author": "blknoiz06",
+          "context": "@kingbtc yes it is"
+        },
+        {
+          "author": "Tradermayne",
+          "context": "Selling a Solana phone with telegram installed for 100 BTC"
+        },
+        {
+          "author": "Tradermayne",
+          "context": "$SOL \n\nSitting inside weekly demand, H12 trending down. \n\nWe made a new low but are back above it for now. \n\nSimilar to BTC I'd like to see a break of this downtrending structure for a potential move "
+        },
+        {
+          "author": "Tradermayne",
+          "context": "$BTC \n\nIs this a higher low? https://t.co/GEJrbXD3Rw\n\n@mainachad i see it, been wanting to long the 59-60k area for a while.\n\n@mainachad https://t.co/ECrwSJcVyV\n\nGotta break up here for the bulls, you"
+        },
+        {
+          "author": "Tradermayne",
+          "context": "Would be hilarious if BTC put in another low with equities giving us another leg higher.\n\nhttps://t.co/hrbpbynLqk\n\n@wmd4x how about you come on stream and we discuss"
+        },
+        {
+          "author": "Tradermayne",
+          "context": "Y'all didn't have to wait long to see another TradFi asset added to Breakout. \n\nThe S&amp;P500 is live now, full sizing available off the rip.\n\n$1m notional just like BTC, ETH and Nasdaq. \n\nWe got mor"
+        },
+        {
+          "author": "DeeZe",
+          "context": "@kingbtc what a username on this one"
+        },
+        {
+          "author": "ByzGeneral",
+          "context": "Saylor stans are the weirdest people on the planet. \n\nSaylor is literally the greatest threat to BTC, if you care about BTC at all then why would you dickride for this clown of all people lol."
+        },
+        {
+          "author": "fundstrat",
+          "context": "Even better stat:\n- every time $ETH outperforms $BTC in any month\n  (3 times since 2025)\n\n- $BMNR outperforms ETH over following 2 months\n   (3 of 3 times since 2025)\n\nJuly 2026: ETH outperformed BTC "
+        },
+        {
+          "author": "saylor",
+          "context": "When I say “Never Sell Your Bitcoin,” I speak as one saver to another. I have never sold mine. Not one satoshi. Strategy is a public company, not my wallet. Since 2020, it has disclosed it may buy or "
+        },
+        {
+          "author": "Icebergy",
+          "context": "hasn’t he sold all his bitcoin a couple times?"
+        }
+      ]
+    },
+    {
+      "ticker": "SOL",
+      "mentions": 10,
+      "is_new": false,
+      "bull": 3,
+      "bear": 1,
+      "neutral": 6,
+      "who": [
+        {
+          "author": "blknoiz06",
+          "context": "solana summer 🃏📈"
+        },
+        {
+          "author": "Tradermayne",
+          "context": "Selling a Solana phone with telegram installed for 100 BTC"
+        },
+        {
+          "author": "Tradermayne",
+          "context": "$SOL \n\nSitting inside weekly demand, H12 trending down. \n\nWe made a new low but are back above it for now. \n\nSimilar to BTC I'd like to see a break of this downtrending structure for a potential move "
+        },
+        {
+          "author": "HFI_Research",
+          "context": "If Iran continues to allow Oman lane traffic even during negotiations, then it will keep losing leverage. And in the long-term, losing leverage now is the same as being defeated.\n\nLogically speaking, "
+        },
+        {
+          "author": "CryptoKaleo",
+          "context": "0.42 ETH for the rarest @cashcatss NFT is starting to feel pretty damn cheap https://t.co/4YMrLZdabr\n\n@Gwaahjo0 @cashcatss Kaleo 100% sold his account\n\ncomparing his early tweets to his tweets now  co"
+        },
+        {
+          "author": "CryptoKaleo",
+          "context": "solana:3NTo8sBr2Cbvqd2JCHN5QhBeNrC7sJJ2YPox7Z6Cpump dips are a gift https://t.co/CSqySpnUri"
+        },
+        {
+          "author": "PeterSchiff",
+          "context": "@MarioNawfal It's possible that all posts related to bombing Iran back to the stone age or a peace deal that delivers total victory to the U.S are solely intended to manipulate financial markets to be"
+        },
+        {
+          "author": "saylor",
+          "context": "When I say “Never Sell Your Bitcoin,” I speak as one saver to another. I have never sold mine. Not one satoshi. Strategy is a public company, not my wallet. Since 2020, it has disclosed it may buy or "
+        },
+        {
+          "author": "CL207",
+          "context": "the mind blowing part, which is again, why i will believe in metaverse forever\n\nreal life = syncronization\ncurrent internet = not sync\nvirtual reality = syncronization\n\nour reality and socialization, "
+        },
+        {
+          "author": "Icebergy",
+          "context": "hasn’t he sold all his bitcoin a couple times?"
+        }
+      ]
+    },
+    {
+      "ticker": "ETH",
+      "mentions": 8,
+      "is_new": false,
+      "bull": 1,
+      "bear": 1,
+      "neutral": 6,
+      "who": [
+        {
+          "author": "Tradermayne",
+          "context": "Y'all didn't have to wait long to see another TradFi asset added to Breakout. \n\nThe S&amp;P500 is live now, full sizing available off the rip.\n\n$1m notional just like BTC, ETH and Nasdaq. \n\nWe got mor"
+        },
+        {
+          "author": "coinmamba",
+          "context": "I don’t know man, sometimes I think people working at Coinbase just hate crypto or maybe Ethereum only.."
+        },
+        {
+          "author": "CryptoKaleo",
+          "context": "0.42 ETH for the rarest @cashcatss NFT is starting to feel pretty damn cheap https://t.co/4YMrLZdabr\n\n@Gwaahjo0 @cashcatss Kaleo 100% sold his account\n\ncomparing his early tweets to his tweets now  co"
+        },
+        {
+          "author": "CryptoKaleo",
+          "context": "@NFTsAreNice still free\n\n@NFTsAreNice I own 136 of them including the rarest one and honestly wish I would have bought more\n\njust makes sense that these easily run to 1 ETH+ and are the face of anyone"
+        },
+        {
+          "author": "CryptoKaleo",
+          "context": "Cash Cats NFTs starting to break out \n\n1 ETH+ makes sense for the top meme on Robinhood Chain https://t.co/vO6STU1SAu\n\nprobably should have bought more https://t.co/8F7ncFewXU\n\nand there they go https"
+        },
+        {
+          "author": "fundstrat",
+          "context": "Even better stat:\n- every time $ETH outperforms $BTC in any month\n  (3 times since 2025)\n\n- $BMNR outperforms ETH over following 2 months\n   (3 of 3 times since 2025)\n\nJuly 2026: ETH outperformed BTC "
+        },
+        {
+          "author": "gmoneyNFT",
+          "context": "I have no issue with how the fee splits for this period get split up.  I def think people should be compensated for the work they do.\n\nI do think the messaging could have been made much more clear in "
+        },
+        {
+          "author": "CL207",
+          "context": "today cat learned:\n\nwhich make a lot of sense, that it goes both ways\n\nsimilar people are also more likely to be friends, but even randomly met people will neural synchronize over time (whatever that "
+        }
+      ]
+    },
+    {
+      "ticker": "HYPE",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "The $SPCX IPO chart looking awfully similar to the $TSLA IPO chart.\n\nSure you can say a lot of hyped IPO's look similar in the beginning. Sure you can say everyone knows about the lock ups freeing. \n\n"
+        }
+      ]
+    },
+    {
+      "ticker": "DOT",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "DeeZe",
+          "context": "@collectdotrip Oh????\n\n@collectdotrip I liked the post in discord 🥹"
+        }
+      ]
+    },
+    {
+      "ticker": "DOGE",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "koreanjewcrypto",
+          "context": "Have faith in God and everything is going to be ok\n\n@1TrillionUSDoge I feel like that’s such bad karma lol\n\n@1TrillionUSDoge Be gone satan!"
+        }
+      ]
+    }
+  ],
+  "outliers": [
+    {
+      "author": "Mr_Derivatives",
+      "type": "long_tweet",
+      "summary": "The $SPCX IPO chart looking awfully similar to the $TSLA IPO chart.\n\nSure you can say a lot of hyped IPO's look similar in the beginning. Sure you can say everyone knows about the lock ups freeing. \n\nBut you can also say has it been all mostly priced in already?\n\nI mean I gotta imagine so given how ",
+      "tweet_url": "https://x.com/Mr_Derivatives/status/2084425097285357806",
+      "created_at": "2026-08-03T23:44:04.000Z",
+      "images": [
+        "https://pbs.twimg.com/media/HO1c_2fbEAAODZo.png"
+      ]
+    },
+    {
+      "author": "HFI_Research",
+      "type": "long_tweet",
+      "summary": "Strait of Hormuz over the last 24 hours: Iran's final chance for a deal?\n\nA deal to open the Strait of Hormuz by tomorrow? Unlikely as evidenced by the fact that another vessel was attacked today in the Oman lane.\n\nAs I reported earlier in the day, US was gearing up for another convoy to go through ",
+      "tweet_url": "https://x.com/HFI_Research/status/2084485194925375763",
+      "created_at": "2026-08-04T03:42:52.000Z",
+      "images": []
+    },
+    {
+      "author": "Tradermayne",
+      "type": "long_tweet",
+      "summary": "One of the main reasons I’m an Elon fan is because he’s pro-human. \n\nHe believes the earth can support more people, tech will help and we can also expand beyond the earth itself. \n\nSo many of these other billionaire elites are anti-human. \n\nIf you wanna go tin foil hat, much of the things they push ",
+      "tweet_url": "https://x.com/Tradermayne/status/2084433978489290889",
+      "created_at": "2026-08-04T00:19:22.000Z",
+      "images": []
+    },
+    {
+      "author": "Tradermayne",
+      "type": "long_tweet",
+      "summary": "Soon you’ll be able to live trade the score of the game. \n\nHow many times the player bounces the ball before a serve. \n\nWords said in the press conference all while watching it happen live on Polymarket.",
+      "tweet_url": "https://x.com/Tradermayne/status/2084417495495323826",
+      "created_at": "2026-08-03T23:13:52.000Z",
+      "images": []
+    },
+    {
+      "author": "Tradermayne",
+      "type": "long_tweet",
+      "summary": "Every trade up to this point in the bootcamp has used one entry, one click, full size, done. It works. But it's not how professionals build positions.\n\nScaling in means taking the risk you were already going to spend on the trade and splitting it across multiple entries. Episode 17 of the whiteboard",
+      "tweet_url": "https://x.com/Tradermayne/status/2084384491624177819",
+      "created_at": "2026-08-03T21:02:43.000Z",
+      "images": []
+    },
+    {
+      "author": "Tradermayne",
+      "type": "long_tweet",
+      "summary": "$SOL \n\nSitting inside weekly demand, H12 trending down. \n\nWe made a new low but are back above it for now. \n\nSimilar to BTC I'd like to see a break of this downtrending structure for a potential move towards the 90s. https://t.co/XmVdirkcKJ",
+      "tweet_url": "https://x.com/Tradermayne/status/2084371473750462687",
+      "created_at": "2026-08-03T20:10:59.000Z",
+      "images": [
+        "https://pbs.twimg.com/media/HO0snmLbUAAR_ye.jpg",
+        "https://pbs.twimg.com/media/HO0srW_bUAA5ak3.jpg"
+      ]
+    },
+    {
+      "author": "Tradermayne",
+      "type": "long_tweet",
+      "summary": "$BTC \n\nIs this a higher low? https://t.co/GEJrbXD3Rw\n\n@mainachad i see it, been wanting to long the 59-60k area for a while.\n\n@mainachad https://t.co/ECrwSJcVyV\n\nGotta break up here for the bulls, you'd think with equities strength we could flip trend\n\nI think a break up from this downtrend sends us",
+      "tweet_url": "https://x.com/Tradermayne/status/2084353106536804548",
+      "created_at": "2026-08-03T18:58:00.000Z",
+      "images": [
+        "https://pbs.twimg.com/media/HO0b4SMbQAAFc2B.jpg",
+        "https://pbs.twimg.com/media/HO0pQr4aAAAxGaX.jpg"
+      ]
+    },
+    {
+      "author": "Tradermayne",
+      "type": "long_tweet",
+      "summary": "Y'all didn't have to wait long to see another TradFi asset added to Breakout. \n\nThe S&amp;P500 is live now, full sizing available off the rip.\n\n$1m notional just like BTC, ETH and Nasdaq. \n\nWe got more coming so stay tuned! \n\nUse code MAYNE at checkout for a discount.",
+      "tweet_url": "https://x.com/Tradermayne/status/2084328205708939567",
+      "created_at": "2026-08-03T17:19:03.000Z",
+      "images": []
+    },
+    {
+      "author": "HFI_Research",
+      "type": "long_tweet",
+      "summary": "If Iran continues to allow Oman lane traffic even during negotiations, then it will keep losing leverage. And in the long-term, losing leverage now is the same as being defeated.\n\nLogically speaking, Iran has to escalate the Oman lane until shipowners are no longer willing to test their resolve. \n\nI",
+      "tweet_url": "https://x.com/HFI_Research/status/2084327416701632612",
+      "created_at": "2026-08-03T17:15:55.000Z",
+      "images": []
+    },
+    {
+      "author": "CryptoKaleo",
+      "type": "long_tweet",
+      "summary": "0.42 ETH for the rarest @cashcatss NFT is starting to feel pretty damn cheap https://t.co/4YMrLZdabr\n\n@Gwaahjo0 @cashcatss Kaleo 100% sold his account\n\ncomparing his early tweets to his tweets now  completely different in almost every way, the language, the nomenclature, the phrasing, practically ev",
+      "tweet_url": "https://x.com/CryptoKaleo/status/2084439617659376118",
+      "created_at": "2026-08-04T00:41:46.000Z",
+      "images": [
+        "https://pbs.twimg.com/media/HO1qtK2WIAAQlmZ.png"
+      ]
+    },
+    {
+      "author": "CryptoKaleo",
+      "type": "long_tweet",
+      "summary": "@NFTsAreNice still free\n\n@NFTsAreNice I own 136 of them including the rarest one and honestly wish I would have bought more\n\njust makes sense that these easily run to 1 ETH+ and are the face of anyone bullish on CASHCAT as it runs to billions",
+      "tweet_url": "https://x.com/CryptoKaleo/status/2084441193262305484",
+      "created_at": "2026-08-04T00:48:02.000Z",
+      "images": []
+    },
+    {
+      "author": "CryptoKaleo",
+      "type": "long_tweet",
+      "summary": "Cash Cats NFTs starting to break out \n\n1 ETH+ makes sense for the top meme on Robinhood Chain https://t.co/vO6STU1SAu\n\nprobably should have bought more https://t.co/8F7ncFewXU\n\nand there they go https://t.co/Ocy9a2UU0U",
+      "tweet_url": "https://x.com/CryptoKaleo/status/2084404257600438435",
+      "created_at": "2026-08-03T22:21:16.000Z",
+      "images": [
+        "https://pbs.twimg.com/media/HO1KcZdXYAAEjp1.jpg",
+        "https://pbs.twimg.com/media/HO1MtLeXgAAE1dx.jpg",
+        "https://pbs.twimg.com/media/HO1nBQEXEAArjRz.jpg"
+      ]
+    },
+    {
+      "author": "DeeZe",
+      "type": "long_tweet",
+      "summary": "@itstheghost One app and every chain is nice \n\nGetting alerts on certain wallets in that same app is nice\n\nExporting your wallets from those apps to your own preferred wallet app and trading mostly on aggregators when you don’t need the convenience is nice",
+      "tweet_url": "https://x.com/DeeZe/status/2084467404571021701",
+      "created_at": "2026-08-04T02:32:11.000Z",
+      "images": []
+    },
+    {
+      "author": "PeterSchiff",
+      "type": "long_tweet",
+      "summary": "@Geiger_Capital That doesn't change the Constitution, which prohibits such a tax on a federal level.\n\n@CryptoManPig @Geiger_Capital Yes, that's why the ammended the Constitition. They will not be able to do that to allow a wealth tax.\n\n@DrakeMallardhth @Geiger_Capital I recognize that in many respec",
+      "tweet_url": "https://x.com/PeterSchiff/status/2084360052266135630",
+      "created_at": "2026-08-03T19:25:36.000Z",
+      "images": []
+    },
+    {
+      "author": "PeterSchiff",
+      "type": "long_tweet",
+      "summary": "@saylor Yes, but you knew the impression you were creating, and you never bothered to clarify it. So either that was a deliberate attempt to deceive, or you actually meant that Strategy would never sell and are now lying to cover your ass. Either way, it’s not good.",
+      "tweet_url": "https://x.com/PeterSchiff/status/2084400106757869594",
+      "created_at": "2026-08-03T22:04:46.000Z",
+      "images": []
+    },
+    {
+      "author": "PeterSchiff",
+      "type": "long_tweet",
+      "summary": "@MarioNawfal It's possible that all posts related to bombing Iran back to the stone age or a peace deal that delivers total victory to the U.S are solely intended to manipulate financial markets to benefit those with advanced knowledge of the posts.",
+      "tweet_url": "https://x.com/PeterSchiff/status/2084359779145617702",
+      "created_at": "2026-08-03T19:24:31.000Z",
+      "images": []
+    },
+    {
+      "author": "fundstrat",
+      "type": "long_tweet",
+      "summary": "Even better stat:\n- every time $ETH outperforms $BTC in any month\n  (3 times since 2025)\n\n- $BMNR outperforms ETH over following 2 months\n   (3 of 3 times since 2025)\n\nJuly 2026: ETH outperformed BTC by 1,100bp\n- care to guess what BMNR does in August &amp; Sept? https://t.co/7nkURFIwYB",
+      "tweet_url": "https://x.com/fundstrat/status/2084340357471351099",
+      "created_at": "2026-08-03T18:07:21.000Z",
+      "images": [
+        "https://pbs.twimg.com/media/HO0P7iHWAAAkKiL.png"
+      ]
+    },
+    {
+      "author": "gmoneyNFT",
+      "type": "long_tweet",
+      "summary": "I have no issue with how the fee splits for this period get split up.  I def think people should be compensated for the work they do.\n\nI do think the messaging could have been made much more clear in my opinion.\n\nI still the the protocol is very innovative and think this was more an expectations dow",
+      "tweet_url": "https://x.com/gmoneyNFT/status/2084505644648775980",
+      "created_at": "2026-08-04T05:04:08.000Z",
+      "images": []
+    },
+    {
+      "author": "gmoneyNFT",
+      "type": "long_tweet",
+      "summary": "this interview was a week ago.\n\n\"how much of the fee that is currently going to tokenworks should go to buybacks?  and that can be anywhere from zero to 100%.  will it be zero? no.  will it be 100%? no.  my gut says down the middle.\"\n\nturns out it was zero.  😂😂😂\n\n@printer_brrr he said \"currently ",
+      "tweet_url": "https://x.com/gmoneyNFT/status/2084400909224661320",
+      "created_at": "2026-08-03T22:07:57.000Z",
+      "images": []
+    },
+    {
+      "author": "gmoneyNFT",
+      "type": "long_tweet",
+      "summary": "@CirrusNFT @GarrettLorman agree with this.  appreciate that @Rhynotic is doing cool new shit onchain, but if this was the plan he should've communicated it from the outset.  the @fomohour interview had myself and many others thinking that he was going to put some portion of the fees earned into buyb",
+      "tweet_url": "https://x.com/gmoneyNFT/status/2084403668867023078",
+      "created_at": "2026-08-03T22:18:55.000Z",
+      "images": []
+    },
+    {
+      "author": "gmoneyNFT",
+      "type": "long_tweet",
+      "summary": "@lesabrefomo @Rhynotic 50% of fees generated up to now will be going towards buybacks.  stated in this post\n\nhttps://t.co/YeUxUq1asm\n\n@lesabrefomo @Rhynotic ah i thought i read that 50% of previoiusly earned\n\n@lesabrefomo @Rhynotic here's the original post where it says routing 50% of all fees that ",
+      "tweet_url": "https://x.com/gmoneyNFT/status/2084393234164232378",
+      "created_at": "2026-08-03T21:37:27.000Z",
+      "images": [
+        "https://pbs.twimg.com/media/HO1E48HW8AEj0VV.jpg"
+      ]
+    },
+    {
+      "author": "gmoneyNFT",
+      "type": "long_tweet",
+      "summary": "TLDR on life of a trader:\n\nYou sit on your hands 90-95% of the time, waiting for actionable news to hit.\n\nWhen you step away from the desk you are glued to your phone bc you don’t want to miss the trade that could make your year.",
+      "tweet_url": "https://x.com/gmoneyNFT/status/2084379362342642160",
+      "created_at": "2026-08-03T20:42:20.000Z",
+      "images": []
+    },
+    {
+      "author": "saylor",
+      "type": "long_tweet",
+      "summary": "When I say “Never Sell Your Bitcoin,” I speak as one saver to another. I have never sold mine. Not one satoshi. Strategy is a public company, not my wallet. Since 2020, it has disclosed it may buy or sell $BTC to manage capital. Our shared conviction in Bitcoin remains unchanged.",
+      "tweet_url": "https://x.com/saylor/status/2084315637715763579",
+      "created_at": "2026-08-03T16:29:07.000Z",
+      "images": []
+    },
+    {
+      "author": "LomahCrypto",
+      "type": "long_tweet",
+      "summary": "Scrolled Twitter for 10 minutes and my only thought is:\n\nHow are you guys finding trades every single day to take?\n\nVolatility is nuked on anything with liquidity.\n\nEverything else that's volatile is a meme/trench coin that goes to zero before you can finish dinner.",
+      "tweet_url": "https://x.com/LomahCrypto/status/2084509494680400317",
+      "created_at": "2026-08-04T05:19:26.000Z",
+      "images": []
+    },
+    {
+      "author": "CL207",
+      "type": "long_tweet",
+      "summary": "the mind blowing part, which is again, why i will believe in metaverse forever\n\nreal life = syncronization\ncurrent internet = not sync\nvirtual reality = syncronization\n\nour reality and socialization, after all, is simply just presence \n\ndoi: 10.1089/cyber.2020.29193.bkw\n\nits why vr therapy works, wh",
+      "tweet_url": "https://x.com/CL207/status/2084498208760422809",
+      "created_at": "2026-08-04T04:34:35.000Z",
+      "images": []
+    },
+    {
+      "author": "CL207",
+      "type": "long_tweet",
+      "summary": "today cat learned:\n\nwhich make a lot of sense, that it goes both ways\n\nsimilar people are also more likely to be friends, but even randomly met people will neural synchronize over time (whatever that even means) as human r social animals\n\nthus, picking friends is still important\n\n@0xSliim it dosnt, ",
+      "tweet_url": "https://x.com/CL207/status/2084495833861685456",
+      "created_at": "2026-08-04T04:25:09.000Z",
+      "images": []
+    },
+    {
+      "author": "CL207",
+      "type": "long_tweet",
+      "summary": "this is such a cool tweet\n\npic credit @directioncorrec \n\nafter semis lost a little bit of momentum \"some forces\" -wink wink- started correlating all of leopold's levered positions\n\nas his portfolio drew down -10% after -10%, all at the same time, he blew up https://t.co/AURqC0yG0h\n\nthis is why tradi",
+      "tweet_url": "https://x.com/CL207/status/2084457841356886035",
+      "created_at": "2026-08-04T01:54:11.000Z",
+      "images": [
+        "https://pbs.twimg.com/media/HO159AObYAAE_Ej.jpg"
+      ]
+    },
+    {
+      "author": "koreanjewcrypto",
+      "type": "long_tweet",
+      "summary": "It’s been 2 months now and I can confidently say this is the greatest walkout for any sporting event of all time https://t.co/9bTpckrBqL\n\n@Prak_Agrajag There is no second best\n\n@Prak_Agrajag There’s a part in the full walkout where he lets out a scream of pure emotion that shit was peak",
+      "tweet_url": "https://x.com/koreanjewcrypto/status/2084350799937699917",
+      "created_at": "2026-08-03T18:48:50.000Z",
+      "images": []
+    },
+    {
+      "author": "koreanjewcrypto",
+      "type": "long_tweet",
+      "summary": "@WittyCrypt0 It’s funny my good friend was a blue belt before I ever started training and had a similar thing going on , he’s much heavier than me so we rolled in the living room for fun and I tapped him with some bootleg chicken wing shit lol",
+      "tweet_url": "https://x.com/koreanjewcrypto/status/2084345551202529723",
+      "created_at": "2026-08-03T18:27:59.000Z",
+      "images": []
+    },
+    {
+      "author": "blknoiz06",
+      "type": "unusual_image",
+      "usual_length": 37,
+      "this_length": 58,
+      "summary": "what in gods name is going on here https://t.co/6jYA1jUrAK",
+      "tweet_url": "https://x.com/blknoiz06/status/2084457963553722526",
+      "created_at": "2026-08-04T01:54:40.000Z",
+      "images": [
+        "https://pbs.twimg.com/media/HO17eBSakAANCI8.jpg"
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'ticker-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- volume ----------
+function renderVolume(v) {
+  if (!v || typeof v !== 'object') {
+    document.getElementById('volume').innerHTML = '<span>no volume data</span>';
+    return;
+  }
+  const parts = [];
+  if (v.total_tweets   != null) parts.push(`<strong>${v.total_tweets}</strong> tweets`);
+  if (v.active_authors != null && v.total_authors != null) {
+    parts.push(`<strong>${v.active_authors}/${v.total_authors}</strong> authors active`);
+  } else if (v.active_authors != null) {
+    parts.push(`<strong>${v.active_authors}</strong> authors active`);
+  }
+  if (v.silent_authors != null) parts.push(`<strong>${v.silent_authors}</strong> silent`);
+  document.getElementById('volume').innerHTML = parts.join('<span style="color:var(--text-3)">·</span>')
+    || '<span>—</span>';
+}
+
+// ---------- tickers ----------
+function renderTickerWho(who) {
+  if (!who || !who.length) return '';
+  return `<div class="ticker-who">` + who.map(w => {
+    const name = w.author || w.author_username || '';
+    const ctx = w.context ? `<span class="ctx">${escapeHtml(w.context)}</span>` : '';
+    return `<span class="who-item filterable" data-author="${escapeAttr(name).toLowerCase()}">${authorTag(name)} ${ctx}</span>`;
+  }).join('') + `</div>`;
+}
+
+function renderTicker(t) {
+  const isNew = t.is_new ? ' is-new' : '';
+  const bull = t.bull ?? 0, bear = t.bear ?? 0, neutral = t.neutral ?? 0;
+  const mentions = (t.mentions != null) ? t.mentions : (bull + bear + neutral);
+  return `
+    <div class="ticker-row${isNew}">
+      <div class="ticker-sym">${escapeHtml(t.ticker || '?')}</div>
+      <div class="ticker-mentions">${mentions} mention${mentions === 1 ? '' : 's'}</div>
+      ${t.is_new ? '<span class="new-pill">new</span>' : ''}
+      <div class="sentiment">
+        <span class="pair"><span class="dot dot-bull"></span>${bull}</span>
+        <span class="pair"><span class="dot dot-bear"></span>${bear}</span>
+        <span class="pair"><span class="dot dot-neutral"></span>${neutral}</span>
+      </div>
+      ${renderTickerWho(t.who)}
+    </div>`;
+}
+
+// ---------- outliers ----------
+function renderThumbs(images) {
+  if (!images || !images.length) return '';
+  return `<div class="thumbs">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="thumb" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderOutlier(o) {
+  const author = o.author || o.author_username || '';
+  const usual = o.usual_length, current = o.this_length;
+  const tag = (usual != null && current != null)
+    ? `<span class="outlier-tag">usual ${usual} · this ${current}</span>` : '';
+  const time = relativeTime(o.created_at);
+  const link = o.tweet_url
+    ? `<a class="outlier-link" href="${escapeAttr(o.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  return `
+    <div class="outlier-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="outlier-head">
+        <span class="outlier-author" onclick="filterAuthor('${escapeAttr(author)}')">@${escapeHtml(author)}</span>
+        ${tag}
+        ${time ? `<span class="outlier-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      <div class="outlier-summary">${escapeHtml(o.summary || '')}</div>
+      ${renderThumbs(o.images)}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+  renderVolume(d.volume);
+
+  const tickersBody = (d.tickers || []).map(renderTicker).join('')
+                   || '<div class="empty">No tickers.</div>';
+  const outliersBody = (d.outliers || []).map(renderOutlier).join('');
+
+  const sections = [
+    renderSection('A', 'Tickers', tickersBody, (d.tickers || []).length),
+    outliersBody ? renderSection('B', 'Outliers', outliersBody, (d.outliers || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No data.</div>';
+
+  // Auto-open all sections (compact dashboard — show everything).
+  document.querySelectorAll('.section').forEach(s => s.classList.add('open'));
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

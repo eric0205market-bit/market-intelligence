@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER BANK RESEARCH",
+  "date": "2026-06-03 05:22 UTC",
+  "collected_at": "2026-06-03T05:22:56Z",
+  "window_days": 4,
+  "input_stats": {
+    "total_tweets": 60,
+    "considered": 60,
+    "kept": 20,
+    "dropped": 40,
+    "deduped": 0
+  },
+  "summary": "Goldman flags AI’s dual role — 66% of S&P 500 mgmt teams cited AI on Q1 earnings calls while May saw a surge in AI-driven layoff announcements; buybacks running at 1.9× 2025 avg daily volume. BofA highlights a buyback bifurcation: trailing 12-month pace at its lowest since late 2023 even as weekly activity ticks up; AI data center growth flagged as a new resource shock in energy, water, and transition metals. Deutsche warns of 1987-style melt-up cracks and separately notes Real Estate sector positioning at 92nd-percentile crowding. Citi’s Stuart Kaiser marks oil tail risk down 75% since March 27. Neil Sethi’s thread covers FOMC hawk signals from Cleveland’s Hammack and Kansas City’s Schmid (both focused on inflation risks and policy restrictiveness), alongside a mixed JOLTS: record biz/prof services openings vs. falling hires, quits, and layoffs.\n\nCounts — Neil Sethi/Macro 11, BofA 3, Goldman 3, Deutsche 2, Citi 1.",
+  "by_bank_counts": {
+    "Neil Sethi / Macro": 11,
+    "BofA": 3,
+    "Goldman": 3,
+    "Deutsche": 2,
+    "Citi": 1
+  },
+  "banks": [
+    {
+      "bank": "Neil Sethi / Macro",
+      "theme": "JOLTS Apr-26 — record biz/prof services openings offset by falling hires, quits, and layoffs; hawkish Fed commentary from Cleveland (Hammack) and Kansas City (Schmid)",
+      "items": [
+        {
+          "author": "neilksethi",
+          "text": "From the Week Ahead (https://t.co/dK8IKSbarp):\n\nEarnings revisions, after starting the earnings season with two negative weeks, have remained very healthy for a fifth week in the week of May 22nd, accelerating back to the joint highest since August 2021, marking the best four weeks since then, and seeing the 20-week moving average continue to lift higher again, as 2026 EPS estimates continue to rise to new highs, as they've done each week since the turn of the year, now up a stunning ~31% over that period.",
+          "tweet_url": "https://x.com/neilksethi/status/2061805798108381195",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0BclkXgAAvnCS.png"
+          ],
+          "created_at": "2026-06-02T13:43:03.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Construction Spending - April 2024\nApril construction spending sees best growth of the year on strong residential, AI-related, and public spending but negative adjusted for inflation\n\nhttps://t.co/OGKYrvNDDF https://t.co/kLxFPRgAB7",
+          "tweet_url": "https://x.com/neilksethi/status/2061813907283390518",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0IyYcWUAASzot.jpg",
+            "https://pbs.twimg.com/media/HJ0IyiMXoAAJ9xB.jpg",
+            "https://pbs.twimg.com/media/HJ0Iy_qWUAACO-D.jpg",
+            "https://pbs.twimg.com/media/HJ0IzpNWwAAQFu_.jpg"
+          ],
+          "created_at": "2026-06-02T14:15:16.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Gain in job openings dominated by professional and business services which saw openings surge +668k, easily a record (the next highest was Sept 2022 at 352k). https://t.co/eoDg3KkTSz",
+          "tweet_url": "https://x.com/neilksethi/status/2061819772707156341",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0NvC_WcAA8krj.jpg"
+          ],
+          "created_at": "2026-06-02T14:38:35.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "It took openings in that sector to the highest level since August 2023. https://t.co/kG8ePnJ7qC",
+          "tweet_url": "https://x.com/neilksethi/status/2061819774754013464",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0OJo8XsAAM6Ek.jpg"
+          ],
+          "created_at": "2026-06-02T14:38:35.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Job Openings and Labor Turnover Survey (JOLTS) - April 2026\n\nApril job openings surge the most since April 2021 on a record jump in biz/prof services. Hires, quits, and layoffs all fell.\n\nhttps://t.co/vzx2OYgYwV https://t.co/IMNGdWyZsS",
+          "tweet_url": "https://x.com/neilksethi/status/2061829181176938615",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0Wh9BXEAA1b2G.png",
+            "https://pbs.twimg.com/media/HJ0Wjb9XkAAknB5.jpg",
+            "https://pbs.twimg.com/media/HJ0WkBLXYAAg01l.jpg",
+            "https://pbs.twimg.com/media/HJ0Ws1qWgAAYruU.jpg"
+          ],
+          "created_at": "2026-06-02T15:15:58.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "The ratio of openings to unemployed workers got above 1.0 for the first time since June 2025 at 1.033, the highest since January 2025. Still though around half the peak of 2.0 in 2022. It also remains below the 1.21 level of Jan 2020.\n\nhttps://t.co/vzx2OYgYwV https://t.co/CCIDmPeNqH",
+          "tweet_url": "https://x.com/neilksethi/status/2061832715532460400",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0W9NTXAAAh2C0.png"
+          ],
+          "created_at": "2026-06-02T15:30:01.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "JOLTS hires though dropped -419k, the second most (after February) since July 2020, to 5.116mn (after a -19k revision to March), partly unwinding the surge in March which took it to the highest since February 2024. https://t.co/Xtwa32vyjk",
+          "tweet_url": "https://x.com/neilksethi/status/2061844093865451531",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0kRtMWQAAw4yI.jpg",
+            "https://pbs.twimg.com/media/HJ0kRtOWwAEkNSe.jpg"
+          ],
+          "created_at": "2026-06-02T16:15:13.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Layoffs though also fell -192k, the most since November, to 1.692mn (after a +17k revision to March), the least since January. The layoffs rate dropped back a tenth to 1.1% and remains within the historical range. It was 1.2% January 2020. https://t.co/QFDjesMuIf",
+          "tweet_url": "https://x.com/neilksethi/status/2061865679372911050",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0qGGvWAAAm2mV.jpg",
+            "https://pbs.twimg.com/media/HJ0qGoHXEAA3cWp.jpg"
+          ],
+          "created_at": "2026-06-02T17:41:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "JOLTS quits (considered a measure of labor market tightness — people don't quit their job unless they are confident they can find another one) also slipped -183k, the largest decline in a year to 2.977mn, the third decline in four months. \n\nThey remain at the bottom of their range over the past two years, just 4k above the least since August 2020.\n\nhttps://t.co/U4GT1BokC7",
+          "tweet_url": "https://x.com/neilksethi/status/2061881030932353174",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0qd02WsAAdFQf.jpg",
+            "https://pbs.twimg.com/media/HJ0qd0-XEAAVdsI.jpg"
+          ],
+          "created_at": "2026-06-02T18:42:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "While not an #FOMC voter until 2028, Kansas City Fed President maintained his status last week as one of the most hawkish Fed members (along with Cleveland Fed Pres Hammack) with a BBG interview along with a speech in Iceland (link below) not only agreeing with the majority of the committee that the \"primary concern is inflation, which is too hot and has been above target for too long,\" but indicating (in the interview) that he thought rates were likely accommodative (which would argue for rate hikes even if inflation were to fall).\n\nFrom the speech: \n\n“We must continue to signal our commitment to price stability and our willingness to take the actions necessary to achieve our mandate.”\n\n“I place little stock in assuming that the most recent runup in prices is transitory within an acceptable time horizon.”\n\nhttps://t.co/zmFbkirW5a",
+          "tweet_url": "https://x.com/neilksethi/status/2061884179856441529",
+          "images": [
+            "https://pbs.twimg.com/media/HJ1HQKeWYAAYrfE.png"
+          ],
+          "created_at": "2026-06-02T18:54:31.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Which sets up my post on Cleveland Fed President Hammack (an #FOMC voter in 2026 (and every two years unlike many Fed presidents) who also believes that rates are not restrictive) who in a speech in Cleveland (link below) says while for now \"it's reasonable to keep rates steady given the uncertainties around the economic outlook... if recent trends continue, it may soon be appropriate to act... I'm more concerned about the growing risks of persistently elevated inflation than the risks to full employment and also that monetary policy may not be sufficiently restrictive to bring inflation down to 2 percent.\"\n\n\"If we wait for definitive evidence that high inflation has become embedded in the economy, it may require larger policy adjustments, at greater cost.\"\n\n\"the 2 percent objective matters—not as a theoretical construct, but as a practical foundation for sound economic decision-making by businesses, consumers, and investors.\"\n\nhttps://t.co/JaFGYKRzLL",
+          "tweet_url": "https://x.com/neilksethi/status/2061885647783166310",
+          "images": [
+            "https://pbs.twimg.com/media/HJ1JLIFWMAACtAj.png"
+          ],
+          "created_at": "2026-06-02T19:00:21.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "BofA",
+      "theme": "Buyback crosscurrents — trailing 12-month pace at lowest since late 2023 even as weekly activity ticks up; AI data center expansion flagged as infrastructure and commodity resource shock",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "BofAI: Data center construction creates a resource shock\n\nAI data center growth is increasingly shaped by energy supply, electrical and water infrastructure, and critical transition metals https://t.co/goNOdf8vmn",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061892616203940084",
+          "images": [
+            "https://pbs.twimg.com/media/HJ1QaEYWMAAMuY3.jpg"
+          ],
+          "created_at": "2026-06-02T19:28:02.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "BofA: Buybacks pick up for the first time in over a year https://t.co/OTWOtUlj9V",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061951276389220386",
+          "images": [
+            "https://pbs.twimg.com/media/HJ2FwmXWgAAkS94.jpg"
+          ],
+          "created_at": "2026-06-02T23:21:08.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "BofA: Trailing 52-wk. buybacks/mkt. cap continues to decline (currently at its lowest since late '23). \n\nBuybacks have slowed most notably in Tech vs. picked up in Disc./Fins./Energy YTD. https://t.co/LnVhq72qN9",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061951495180791951",
+          "images": [
+            "https://pbs.twimg.com/media/HJ2F9VcXAAI6Wc9.png"
+          ],
+          "created_at": "2026-06-02T23:22:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Goldman",
+      "theme": "Goldman — AI cited on 66% of Q1 earnings calls and driving a May surge in layoff announcements; buybacks running 1.9× 2025 average daily volume",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "A May surge in AI-related layoff announcemnts GS https://t.co/6SrEF7kfe6",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061814091203723437",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0I_YOXkAAo_h3.png"
+          ],
+          "created_at": "2026-06-02T14:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: 66% of S&P 500 Management Teams Mentioned AI on Q1 Earnings Calls https://t.co/6Se5Zuot33",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061829190693835206",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0WuSSXUAArVYE.png"
+          ],
+          "created_at": "2026-06-02T15:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Goldman continues to see buybacks boosting flows now seeing them at 1.9x 2025 average daily trading volume on a YTD basis. https://t.co/xn6vFOgBVi",
+          "tweet_url": "https://x.com/neilksethi/status/2061851586830168358",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0poOxWUAASVXM.png"
+          ],
+          "created_at": "2026-06-02T16:45:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Deutsche",
+      "theme": "Deutsche — 1987-parallel melt-up warning alongside Real Estate sector positioning hitting 92nd-percentile crowding",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Party like it's 1987? Deutsche warns of huge cracks in market melt-up @seekingalpha https://t.co/23yq9qpvIk",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061832965789770045",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0aKARXAAAeenp.png"
+          ],
+          "created_at": "2026-06-02T15:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "DB: Positioning in Real Estate jumped to the 92nd percentile, the second-highest since 2021. https://t.co/MBfPEiuUYc",
+          "tweet_url": "https://x.com/neilksethi/status/2061872977621238053",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0qW0QXoAAoTkk.png"
+          ],
+          "created_at": "2026-06-02T18:10:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "bank": "Citi",
+      "theme": "Citi’s Kaiser — oil tail risk collapsed 75% since March 27 as energy supply shock probability recedes",
+      "items": [
+        {
+          "author": "neilksethi",
+          "text": "MarketWatch: Stuart Kaiser, head of U.S. equity trading strategy at Citi, says \"the oil tail risk outcome has been cut by 3/4 from about the same starting price,\" since March 27th.\n\nOn March 27, when the U.S. Oil Fund was trading above $124, options implied a 6.2% chance it would rally a further 50% in a month. \n\nNow, with $USO near $128, odds of a 50% gain are just 1.5%.",
+          "tweet_url": "https://x.com/neilksethi/status/2061857877900624268",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0qhPiXoAIz-_p.png"
+          ],
+          "created_at": "2026-06-02T17:10:00.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ],
+  "topics": [
+    {
+      "topic": "Neil Sethi / Macro — JOLTS Apr-26 — record biz/prof services openings offset by falling hires, quits, and layoffs; hawkish Fed commentary from Cleveland (Hammack) and Kansas City (Schmid)",
+      "items": [
+        {
+          "author": "neilksethi",
+          "text": "From the Week Ahead (https://t.co/dK8IKSbarp):\n\nEarnings revisions, after starting the earnings season with two negative weeks, have remained very healthy for a fifth week in the week of May 22nd, accelerating back to the joint highest since August 2021, marking the best four weeks since then, and seeing the 20-week moving average continue to lift higher again, as 2026 EPS estimates continue to rise to new highs, as they've done each week since the turn of the year, now up a stunning ~31% over that period.",
+          "tweet_url": "https://x.com/neilksethi/status/2061805798108381195",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0BclkXgAAvnCS.png"
+          ],
+          "created_at": "2026-06-02T13:43:03.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Construction Spending - April 2024\nApril construction spending sees best growth of the year on strong residential, AI-related, and public spending but negative adjusted for inflation\n\nhttps://t.co/OGKYrvNDDF https://t.co/kLxFPRgAB7",
+          "tweet_url": "https://x.com/neilksethi/status/2061813907283390518",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0IyYcWUAASzot.jpg",
+            "https://pbs.twimg.com/media/HJ0IyiMXoAAJ9xB.jpg",
+            "https://pbs.twimg.com/media/HJ0Iy_qWUAACO-D.jpg",
+            "https://pbs.twimg.com/media/HJ0IzpNWwAAQFu_.jpg"
+          ],
+          "created_at": "2026-06-02T14:15:16.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Gain in job openings dominated by professional and business services which saw openings surge +668k, easily a record (the next highest was Sept 2022 at 352k). https://t.co/eoDg3KkTSz",
+          "tweet_url": "https://x.com/neilksethi/status/2061819772707156341",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0NvC_WcAA8krj.jpg"
+          ],
+          "created_at": "2026-06-02T14:38:35.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "It took openings in that sector to the highest level since August 2023. https://t.co/kG8ePnJ7qC",
+          "tweet_url": "https://x.com/neilksethi/status/2061819774754013464",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0OJo8XsAAM6Ek.jpg"
+          ],
+          "created_at": "2026-06-02T14:38:35.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Job Openings and Labor Turnover Survey (JOLTS) - April 2026\n\nApril job openings surge the most since April 2021 on a record jump in biz/prof services. Hires, quits, and layoffs all fell.\n\nhttps://t.co/vzx2OYgYwV https://t.co/IMNGdWyZsS",
+          "tweet_url": "https://x.com/neilksethi/status/2061829181176938615",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0Wh9BXEAA1b2G.png",
+            "https://pbs.twimg.com/media/HJ0Wjb9XkAAknB5.jpg",
+            "https://pbs.twimg.com/media/HJ0WkBLXYAAg01l.jpg",
+            "https://pbs.twimg.com/media/HJ0Ws1qWgAAYruU.jpg"
+          ],
+          "created_at": "2026-06-02T15:15:58.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "The ratio of openings to unemployed workers got above 1.0 for the first time since June 2025 at 1.033, the highest since January 2025. Still though around half the peak of 2.0 in 2022. It also remains below the 1.21 level of Jan 2020.\n\nhttps://t.co/vzx2OYgYwV https://t.co/CCIDmPeNqH",
+          "tweet_url": "https://x.com/neilksethi/status/2061832715532460400",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0W9NTXAAAh2C0.png"
+          ],
+          "created_at": "2026-06-02T15:30:01.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "JOLTS hires though dropped -419k, the second most (after February) since July 2020, to 5.116mn (after a -19k revision to March), partly unwinding the surge in March which took it to the highest since February 2024. https://t.co/Xtwa32vyjk",
+          "tweet_url": "https://x.com/neilksethi/status/2061844093865451531",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0kRtMWQAAw4yI.jpg",
+            "https://pbs.twimg.com/media/HJ0kRtOWwAEkNSe.jpg"
+          ],
+          "created_at": "2026-06-02T16:15:13.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Layoffs though also fell -192k, the most since November, to 1.692mn (after a +17k revision to March), the least since January. The layoffs rate dropped back a tenth to 1.1% and remains within the historical range. It was 1.2% January 2020. https://t.co/QFDjesMuIf",
+          "tweet_url": "https://x.com/neilksethi/status/2061865679372911050",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0qGGvWAAAm2mV.jpg",
+            "https://pbs.twimg.com/media/HJ0qGoHXEAA3cWp.jpg"
+          ],
+          "created_at": "2026-06-02T17:41:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "JOLTS quits (considered a measure of labor market tightness — people don't quit their job unless they are confident they can find another one) also slipped -183k, the largest decline in a year to 2.977mn, the third decline in four months. \n\nThey remain at the bottom of their range over the past two years, just 4k above the least since August 2020.\n\nhttps://t.co/U4GT1BokC7",
+          "tweet_url": "https://x.com/neilksethi/status/2061881030932353174",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0qd02WsAAdFQf.jpg",
+            "https://pbs.twimg.com/media/HJ0qd0-XEAAVdsI.jpg"
+          ],
+          "created_at": "2026-06-02T18:42:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "While not an #FOMC voter until 2028, Kansas City Fed President maintained his status last week as one of the most hawkish Fed members (along with Cleveland Fed Pres Hammack) with a BBG interview along with a speech in Iceland (link below) not only agreeing with the majority of the committee that the \"primary concern is inflation, which is too hot and has been above target for too long,\" but indicating (in the interview) that he thought rates were likely accommodative (which would argue for rate hikes even if inflation were to fall).\n\nFrom the speech: \n\n“We must continue to signal our commitment to price stability and our willingness to take the actions necessary to achieve our mandate.”\n\n“I place little stock in assuming that the most recent runup in prices is transitory within an acceptable time horizon.”\n\nhttps://t.co/zmFbkirW5a",
+          "tweet_url": "https://x.com/neilksethi/status/2061884179856441529",
+          "images": [
+            "https://pbs.twimg.com/media/HJ1HQKeWYAAYrfE.png"
+          ],
+          "created_at": "2026-06-02T18:54:31.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Which sets up my post on Cleveland Fed President Hammack (an #FOMC voter in 2026 (and every two years unlike many Fed presidents) who also believes that rates are not restrictive) who in a speech in Cleveland (link below) says while for now \"it's reasonable to keep rates steady given the uncertainties around the economic outlook... if recent trends continue, it may soon be appropriate to act... I'm more concerned about the growing risks of persistently elevated inflation than the risks to full employment and also that monetary policy may not be sufficiently restrictive to bring inflation down to 2 percent.\"\n\n\"If we wait for definitive evidence that high inflation has become embedded in the economy, it may require larger policy adjustments, at greater cost.\"\n\n\"the 2 percent objective matters—not as a theoretical construct, but as a practical foundation for sound economic decision-making by businesses, consumers, and investors.\"\n\nhttps://t.co/JaFGYKRzLL",
+          "tweet_url": "https://x.com/neilksethi/status/2061885647783166310",
+          "images": [
+            "https://pbs.twimg.com/media/HJ1JLIFWMAACtAj.png"
+          ],
+          "created_at": "2026-06-02T19:00:21.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "BofA — Buyback crosscurrents — trailing 12-month pace at lowest since late 2023 even as weekly activity ticks up; AI data center expansion flagged as infrastructure and commodity resource shock",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "BofAI: Data center construction creates a resource shock\n\nAI data center growth is increasingly shaped by energy supply, electrical and water infrastructure, and critical transition metals https://t.co/goNOdf8vmn",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061892616203940084",
+          "images": [
+            "https://pbs.twimg.com/media/HJ1QaEYWMAAMuY3.jpg"
+          ],
+          "created_at": "2026-06-02T19:28:02.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "BofA: Buybacks pick up for the first time in over a year https://t.co/OTWOtUlj9V",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061951276389220386",
+          "images": [
+            "https://pbs.twimg.com/media/HJ2FwmXWgAAkS94.jpg"
+          ],
+          "created_at": "2026-06-02T23:21:08.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "BofA: Trailing 52-wk. buybacks/mkt. cap continues to decline (currently at its lowest since late '23). \n\nBuybacks have slowed most notably in Tech vs. picked up in Disc./Fins./Energy YTD. https://t.co/LnVhq72qN9",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061951495180791951",
+          "images": [
+            "https://pbs.twimg.com/media/HJ2F9VcXAAI6Wc9.png"
+          ],
+          "created_at": "2026-06-02T23:22:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Goldman — Goldman — AI cited on 66% of Q1 earnings calls and driving a May surge in layoff announcements; buybacks running 1.9× 2025 average daily volume",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "A May surge in AI-related layoff announcemnts GS https://t.co/6SrEF7kfe6",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061814091203723437",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0I_YOXkAAo_h3.png"
+          ],
+          "created_at": "2026-06-02T14:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "MikeZaccardi",
+          "text": "GS: 66% of S&P 500 Management Teams Mentioned AI on Q1 Earnings Calls https://t.co/6Se5Zuot33",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061829190693835206",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0WuSSXUAArVYE.png"
+          ],
+          "created_at": "2026-06-02T15:16:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "Goldman continues to see buybacks boosting flows now seeing them at 1.9x 2025 average daily trading volume on a YTD basis. https://t.co/xn6vFOgBVi",
+          "tweet_url": "https://x.com/neilksethi/status/2061851586830168358",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0poOxWUAASVXM.png"
+          ],
+          "created_at": "2026-06-02T16:45:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Deutsche — Deutsche — 1987-parallel melt-up warning alongside Real Estate sector positioning hitting 92nd-percentile crowding",
+      "items": [
+        {
+          "author": "MikeZaccardi",
+          "text": "Party like it's 1987? Deutsche warns of huge cracks in market melt-up @seekingalpha https://t.co/23yq9qpvIk",
+          "tweet_url": "https://x.com/MikeZaccardi/status/2061832965789770045",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0aKARXAAAeenp.png"
+          ],
+          "created_at": "2026-06-02T15:31:00.000Z",
+          "relayers": []
+        },
+        {
+          "author": "neilksethi",
+          "text": "DB: Positioning in Real Estate jumped to the 92nd percentile, the second-highest since 2021. https://t.co/MBfPEiuUYc",
+          "tweet_url": "https://x.com/neilksethi/status/2061872977621238053",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0qW0QXoAAoTkk.png"
+          ],
+          "created_at": "2026-06-02T18:10:00.000Z",
+          "relayers": []
+        }
+      ]
+    },
+    {
+      "topic": "Citi — Citi’s Kaiser — oil tail risk collapsed 75% since March 27 as energy supply shock probability recedes",
+      "items": [
+        {
+          "author": "neilksethi",
+          "text": "MarketWatch: Stuart Kaiser, head of U.S. equity trading strategy at Citi, says \"the oil tail risk outcome has been cut by 3/4 from about the same starting price,\" since March 27th.\n\nOn March 27, when the U.S. Oil Fund was trading above $124, options implied a 6.2% chance it would rally a further 50% in a month. \n\nNow, with $USO near $128, odds of a 50% gain are just 1.5%.",
+          "tweet_url": "https://x.com/neilksethi/status/2061857877900624268",
+          "images": [
+            "https://pbs.twimg.com/media/HJ0qhPiXoAIz-_p.png"
+          ],
+          "created_at": "2026-06-02T17:10:00.000Z",
+          "relayers": []
+        }
+      ]
+    }
+  ]
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

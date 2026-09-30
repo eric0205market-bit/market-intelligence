@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Shitpost Radar</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #d97706;
+  --accent-bg: #fffbeb;
+  --accent-2: #b45309;
+  --bull: #16a34a;
+  --bear: #dc2626;
+  --neutral: #9a9590;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 16px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* VOLUME (one-liner) */
+.volume { background: var(--surface); border: 1px solid var(--border);
+          border-left: 4px solid var(--accent); border-radius: 6px;
+          padding: 10px 14px; margin-bottom: 16px;
+          font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
+          color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.volume strong { color: var(--text); font-weight: 600; }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SECTIONS */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #fef3c7; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px; min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; }
+.section.open .section-body { display: block; }
+
+/* TICKER ROWS */
+.ticker-row { display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+              border-bottom: 1px solid var(--border-light); flex-wrap: wrap; }
+.ticker-row:last-child { border-bottom: none; }
+.ticker-row.is-new { border-left: 3px solid var(--accent); background: var(--accent-bg); }
+.ticker-sym { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600;
+              min-width: 72px; }
+.ticker-mentions { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+                   color: var(--text-3); min-width: 70px; }
+.new-pill { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600;
+            background: var(--accent); color: #fff; padding: 1px 6px; border-radius: 3px;
+            text-transform: uppercase; letter-spacing: .05em; }
+.sentiment { display: flex; gap: 10px; font-family: 'IBM Plex Mono', monospace;
+             font-size: 12px; color: var(--text-2); }
+.sentiment .pair { display: inline-flex; align-items: center; gap: 4px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-bull    { background: var(--bull); }
+.dot-bear    { background: var(--bear); }
+.dot-neutral { background: var(--neutral); }
+.ticker-who { flex: 1 1 100%; font-size: 12.5px; color: var(--text-2);
+              padding-left: 4px; }
+.ticker-who .who-item { margin-right: 10px; }
+.ticker-who .who-item .ctx { color: var(--text-3); font-style: italic; }
+.ticker-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.ticker-author:hover { text-decoration: underline; }
+
+/* OUTLIER CARDS */
+.outlier-card { background: var(--surface); border: 1px solid var(--border);
+                border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.outlier-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+                flex-wrap: wrap; }
+.outlier-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.outlier-author:hover { text-decoration: underline; }
+.outlier-tag { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600;
+               background: var(--accent-bg); color: var(--accent-2); padding: 2px 6px;
+               border-radius: 3px; text-transform: uppercase; letter-spacing: .04em;
+               border: 1px solid var(--accent); }
+.outlier-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.outlier-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                color: var(--accent); text-decoration: none; }
+.outlier-link:hover { text-decoration: underline; }
+.outlier-summary { font-size: 13.5px; line-height: 1.6; color: var(--text);
+                   white-space: pre-wrap; word-wrap: break-word; }
+
+/* THUMBS */
+.thumbs { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.thumb { height: 100px; border: 1px solid var(--border); border-radius: 4px;
+         cursor: zoom-in; background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .outlier-card { margin: 8px 10px; }
+  .ticker-row { gap: 8px; }
+  .ticker-sym { min-width: 56px; font-size: 14px; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Shitpost Radar</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="volume" id="volume"></div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "SHITPOST RADAR",
+  "collected_at": "2026-07-06T17:21:16Z",
+  "volume": {
+    "total_tweets": 86,
+    "active_authors": 24,
+    "total_authors": 217,
+    "silent_authors": 193
+  },
+  "tickers": [
+    {
+      "ticker": "BTC",
+      "mentions": 14,
+      "is_new": false,
+      "bull": 2,
+      "bear": 1,
+      "neutral": 11,
+      "who": [
+        {
+          "author": "CryptoGodJohn",
+          "context": "Saylor &amp; ETF's were selling billions dollars worth of Bitcoin at $60k and we couldn't breakdown\n..."
+        },
+        {
+          "author": "Tradermayne",
+          "context": "The 32 Bitcoin was indeed a test transaction. \n\nI think this is a good thing to be honest. \n\nA reall..."
+        },
+        {
+          "author": "CryptoKaleo",
+          "context": "@VentureCoinist @saylor Look at MSTR/BTC ratio since the inception of the preferred stock strategy (..."
+        }
+      ]
+    },
+    {
+      "ticker": "MSTR",
+      "mentions": 10,
+      "is_new": false,
+      "bull": 2,
+      "bear": 0,
+      "neutral": 8,
+      "who": [
+        {
+          "author": "CryptoKaleo",
+          "context": "@VentureCoinist @saylor Look at MSTR/BTC ratio since the inception of the preferred stock strategy (..."
+        },
+        {
+          "author": "CryptoKaleo",
+          "context": "Don\u2019t forget Bitcoin is so much more than one man and one company.\n\nIt\u2019ll be fine regardless of whet..."
+        },
+        {
+          "author": "CryptoKaleo",
+          "context": "@saylor @Strategy So technically you didn\u2019t have 847,363 Bitcoin like your graphic says you did when..."
+        }
+      ]
+    },
+    {
+      "ticker": "BMNP",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 1,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "fundstrat",
+          "context": "Stocks disappointed in June, but understandable given the \"V-shaped\" rise since April.\n\n- July, risk..."
+        }
+      ]
+    },
+    {
+      "ticker": "BMNR",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 1,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "fundstrat",
+          "context": "Stocks disappointed in June, but understandable given the \"V-shaped\" rise since April.\n\n- July, risk..."
+        }
+      ]
+    },
+    {
+      "ticker": "DIA",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "AlessioTMAD",
+          "context": "$DIA Dow jones ETF registered a call surge on Thursday https://t.co/9SxguqigBL"
+        }
+      ]
+    },
+    {
+      "ticker": "ETH",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "fundstrat",
+          "context": "While there remains widespread skepticism around $ETH, the rise in the ratio of ETH/BTC signals inve..."
+        }
+      ]
+    },
+    {
+      "ticker": "EUAD",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 1,
+      "bear": 0,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "AlessioTMAD",
+          "context": "Pump em $EUAD $ITA"
+        }
+      ]
+    },
+    {
+      "ticker": "HOOD",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "$HOOD Up almost 70% in the last two months.."
+        }
+      ]
+    },
+    {
+      "ticker": "ITA",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 1,
+      "bear": 0,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "AlessioTMAD",
+          "context": "Pump em $EUAD $ITA"
+        }
+      ]
+    },
+    {
+      "ticker": "MSFT",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "$MSFT -1% today\n\n$NFLX -2% today\n\nWake up"
+        }
+      ]
+    },
+    {
+      "ticker": "NFLX",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "Mr_Derivatives",
+          "context": "$MSFT -1% today\n\n$NFLX -2% today\n\nWake up"
+        }
+      ]
+    },
+    {
+      "ticker": "SOL",
+      "mentions": 1,
+      "is_new": false,
+      "bull": 1,
+      "bear": 0,
+      "neutral": 0,
+      "who": [
+        {
+          "author": "CryptoGodJohn",
+          "context": "There is no stopping the black bull solana:9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump https://t.co..."
+        }
+      ]
+    },
+    {
+      "ticker": "SPX",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "ByzGeneral",
+          "context": "The $SPX is probably on its way to a new all time high now (unless it somehow closes below the trend..."
+        }
+      ]
+    },
+    {
+      "ticker": "STRC",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "saylor",
+          "context": "Strategy has sold 3,588 $BTC for $216 million to fund dividends on our Digital Credit securities. As..."
+        }
+      ]
+    },
+    {
+      "ticker": "STRD",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "saylor",
+          "context": "Strategy has sold 3,588 $BTC for $216 million to fund dividends on our Digital Credit securities. As..."
+        }
+      ]
+    },
+    {
+      "ticker": "STRE",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "saylor",
+          "context": "Strategy has sold 3,588 $BTC for $216 million to fund dividends on our Digital Credit securities. As..."
+        }
+      ]
+    },
+    {
+      "ticker": "STRF",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "saylor",
+          "context": "Strategy has sold 3,588 $BTC for $216 million to fund dividends on our Digital Credit securities. As..."
+        }
+      ]
+    },
+    {
+      "ticker": "STRK",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "saylor",
+          "context": "Strategy has sold 3,588 $BTC for $216 million to fund dividends on our Digital Credit securities. As..."
+        }
+      ]
+    },
+    {
+      "ticker": "UGA",
+      "mentions": 1,
+      "is_new": true,
+      "bull": 0,
+      "bear": 0,
+      "neutral": 1,
+      "who": [
+        {
+          "author": "AlessioTMAD",
+          "context": "Price of gasoline is up today $UGA big amount of call gamma expiring next opex \n\nCommunism smells li..."
+        }
+      ]
+    }
+  ],
+  "outliers": [
+    {
+      "author": "CryptoKaleo",
+      "usual_length": 151,
+      "this_length": 656,
+      "summary": "Part of me thinks Saylor announcing Strategy\u2019s Bitcoin sale kicks the can down the road *slightly*\u2026 aka maybe we don\u2019t see a capitulation event in the...",
+      "full_text": "Part of me thinks Saylor announcing Strategy\u2019s Bitcoin sale kicks the can down the road *slightly*\u2026 aka maybe we don\u2019t see a capitulation event in the market this week -\n\nBut still believe 30s/40s for BTC are imminent.\n\nWhen there\u2019s blood in the water, it\u2019s only a matter of time before the market tries to hunt it down for more.\n\nAnd for what it\u2019s worth - I believe BTC finds its bottom around the same time Strategy has enough cash set aside to at least wipe away the $6.7B of convertible debt sitting on its books.\n\nThat doesn\u2019t necessarily mean MSTR bottoms at the same time.\n\nIt\u2019s important to remember Bitcoin isn\u2019t defined by one man or one company.",
+      "tweet_url": "https://x.com/CryptoKaleo/status/2074118367133245813",
+      "images": []
+    },
+    {
+      "author": "PeterSchiff",
+      "usual_length": 486,
+      "this_length": 598,
+      "summary": "$MSTR spent the last two weeks selling Bitcoin. The average price on 3,588 Bitcoin sold was $60,196.73. Given MSTR\u2019s average cost, that\u2019s a realized l...",
+      "full_text": "$MSTR spent the last two weeks selling Bitcoin. The average price on 3,588 Bitcoin sold was $60,196.73. Given MSTR\u2019s average cost, that\u2019s a realized loss of about $15K per Bitcoin, or about $54 million. With over 840K Bitcoin left to sell, the total losses will be much greater.\n\n@Jeremybtc Maybe for a bounce. It also depends on how low the price is when he's finally flushed out.\n\n@Cheeffjeef @Jeremybtc It's larger when you subtract supply that doesn't really count. But the key is not the perecentage MSTR owns. It's what happens to the market when the biggest buyer becomes the biggest seller.",
+      "tweet_url": "https://x.com/PeterSchiff/status/2074110102085210585",
+      "images": []
+    },
+    {
+      "author": "PeterSchiff",
+      "usual_length": 0,
+      "this_length": 542,
+      "summary": "Trump rang the opening bell today to ring in his new Trump accounts. But there is nothing to celebrate, as the $1,000 federal contribution to these ac...",
+      "full_text": "Trump rang the opening bell today to ring in his new Trump accounts. But there is nothing to celebrate, as the $1,000 federal contribution to these accounts is funded by issuing more debt. So the kids who get the money also inherit the debt. Cutting spending would be far better.\n\n@RobertJMcDonald The U.S. government contributes $1K to each account.\n\n@AlfredENewman5 Employer contributions to employee's children are tax dedcutible to the employer but not taxable to the employee. So those contrubutions will also increase the national debt.",
+      "tweet_url": "https://x.com/PeterSchiff/status/2074125885041520685",
+      "images": []
+    },
+    {
+      "author": "koreanjewcrypto",
+      "usual_length": 25,
+      "this_length": 442,
+      "summary": "Crazy part is he unironically longed the bottom like 100 times and got liquidated every time because he\u2019s being a retard and adding size every time he...",
+      "full_text": "Crazy part is he unironically longed the bottom like 100 times and got liquidated every time because he\u2019s being a retard and adding size every time he\u2019s green hence his liquidation is higher than his entry if he just used the funds he lost and had 1 position with a reasonably loose stop loss he could probably make it all back in one trade\n\n@Chefofmemes Yes I\u2019ve done it before too but he\u2019s doing it with size there\u2019s no way it will work lol",
+      "tweet_url": "https://x.com/koreanjewcrypto/status/2074112544671731784",
+      "images": [
+        "https://pbs.twimg.com/media/HMi5B71XsAAdXHx.jpg"
+      ]
+    },
+    {
+      "author": "PeterSchiff",
+      "usual_length": 542,
+      "this_length": 430,
+      "summary": "$MSTR now has a completely different business model. Instead of selling common and preferred stock and issuing debt to buy Bitcoin, the new strategy i...",
+      "full_text": "$MSTR now has a completely different business model. Instead of selling common and preferred stock and issuing debt to buy Bitcoin, the new strategy is to sell Bitcoin to pay interest and dividends, pay off debt, buy back shares it sold, and hope that Bitcoin\u2019s price goes way up.\n\n@nycguy1988 Because the common stock trades at a large discount to the Bitcoin per share. So selling Bitcoin is much better for common stock owners.",
+      "tweet_url": "https://x.com/PeterSchiff/status/2074117911774400736",
+      "images": []
+    },
+    {
+      "author": "CryptoKaleo",
+      "usual_length": 162,
+      "this_length": 360,
+      "summary": "@VentureCoinist @saylor Look at MSTR/BTC ratio since the inception of the preferred stock strategy (7/31/25), which was supposed to provide \u201cmore ampl...",
+      "full_text": "@VentureCoinist @saylor Look at MSTR/BTC ratio since the inception of the preferred stock strategy (7/31/25), which was supposed to provide \u201cmore amplification\u201d and \u201cless dilution\u201d for MSTR holders\u2026\n\n@lowstrife @VentureCoinist @saylor I mean if you look at the chart the torque is pretty consistent\n\njust not in the direction advertised https://t.co/yVwi9jxeeX",
+      "tweet_url": "https://x.com/CryptoKaleo/status/2074146547944550799",
+      "images": [
+        "https://pbs.twimg.com/media/HMjhJSUXcAA45WQ.jpg"
+      ]
+    },
+    {
+      "author": "fundstrat",
+      "usual_length": 191,
+      "this_length": 349,
+      "summary": "Stocks disappointed in June, but understandable given the \"V-shaped\" rise since April.\n\n- July, risk/reward more attractive\n- 2Q EPS season soon to st...",
+      "full_text": "Stocks disappointed in June, but understandable given the \"V-shaped\" rise since April.\n\n- July, risk/reward more attractive\n- 2Q EPS season soon to start and P/E is lower today than Jan 1\n- AI and US revitalization still very much intact\n\nGreat speaking with @JoeSquawk and squawk team this am.\n\n@FundstratDirect @FundstratCap \n@BitMNR \n$BMNR \n$BMNP",
+      "tweet_url": "https://x.com/fundstrat/status/2074118289094000676",
+      "images": []
+    },
+    {
+      "author": "saylor",
+      "usual_length": 0,
+      "this_length": 336,
+      "summary": "Strategy has sold 3,588 $BTC for $216 million to fund dividends on our Digital Credit securities. As of 7/5/2026, we hodl \u20bf843,775 in our BTC Reserves...",
+      "full_text": "Strategy has sold 3,588 $BTC for $216 million to fund dividends on our Digital Credit securities. As of 7/5/2026, we hodl \u20bf843,775 in our BTC Reserves and $2.55 billion in our USD Reserves. https://t.co/Cssgz29Psj\n\nThese were the Q2 quarterly dividends on $STRF, $STRE, $STRK, and $STRD, and the full monthly dividend for June on $STRC.",
+      "tweet_url": "https://x.com/saylor/status/2074101854875656316",
+      "images": []
+    },
+    {
+      "author": "PeterSchiff",
+      "usual_length": 523,
+      "this_length": 329,
+      "summary": "@saylor So over a two-week period, the average price you received on your Bitcoin sales was $60,196.73. How do you manage to get such bad execution? W...",
+      "full_text": "@saylor So over a two-week period, the average price you received on your Bitcoin sales was $60,196.73. How do you manage to get such bad execution? When you buy, you buy the highs; when you sell, you sell the lows. Whoever is handling your order flow is likely making a killing.\n\n@Gaiidii @saylor His average price is over $75K.",
+      "tweet_url": "https://x.com/PeterSchiff/status/2074107917570101575",
+      "images": []
+    },
+    {
+      "author": "SixSigmaCapital",
+      "usual_length": 0,
+      "this_length": 318,
+      "summary": "\"Am I cooked\" trade is undefeated still. https://t.co/JH5PNLmGdw\n\n@PegtraBC look at any neocloud name. It doesn;t matter what tickers they are all up\n...",
+      "full_text": "\"Am I cooked\" trade is undefeated still. https://t.co/JH5PNLmGdw\n\n@PegtraBC look at any neocloud name. It doesn;t matter what tickers they are all up\n\n@PegtraBC oh haha!  I am in IREN CIFR CRWV HIVE, added dips on Thursday   SHAZ was on that list but I dont own it  CRDO not a neocloud but was on that list too (I own)",
+      "tweet_url": "https://x.com/SixSigmaCapital/status/2074169243109585307",
+      "images": [
+        "https://pbs.twimg.com/media/HMjt2giWgAI9Wpj.png"
+      ]
+    },
+    {
+      "author": "DeeZe",
+      "usual_length": 0,
+      "this_length": 289,
+      "summary": "@foretwenty I don\u2019t need to overpay for a psa 10 of a card I don\u2019t value at its price?\n\n@foretwenty I\u2019m hoping I find some MP version of it in the fut...",
+      "full_text": "@foretwenty I don\u2019t need to overpay for a psa 10 of a card I don\u2019t value at its price?\n\n@foretwenty I\u2019m hoping I find some MP version of it in the future at a decent price and I\u2019ll just throw it into the binder\n\nOr a PSA 9 like the card in my OP that was close enough to the raw LP price \ud83e\udd72",
+      "tweet_url": "https://x.com/DeeZe/status/2074145249312534541",
+      "images": []
+    },
+    {
+      "author": "CryptoKaleo",
+      "usual_length": 70,
+      "this_length": 255,
+      "summary": "No matter how much hate you get on this app, never tell anyone to k*ll themselves.\n\nI\u2019ve been around here long enough to see too many people actually ...",
+      "full_text": "No matter how much hate you get on this app, never tell anyone to k*ll themselves.\n\nI\u2019ve been around here long enough to see too many people actually take their lives.\n\nIt\u2019s not a funny joke to make.\n\nAnd it\u2019s never a good or mature response to criticism.",
+      "tweet_url": "https://x.com/CryptoKaleo/status/2074156709992448231",
+      "images": []
+    },
+    {
+      "author": "Tradermayne",
+      "usual_length": 0,
+      "this_length": 251,
+      "summary": "18 payouts in a single week. \n\nI can't put it any better than quantum did himself. \n\nNo prop firm nonsense just trade within the DD. \n\nSimple. \n\nNever...",
+      "full_text": "18 payouts in a single week. \n\nI can't put it any better than quantum did himself. \n\nNo prop firm nonsense just trade within the DD. \n\nSimple. \n\nNever been a better time than right now to come try Breakout. \n\nUse code MAYNE at checkout for a discount!",
+      "tweet_url": "https://x.com/Tradermayne/status/2074181238387319196",
+      "images": []
+    },
+    {
+      "author": "SixSigmaCapital",
+      "usual_length": 318,
+      "this_length": 249,
+      "summary": "@LogicalThesis I bought some today in wifes acct at 178 figuring will be a slow mover to see if Snapdragon can deliver. will take the +7% pump lol\n\n@L...",
+      "full_text": "@LogicalThesis I bought some today in wifes acct at 178 figuring will be a slow mover to see if Snapdragon can deliver. will take the +7% pump lol\n\n@LogicalThesis @sv_techie I was considering LEAPS or spreads too but just commons fr now in custodial",
+      "tweet_url": "https://x.com/SixSigmaCapital/status/2074174826390888725",
+      "images": []
+    },
+    {
+      "author": "saylor",
+      "usual_length": 336,
+      "this_length": 223,
+      "summary": "Bitcoin will evolve by changing less at the protocol layer and mattering more everywhere else.\n\nThe base layer will harden.\nThe capital markets will d...",
+      "full_text": "Bitcoin will evolve by changing less at the protocol layer and mattering more everywhere else.\n\nThe base layer will harden.\nThe capital markets will deepen.\nDigital Credit will expand.\n\nThe world will build on Bitcoin. $BTC",
+      "tweet_url": "https://x.com/saylor/status/2073996875523338746",
+      "images": []
+    }
+  ],
+  "date": "2026-07-06 17:21 UTC"
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'ticker-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- volume ----------
+function renderVolume(v) {
+  if (!v || typeof v !== 'object') {
+    document.getElementById('volume').innerHTML = '<span>no volume data</span>';
+    return;
+  }
+  const parts = [];
+  if (v.total_tweets   != null) parts.push(`<strong>${v.total_tweets}</strong> tweets`);
+  if (v.active_authors != null && v.total_authors != null) {
+    parts.push(`<strong>${v.active_authors}/${v.total_authors}</strong> authors active`);
+  } else if (v.active_authors != null) {
+    parts.push(`<strong>${v.active_authors}</strong> authors active`);
+  }
+  if (v.silent_authors != null) parts.push(`<strong>${v.silent_authors}</strong> silent`);
+  document.getElementById('volume').innerHTML = parts.join('<span style="color:var(--text-3)">·</span>')
+    || '<span>—</span>';
+}
+
+// ---------- tickers ----------
+function renderTickerWho(who) {
+  if (!who || !who.length) return '';
+  return `<div class="ticker-who">` + who.map(w => {
+    const name = w.author || w.author_username || '';
+    const ctx = w.context ? `<span class="ctx">${escapeHtml(w.context)}</span>` : '';
+    return `<span class="who-item filterable" data-author="${escapeAttr(name).toLowerCase()}">${authorTag(name)} ${ctx}</span>`;
+  }).join('') + `</div>`;
+}
+
+function renderTicker(t) {
+  const isNew = t.is_new ? ' is-new' : '';
+  const bull = t.bull ?? 0, bear = t.bear ?? 0, neutral = t.neutral ?? 0;
+  const mentions = (t.mentions != null) ? t.mentions : (bull + bear + neutral);
+  return `
+    <div class="ticker-row${isNew}">
+      <div class="ticker-sym">${escapeHtml(t.ticker || '?')}</div>
+      <div class="ticker-mentions">${mentions} mention${mentions === 1 ? '' : 's'}</div>
+      ${t.is_new ? '<span class="new-pill">new</span>' : ''}
+      <div class="sentiment">
+        <span class="pair"><span class="dot dot-bull"></span>${bull}</span>
+        <span class="pair"><span class="dot dot-bear"></span>${bear}</span>
+        <span class="pair"><span class="dot dot-neutral"></span>${neutral}</span>
+      </div>
+      ${renderTickerWho(t.who)}
+    </div>`;
+}
+
+// ---------- outliers ----------
+function renderThumbs(images) {
+  if (!images || !images.length) return '';
+  return `<div class="thumbs">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="thumb" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderOutlier(o) {
+  const author = o.author || o.author_username || '';
+  const usual = o.usual_length, current = o.this_length;
+  const tag = (usual != null && current != null)
+    ? `<span class="outlier-tag">usual ${usual} · this ${current}</span>` : '';
+  const time = relativeTime(o.created_at);
+  const link = o.tweet_url
+    ? `<a class="outlier-link" href="${escapeAttr(o.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  return `
+    <div class="outlier-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="outlier-head">
+        <span class="outlier-author" onclick="filterAuthor('${escapeAttr(author)}')">@${escapeHtml(author)}</span>
+        ${tag}
+        ${time ? `<span class="outlier-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      <div class="outlier-summary">${escapeHtml(o.summary || '')}</div>
+      ${renderThumbs(o.images)}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+  renderVolume(d.volume);
+
+  const tickersBody = (d.tickers || []).map(renderTicker).join('')
+                   || '<div class="empty">No tickers.</div>';
+  const outliersBody = (d.outliers || []).map(renderOutlier).join('');
+
+  const sections = [
+    renderSection('A', 'Tickers', tickersBody, (d.tickers || []).length),
+    outliersBody ? renderSection('B', 'Outliers', outliersBody, (d.outliers || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No data.</div>';
+
+  // Auto-open all sections (compact dashboard — show everything).
+  document.querySelectorAll('.section').forEach(s => s.classList.add('open'));
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER DATA INTELLIGENCE",
+  "date": "2026-06-24 05:20 UTC",
+  "collected_at": "2026-06-24T05:20:51Z",
+  "input_stats": {
+    "total_tweets": 61,
+    "unique_authors": 21,
+    "tweets_with_images": 31,
+    "after_filter": 47
+  },
+  "summary": "47 data items from 18 of 21 tracked accounts across 12 topics. **Key data:** Total US leveraged ETF AUM at record $198B — SOXL $34B (3x since April), TQQQ ~$40B, +55% total since April. SpaceX retail demand $405M in first 5 trading sessions — all-time IPO record, more than double Rivian's $185M. HF net short Brent crude at $18B (10-year high, 7th consecutive week of selling totaling -$24.8B).\n\n**June 23 moves:** S&P 500 -1.4% (15th daily >1% decline in 2026); biotech $IBB broke out to new ATH; DXY broke out (last similar setup: autumn 2021); SOX median YTD gain +93%; vol control funds sold ~$8.8B on realized vol spike.\n\n**Corporate/macro:** Czech Republic hiked +25bps (first in 4 years); Brazil & Russia each cut -25bps. AI hyperscalers issued $159B debt YTD (+47% vs all of 2025). Doncasters $DPC IPO 10x oversubscribed, priced at/above top of range. Oracle cutting 21,000 jobs. Bitcoin per GMI model is 51% below fair value. Smart/Dumb Money both neutral (0.55 / 0.50). 3 authors (EricBalchunas, JSeyff, LizAnnSonders) posted only off-topic personal content.",
+  "topics": [
+    {
+      "topic": "Market Data — US Equities & Indices",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "US leveraged ETF AUM hit a record $198B (+55% since April): TQQQ ~$40B near ATH, SOXL $34B record (up 3x since April), QLD ~$15B (+88%). Investor leverage is at record highs.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2069591462275133605",
+          "images": ["https://pbs.twimg.com/media/HLgMjK1WEAALQwZ.jpg"],
+          "data_points": ["TQQQ AUM ~$40B (near ATH)", "SOXL AUM $34B (record, +3x since April)", "QLD AUM ~$15B (+88% since April)", "Total leveraged ETF AUM $198B (+55% since April)"],
+          "created_at": "2026-06-24T01:20:30.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "MSCI USA Momentum ETF ($MTUM) +38.2% YTD vs S&P 500 equal-weight +9.2%. MTUM/SPW ratio at record ~172 (+75% since early 2023). MSCI US Momentum Index quarterly outperformance +24% — surpassing 2000 dot-com peak of +21%. Top holdings: Micron, Intel, AMD, Broadcom.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2069555292795183316",
+          "images": ["https://pbs.twimg.com/media/HLgMRIMXYAANaaZ.jpg"],
+          "data_points": ["$MTUM +38.2% YTD", "S&P 500 equal-weight +9.2% YTD", "MTUM/SPW ratio record ~172 (+75% since early 2023)", "Quarterly momentum outperformance +24% (record, vs dot-com peak +21%)"],
+          "created_at": "2026-06-23T22:56:46.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "Alphabet ($GOOGL) being added to the Dow Jones Industrial Average, replacing Verizon ($VZ).",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2069532535684583742",
+          "images": ["https://pbs.twimg.com/media/HLh03JQbgAAxG4l.jpg"],
+          "data_points": ["GOOGL joining DJIA", "VZ removed from DJIA"],
+          "created_at": "2026-06-23T21:26:21.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "S&P 500 fell -1.4% on June 23 — the 15th daily decline >1% in 2026. Context: this follows 9 straight weeks of gains off March lows with no major pullback. Chart of S&P 500 daily returns.",
+          "tweet_url": "https://x.com/charliebilello/status/2069515872826220599",
+          "images": ["https://pbs.twimg.com/media/HLhlfkNWEAIxXIF.png"],
+          "data_points": ["S&P 500 -1.4% on June 23", "15th daily decline >1% in 2026", "9 straight weeks of gains prior (March → June)"],
+          "created_at": "2026-06-23T20:20:08.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "% Below All-Time High snapshot across major assets and tokens: JPM 0%, SPX -3%, AAPL -6%, GOOGL -15%, NVDA -15%, AMZN -16%, TSLA -24%, Gold -27%, META -29%, MSFT -32%, PLTR -44%, Silver -50%, BTC -51%, ETH -67%, MSTR -81%.",
+          "tweet_url": "https://x.com/charliebilello/status/2069496317877826039",
+          "images": [],
+          "data_points": ["JPM: 0% from ATH", "SPX: -3%", "AAPL: -6%", "GOOGL: -15%", "NVDA: -15%", "AMZN: -16%", "TSLA: -24%", "Gold: -27%", "META: -29%", "MSFT: -32%", "PLTR: -44%", "Silver: -50%", "BTC: -51%", "ETH: -67%", "MSTR: -81%"],
+          "created_at": "2026-06-23T19:02:26.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "S&P 500 is only 3% below all-time highs — providing context against CNN Fear & Greed 'extreme fear' reading.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2069586843432100179",
+          "images": [],
+          "data_points": ["S&P 500 -3% from ATH"],
+          "created_at": "2026-06-24T01:02:09.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "Number of $SPX stocks trading above their 200DMA ticked up +1.6% on June 23. Breadth chart.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2069528116070895761",
+          "images": ["https://pbs.twimg.com/media/HLhwryTWgAAiN6p.jpg"],
+          "data_points": ["SPX stocks above 200DMA: +1.6% on June 23"],
+          "created_at": "2026-06-23T21:08:47.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Tech sector ($XLK) is the only GICS sector outperforming the S&P 500 quarter-to-date, even after the June 23 tech sell-off.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2069463316963963355",
+          "images": [],
+          "data_points": ["$XLK only sector outperforming S&P 500 QTD"],
+          "created_at": "2026-06-23T16:51:18.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Sector Data — Tech & Semiconductors",
+      "items": [
+        {
+          "author": "bespokeinvest",
+          "description": "Philadelphia Semiconductor Index (SOX): median YTD gain of +93% across 30 components. Nvidia ($NVDA) is the only stock in the index up less than 10% YTD.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2069503951796425095",
+          "images": [],
+          "data_points": ["SOX median YTD gain: +93%", "NVDA: only SOX stock <10% YTD"],
+          "created_at": "2026-06-23T19:32:46.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "Micron ($MU) dropped from +276% cumulative gain since 3/30 (through June 22) to +226% since 3/30 (through June 23) — a 50 percentage point single-day drop in cumulative performance.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2069528459559206971",
+          "images": [],
+          "data_points": ["$MU gain since 3/30: 276% → 226% (single-day move)"],
+          "created_at": "2026-06-23T21:10:09.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "AI hyperscalers (GOOGL, AMZN, META, MSFT, ORCL) issued $159B in debt YTD (first 5 months 2026) — 47% more than all of 2025 ($108B) and more than their combined 2020-2024 issuance. Chart shows debt issuance by year.",
+          "tweet_url": "https://x.com/charliebilello/status/2069531184518901821",
+          "images": ["https://pbs.twimg.com/media/HLhzoWhagAAiK9r.png"],
+          "data_points": ["AI hyperscaler debt YTD 2026: $159B", "Full year 2025: $108B", "2026 YTD +47% vs full 2025", "Exceeds combined 2020-2024 total issuance"],
+          "created_at": "2026-06-23T21:20:59.000Z"
+        },
+        {
+          "author": "themarketear",
+          "description": "Nobody is positioned for 'slightly less' AI spending — yet that may be the single most important risk in markets today. ZeroHedge/MarketEar piece on AI trade getting uncomfortable.",
+          "tweet_url": "https://x.com/themarketear/status/2069472755058176485",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-06-23T17:28:48.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Sector Data — Biotech",
+      "items": [
+        {
+          "author": "bespokeinvest",
+          "description": "Biotech ETF ($IBB) breaking out to new all-time highs on June 23. Chart shows the ATH breakout level.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2069476468627800288",
+          "images": ["https://pbs.twimg.com/media/HLhB0_VWIAA_ZDt.png"],
+          "data_points": ["$IBB at new all-time high (June 23)"],
+          "created_at": "2026-06-23T17:43:33.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Fund Flows & Positioning",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "HF net short Brent crude ~$18B — highest in at least 10 years, tripled in 3 months. Week ending June 16: -$7.5B sold (largest since April 2025); 80% was new shorts (not long unwinding). 7th consecutive weekly sale; 7-week total: -$24.8B.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2069523969552642054",
+          "images": ["https://pbs.twimg.com/media/HLhtFR-WAAApIkx.jpg"],
+          "data_points": ["HF net short Brent: ~$18B (10-year high)", "Tripled in 3 months", "Week ending June 16: -$7.5B (largest since April 2025)", "7th consecutive weekly sale", "7-week total selling: -$24.8B", "New shorts = 80% of weekly sales"],
+          "created_at": "2026-06-23T20:52:18.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "Physical gold ETF inflows: +5.1 tonnes (+$1.1B) last week — first positive week after 4 consecutive outflow weeks totaling -58.2 tonnes (-$7.6B). Total holdings now 4,086.3 tonnes ($549.1B). ATH was 4,176.1 tonnes ($701.7B) in late February.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2069495249173409913",
+          "images": ["https://pbs.twimg.com/media/HLgM0ULX0AAnxq8.jpg"],
+          "data_points": ["Gold ETF inflows: +5.1 tonnes (+$1.1B) last week", "Prior 4-week outflows: -58.2 tonnes (-$7.6B)", "Total gold ETF holdings: 4,086.3 tonnes ($549.1B)", "ATH: 4,176.1 tonnes ($701.7B, late February)"],
+          "created_at": "2026-06-23T18:58:11.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "SpaceX ($SPCX) retail demand: $405M in first 5 trading sessions — record for any IPO per Vanda Research. Prior record: RIVN $185M (Nov 2021). Exceeded Mag7 combined $158M and SPY+QQQ combined $352M over same period.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2069480155089867250",
+          "images": ["https://pbs.twimg.com/media/HLgNBIUW8AA77i1.jpg"],
+          "data_points": ["$SPCX first-week retail demand: $405M (record)", "Previous IPO record: RIVN $185M (Nov 2021)", "Mag7 combined same period: $158M", "SPY+QQQ combined same period: $352M"],
+          "created_at": "2026-06-23T17:58:12.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "Vol control funds sold ~$8.8B on the spike in short-term realized volatility, which is now trending upward. Two charts: realized vol spike and fund selling pressure.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2069521031367164279",
+          "images": ["https://pbs.twimg.com/media/HLhqJ5CXsAAX3dW.png", "https://pbs.twimg.com/media/HLhqK0qakAAJ77t.jpg"],
+          "data_points": ["Vol control funds sold ~$8.8B", "Short-term realized volatility trending up"],
+          "created_at": "2026-06-23T20:40:38.000Z"
+        },
+        {
+          "author": "sentimentrader",
+          "description": "Smart Money / Dumb Money Confidence for June 23: Smart Money 0.55 (neutral), Dumb Money 0.50 (neutral). Both at neutral — no extreme signal in either direction.",
+          "tweet_url": "https://x.com/sentimentrader/status/2069609077257511350",
+          "images": ["https://pbs.twimg.com/media/HLi49jUXYAAu3_-.jpg"],
+          "data_points": ["Smart Money Confidence: 0.55 (neutral)", "Dumb Money Confidence: 0.50 (neutral)"],
+          "created_at": "2026-06-24T02:30:30.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Commodities & Precious Metals",
+      "items": [
+        {
+          "author": "TaviCosta",
+          "description": "Gold miners trading at one of the deepest discounts to the S&P 500 on record. Fundamentals remain strong while prices keep falling. Chart shows GDX/SPX ratio at historic lows.",
+          "tweet_url": "https://x.com/TaviCosta/status/2069581469287395740",
+          "images": ["https://pbs.twimg.com/media/HLihW8Za4AAj9st.jpg"],
+          "data_points": ["Gold miners vs S&P 500 ratio: near record low discount"],
+          "created_at": "2026-06-24T00:40:47.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "FX & Rates / Central Banks",
+      "items": [
+        {
+          "author": "themarketear",
+          "description": "DXY has broken out. The last time the setup looked this similar was autumn 2021 — a significant FX breakout signal. ZeroHedge/MarketEar piece.",
+          "tweet_url": "https://x.com/themarketear/status/2069526085331476816",
+          "images": [],
+          "data_points": ["DXY breakout", "Last comparable setup: autumn 2021"],
+          "created_at": "2026-06-23T21:00:43.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "Global central bank update June 23: Czech Republic +25bps to 3.75% (first hike in 4 years). Brazil -25bps to 14.25% (3rd consecutive cut). Russia -25bps to 14.25% (9th cut in cycle). Chart shows global rate landscape.",
+          "tweet_url": "https://x.com/charliebilello/status/2069550902105571474",
+          "images": ["https://pbs.twimg.com/media/HLiEyD7WEAAcKej.png"],
+          "data_points": ["Czech Republic: +25bps to 3.75% (first hike in 4 years)", "Brazil: -25bps to 14.25% (3rd consecutive cut)", "Russia: -25bps to 14.25% (9th cut in cycle)"],
+          "created_at": "2026-06-23T22:39:20.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "Fed expanded money supply by $9T under Powell. Inflation averaged >4%/year for 6 years. Powell's explanation: rolling 'supply shocks.' Chart shows M2 expansion and inflation history.",
+          "tweet_url": "https://x.com/charliebilello/status/2069559290323419290",
+          "images": ["https://pbs.twimg.com/media/HLiNHOaWsAAhNEZ.png"],
+          "data_points": ["Fed M2 expansion under Powell: +$9T", "Inflation avg >4%/year for 6 years"],
+          "created_at": "2026-06-23T23:12:40.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Earnings & Corporate / IPOs",
+      "items": [
+        {
+          "author": "matthew_sigel",
+          "description": "Doncasters ($DPC) IPO: 10x+ oversubscribed, guiding at or above top end of range. Books closed at noon June 23. Stock to trade Thursday. $4B enterprise value vs $365M revenue in 2020 restructuring.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2069487809673515314",
+          "images": ["https://pbs.twimg.com/media/HLhMLFNXIAAuAcK.png"],
+          "data_points": ["$DPC 10x+ oversubscribed", "Priced at/above top of range", "IPO enterprise value: ~$4B", "2020 revenue base: $365M"],
+          "created_at": "2026-06-23T18:28:37.000Z"
+        },
+        {
+          "author": "matthew_sigel",
+          "description": "DPC priced tonight. CEO Quinn (35%), CFO (45%), Director Charles (100%), Director Sanders (75%) reinvesting MIP proceeds = $66M insider buying at IPO price. Qatar Investment Authority committed $75M concurrent placement. Total pre-committed: $141M. Single share class, one vote per share.",
+          "tweet_url": "https://x.com/matthew_sigel/status/2069562016080232530",
+          "images": [],
+          "data_points": ["Management insider reinvestment: $66M at IPO price", "QIA (Qatar) concurrent placement: $75M", "Total pre-committed: $141M", "CEO MIP: $78M; 35% reinvested", "Total management MIP $255M = 6.7% carry on $3.8B value created"],
+          "created_at": "2026-06-23T23:23:29.000Z"
+        },
+        {
+          "author": "benjamincowen",
+          "description": "SpaceX ($SPCX) retraced its IPO gains. Video analysis: 'What next?' — link to full breakdown.",
+          "tweet_url": "https://x.com/benjamincowen/status/2069569944673763348",
+          "images": [],
+          "data_points": ["$SPCX retraced IPO gains"],
+          "created_at": "2026-06-23T23:55:00.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "Oracle cuts 21,000 jobs as it embraces AI (BBC report). Major corporate restructuring tied to AI transition.",
+          "tweet_url": "https://x.com/C_Barraud/status/2069642737171763315",
+          "images": [],
+          "data_points": ["Oracle layoffs: 21,000 jobs cut"],
+          "created_at": "2026-06-24T04:44:15.000Z"
+        },
+        {
+          "author": "charliebilello",
+          "description": "$STRC pitched as 'money market-like stability with market-leading returns.' Actual result: -8% YTD return and -16% max drawdown. Classic no-free-lunch case study.",
+          "tweet_url": "https://x.com/charliebilello/status/2069526482880286960",
+          "images": ["https://pbs.twimg.com/media/HLhn079aAAAbW53.png"],
+          "data_points": ["$STRC YTD return: -8%", "$STRC max drawdown: -16%"],
+          "created_at": "2026-06-23T21:02:18.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Crypto Data",
+      "items": [
+        {
+          "author": "Tyler_Did_It",
+          "description": "CARDS token up only +4.5% after Maelstrom article + Arthur Hayes hard shill. Commentary: Hayes can only move a $65M market cap token 4.5% — 'not great.' Chart showing CARDS price reaction.",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2069565705503089104",
+          "images": ["https://pbs.twimg.com/media/HLiS4GsXAAAZD5N.jpg"],
+          "data_points": ["CARDS +4.5%", "CARDS market cap: $65M", "Catalysts: Maelstrom article + Arthur Hayes shill"],
+          "created_at": "2026-06-23T23:38:09.000Z"
+        },
+        {
+          "author": "RealVision",
+          "description": "Bitcoin is 51% below fair value per the GMI Compounding Machine model. Tool designed for systematic BTC accumulation based on model-derived price targets.",
+          "tweet_url": "https://x.com/RealVision/status/2069487589661475233",
+          "images": ["https://pbs.twimg.com/media/HLhLNQsWUAEAFWu.jpg"],
+          "data_points": ["Bitcoin: 51% below fair value (GMI model)"],
+          "created_at": "2026-06-23T18:27:45.000Z"
+        },
+        {
+          "author": "RealVision",
+          "description": "Raoul Pal and Julien walked through the entire GMI portfolio top-to-bottom — every position, every thesis, every move. Dashboard image showing portfolio allocation.",
+          "tweet_url": "https://x.com/RealVision/status/2069523543339958506",
+          "images": ["https://pbs.twimg.com/media/HLhsshJbgAA_fBb.jpg"],
+          "data_points": [],
+          "created_at": "2026-06-23T20:50:37.000Z"
+        },
+        {
+          "author": "benjamincowen",
+          "description": "Bitcoin: Bear Market Resistance Band analysis — link to video/analysis on current BTC technical setup.",
+          "tweet_url": "https://x.com/benjamincowen/status/2069495084635029903",
+          "images": [],
+          "data_points": ["Bitcoin in bear market resistance band"],
+          "created_at": "2026-06-23T18:57:32.000Z"
+        },
+        {
+          "author": "DefiLlama",
+          "description": "DefiLlama launched Equity pages — new section on the platform. Chart shows the new equity data interface.",
+          "tweet_url": "https://x.com/DefiLlama/status/2069579561788985442",
+          "images": ["https://pbs.twimg.com/media/HLifmP7XIAA4TN0.jpg"],
+          "data_points": [],
+          "created_at": "2026-06-24T00:33:13.000Z"
+        },
+        {
+          "author": "DefiLlama",
+          "description": "DefiLlama enterprise dashboard for OdysseyFi ecosystem (MetronomeDAO + VesperFi): $19M combined revenue, $100M+ TVL.",
+          "tweet_url": "https://x.com/DefiLlama/status/2069518969568886949",
+          "images": [],
+          "data_points": ["OdysseyFi ecosystem revenue: $19M", "OdysseyFi TVL: $100M+"],
+          "created_at": "2026-06-23T20:32:26.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Geopolitical & Trade News",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "Trump says Iran is 'on the ropes, ready to go down for the fall' and criticizes Senate War Powers Act vote as 'poorly timed and meaningless.' Image of the statement.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2069613077478117749",
+          "images": ["https://pbs.twimg.com/media/HLi97eRWEAA-zRP.png"],
+          "data_points": ["Iran geopolitical tension", "Senate War Powers Act vote"],
+          "created_at": "2026-06-24T02:46:23.000Z"
+        },
+        {
+          "author": "C_Barraud",
+          "description": "US Commerce Secretary Lutnick privately warned top executives of possible action against imported Chinese robots (Politico). Potential new trade restriction in robotics sector.",
+          "tweet_url": "https://x.com/C_Barraud/status/2069647535220662373",
+          "images": [],
+          "data_points": ["Possible US action against Chinese robot imports"],
+          "created_at": "2026-06-24T05:03:19.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Upcoming Events — June 24",
+      "items": [
+        {
+          "author": "bespokeinvest",
+          "description": "Earnings June 24: Paychex ($PAYX) before the bell. After close: H.B. Fuller ($FUL), Jefferies ($JEF), Micron ($MU), MillerKnoll ($MLKN), Worthington Steel ($WS). Micron is the key report for semis.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2069533454211960879",
+          "images": ["https://pbs.twimg.com/media/HLgOtVDWcAArttT.png"],
+          "data_points": ["$PAYX earnings pre-market June 24", "$MU earnings after close June 24", "$JEF earnings after close June 24", "$FUL, $MLKN, $WS after close June 24"],
+          "created_at": "2026-06-23T21:30:00.000Z"
+        },
+        {
+          "author": "bespokeinvest",
+          "description": "DoE Energy Inventories release at 10:30am ET on June 24. Several investor days also scheduled.",
+          "tweet_url": "https://x.com/bespokeinvest/status/2069534838550397292",
+          "images": ["https://pbs.twimg.com/media/HLgPAw0XQAA1K7O.png"],
+          "data_points": ["DoE Energy Inventories: 10:30am ET June 24"],
+          "created_at": "2026-06-23T21:35:30.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Sentiment & Seasonality",
+      "items": [
+        {
+          "author": "sentimentrader",
+          "description": "July seasonality: the historically cleaner window is the last 3 trading days of June + first 9 trading days of July — not the full calendar month of July. Chart shows seasonal performance pattern.",
+          "tweet_url": "https://x.com/sentimentrader/status/2069616513318064554",
+          "images": ["https://pbs.twimg.com/media/HLi6oiWW4AAEM5S.png"],
+          "data_points": ["Seasonal window: last 3 trading days June + first 9 trading days July"],
+          "created_at": "2026-06-24T03:00:03.000Z"
+        },
+        {
+          "author": "sentimentrader",
+          "description": "Range Rank methodology: (Close - Lowest Low) / (Highest High - Lowest Low) × 100. Value 0-100 measuring relative position within recent trading range. Used for momentum and overbought/oversold identification.",
+          "tweet_url": "https://x.com/sentimentrader/status/2069617257328914814",
+          "images": [],
+          "data_points": ["Range Rank = (Close - LL) / (HH - LL) × 100", "0 = at period low; 100 = at period high"],
+          "created_at": "2026-06-24T03:03:00.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "$NVDA tagged the daily expected move (options-implied) off the open on June 23. Chart showing intraday move vs expected range.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2069484408025813039",
+          "images": ["https://pbs.twimg.com/media/HLhJGiaXQAA3C3q.jpg"],
+          "data_points": ["$NVDA hit daily expected move on open"],
+          "created_at": "2026-06-23T18:15:06.000Z"
+        },
+        {
+          "author": "kurtsaltrichter",
+          "description": "$SPY tagged the daily expected move as well on June 23. Chart of SPY vs options-implied expected daily range.",
+          "tweet_url": "https://x.com/kurtsaltrichter/status/2069466146231783483",
+          "images": ["https://pbs.twimg.com/media/HLg4flzXAAAavzb.jpg"],
+          "data_points": ["$SPY hit daily expected move"],
+          "created_at": "2026-06-23T17:02:32.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Macro & Economic Research",
+      "items": [
+        {
+          "author": "prometheusmacro",
+          "description": "Prometheus Research: 'The Earnings Are Justified' — 31-page free Month In Macro report evaluating whether tech earnings expectations are justified by macro fundamentals. Link to full report.",
+          "tweet_url": "https://x.com/prometheusmacro/status/2069558782393209316",
+          "images": ["https://pbs.twimg.com/media/HLiMvkZX0AAE93-.jpg"],
+          "data_points": [],
+          "created_at": "2026-06-23T23:10:38.000Z"
+        },
+        {
+          "author": "EPBResearch",
+          "description": "'The stock market is up, so the economy must be fine' is the most common — and backward — way to read the economy. Post breaks down which part of the economy actually turns first, before earnings and the market do.",
+          "tweet_url": "https://x.com/EPBResearch/status/2069537227382624666",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-06-23T21:44:59.000Z"
+        },
+        {
+          "author": "themarketear",
+          "description": "'Nothing is broken yet. But the number of things that need to go right is increasing.' ZeroHedge/MarketEar piece on growing macro risk stack.",
+          "tweet_url": "https://x.com/themarketear/status/2069537171707470032",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-06-23T21:44:46.000Z"
+        },
+        {
+          "author": "ARKInvest",
+          "description": "ARK Research: AI data centers will NOT raise electricity bills. Wright's Law — more power generation means lower costs. See Big Ideas 2026 Distributed Energy section for full analysis.",
+          "tweet_url": "https://x.com/ARKInvest/status/2069510698904735866",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-06-23T19:59:34.000Z"
+        },
+        {
+          "author": "a16z",
+          "description": "a16z Josh Elman: 'Roblox generation' of kids who grew up on Minecraft/Roblox expect to remix and customize software. Apps that win next generation must give users sense of ownership and tinkering control.",
+          "tweet_url": "https://x.com/a16z/status/2069497364935815634",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-06-23T19:06:35.000Z"
+        },
+        {
+          "author": "a16zcrypto",
+          "description": "'A compelling story alone will no longer move the needle. We need proof.' — Paul Caf (a16z crypto). Quote at a16z crypto conference; image of panel.",
+          "tweet_url": "https://x.com/a16zcrypto/status/2069486762389578112",
+          "images": ["https://pbs.twimg.com/media/HLhLIYXa8AAvXqk.jpg"],
+          "data_points": [],
+          "created_at": "2026-06-23T18:24:28.000Z"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {"source": "themarketear", "url": "https://www.zerohedge.com/the-market-ear/number-things-need-go-right", "description": "Number of things that need to go right is increasing"},
+    {"source": "themarketear", "url": "https://www.zerohedge.com/the-market-ear/dollar-breakout-nobody-believed", "description": "Dollar breakout nobody believed — DXY breakout analysis"},
+    {"source": "themarketear", "url": "https://www.zerohedge.com/the-market-ear/ai-trade-getting-uncomfortable", "description": "AI trade getting uncomfortable — spending risk"},
+    {"source": "ARKInvest", "url": "https://www.ark-invest.com/big-ideas-2026", "description": "ARK Big Ideas 2026 — Distributed Energy section"},
+    {"source": "bespokeinvest", "url": "https://open.substack.com/pub/bespokeinvest/p/biotech-finally-breaks-out", "description": "Bespoke: Biotech Finally Breaks Out (substack)"},
+    {"source": "prometheusmacro", "url": "https://www.prometheus-macro.com/p/the-earnings-are-justified", "description": "Prometheus: The Earnings Are Justified — 31-page free macro report"},
+    {"source": "C_Barraud", "url": "https://www.politico.com/news/2026/06/23/lutnick-china-robots-commerce-00972576", "description": "Lutnick warned execs about Chinese robot import action (Politico)"},
+    {"source": "C_Barraud", "url": "https://www.bbc.com/news/articles/c4gy0x0j5deo", "description": "Oracle cuts 21,000 jobs as it embraces AI (BBC)"},
+    {"source": "TaviCosta", "url": "https://tavicosta.substack.com/p/macro-update-32d", "description": "Tavi Costa macro update — gold miners at record discount"},
+    {"source": "DefiLlama", "url": "https://enterprise.defillama.com/odyssey-ecosystem", "description": "OdysseyFi enterprise dashboard on DefiLlama"},
+    {"source": "charliebilello", "url": "https://www.youtube.com/watch?v=a8IogGQScss", "description": "Bilello: Every equity bubble becomes credit bubble (video)"},
+    {"source": "RealVision", "url": "https://app.realvision.com/report/the-rv-pro-book-top-to-bottom", "description": "RV Pro Book — Raoul & Julien GMI portfolio review (top-to-bottom)"}
+  ],
+  "coverage": {
+    "authors_covered": 18,
+    "authors_total": 21
+  }
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || l.source || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>

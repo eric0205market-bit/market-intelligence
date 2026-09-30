@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Alpha Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e3da;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #1a8cd8;
+  --red: #d94052;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+
+  /* category colors (per spec) */
+  --cat-macro: #2563eb;
+  --cat-crypto: #8b5cf6;
+  --cat-energy: #dc2626;
+  --cat-tech: #0d9488;
+  --cat-ai: #4f46e5;
+  --cat-geopolitics: #dc2626;
+  --cat-positioning: #15803d;
+  --cat-regulation: #7c3aed;
+  --cat-society: #d97706;
+  --cat-em: #059669;
+  --cat-default: #6b7280;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--text); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--red); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: #f3efe6; cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; }
+.section-head:hover { background: #ebe6dc; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  color: var(--text-3); min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; color: var(--text-3); transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+.cluster { padding: 14px 16px; border-bottom: 1px solid var(--border-light); }
+.cluster:last-child { border-bottom: none; }
+.cluster-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+                flex-wrap: wrap; }
+.cluster-title { font-weight: 600; font-size: 14px; }
+.cluster-desc { color: var(--text-2); font-size: 13px; margin: 0 0 10px 0; }
+.cluster-items { display: flex; flex-direction: column; gap: 8px; padding-left: 10px;
+                 border-left: 2px solid var(--border-light); }
+.cluster-item { font-size: 13px; padding: 6px 8px; border-radius: 4px; }
+.cluster-item .item-text { font-size: 13px; margin-top: 4px; }
+.cluster-item .item-head { font-size: 12px; }
+
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+.item-thread { display: inline-block; font-size: 10px; font-weight: 600;
+               background: var(--border); color: var(--text-2); padding: 1px 6px;
+               border-radius: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+.section-contrarian .item-card {
+  border-left: 4px solid var(--red);
+  background: #fdf6f7;
+}
+
+.pill { display: inline-block; font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+        font-weight: 500; padding: 2px 7px; border-radius: 3px; color: #fff;
+        text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+
+.thumbs { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.thumb { height: 100px; border: 1px solid var(--border); border-radius: 4px;
+         cursor: zoom-in; background: #f0ede4; }
+
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.section-contrarian .item-card.filterable.match { background: var(--yellow); }
+.filterable.dim { opacity: 0.25; }
+
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">&#8592; MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Alpha Intelligence</div>
+    <div class="subtitle" id="report-date">&#8212;</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {"date": "2026-06-25 05:20 UTC", "summary": "**$MU Blowout:** Micron delivered a monster Q3 beat — Revenue $41.5B vs $35.8B est. (364% YoY), EPS $25.11 vs $20.78, gross margins 84.9% vs 81.9% est. Guided next quarter to $49-51B vs $43.2B est. Stock +12% after hours. Most bullish signal: CFO flagged supply constrained through FY28 with no visibility to equilibrium; five-year SCAs jumped from 1 to 7 in one quarter.\n\n**Oil/Hormuz:** WTI dipped below $70 for the first time since February as cargoes from the Strait of Hormuz flooded markets following the US-Iran agreement. El-Erian noted US Treasury yields finally fell 9bp in response — puzzled by the multi-day delay before the bond market reacted.\n\n**AI Supercycle:** Pentosh1 published a comprehensive decade supercycle thesis: Japan committing trillions to AI, humanoid robots solving the $59T global labor problem at $3-4/lifetime vs $38/hour human, with robotics companies still mostly private. cryptopunk7213 flagged OpenAI designing AI chips with its own AI models — a potentially decisive new race for custom hardware at the foundation of any future AGI.\n\n**STRC/MSTR Stress:** Strategy preferred STRC sold off, generating substantive debate. thedefivillain argued the selloff is irrational absent material BTC collapse, calling it a catch-22; rektmando flagged weak investor protections in Bitmine-type structures with equity mNAV at 0.88x; dampedspring sees long STRC / short STRF as a +300bp pickup.\n\n**AI Governance:** Anthropic formally accused Alibaba Qwen of distilling frontier models via 28.8M fake exchanges — no penalties enforced, creating perverse incentives per aleabitoreddit. Reid Hoffman shared Satya Nadella vision for 20M AI agents at Microsoft.\n\n**Private Credit Warning:** TruthGundlach flagged DOJ investigating NAV manipulation at one of the largest private credit funds, with rising redemption requests and valuation fraud lawsuits — a potential early-warning signal for sector stress.", "events": [{"title": "Micron Q3 Earnings — Revenue $41.5B, Supply Constrained Through FY28", "category": "tech", "description": "Massive beat across revenue, EPS, and margins. CFO supply constraint comment drove most discussion.", "items": [{"author": "munster_gene", "text": "Pre-call: whisper $42B (360% YoY) vs street $36B — called it as likely to trade sideways vs whisper. Post-results: revenue +364% YoY, margins 85% vs 81% est. Most underappreciated stat: five-year SCAs jumped from 1 to 7 this quarter, signaling customers expect the buildout to last 5+ years with pricing visibility. CFO: supply constrained through FY28 with no line of sight to equilibrium. Stock +12% AH on that comment.", "tweet_url": "https://x.com/munster_gene/status/2069916788121612538", "images": [], "created_at": "2026-06-24T22:53:14.000Z"}, {"author": "aleabitoreddit", "text": "Revenue $41.46B vs $35.8B est; EPS $25.11 vs $20.78 est. Guides $49-51B vs $43.24B est. Micron signed 16 long-term agreements; expects approximately half or more of revenue eventually under long-term deals. MU CEO separately flagged humanoid robots will require 10x more memory than L2+ vehicles — a multi-decade demand wave set to begin before decade's end. Questions whether world will have enough memory or if efficiency breakthroughs will offset demand.", "tweet_url": "https://x.com/aleabitoreddit/status/2069892511406100716", "images": ["https://pbs.twimg.com/media/HLm8Q_yaMAAf2k-.jpg", "https://pbs.twimg.com/media/HLm8Q_wagAAiHnE.jpg"], "created_at": "2026-06-24T21:16:46.000Z"}, {"author": "cryptopunk7213", "text": "Memory cyclicality may be permanently broken. 50%+ of Micron revenue from 16 strategic deals; customers signing 5-year terms (norm 1-2 years) with guaranteed payment regardless of actual supply need. Anthropic signed exclusive Micron partnership. Apple, Google, Nvidia all scrambling to secure SK Hynix and Samsung supply. Memory demand growing faster than model optimization can reduce memory requirements.", "tweet_url": "https://x.com/cryptopunk7213/status/2069883363373027394", "images": ["https://pbs.twimg.com/media/HLmz8QHWsAAUvsa.jpg"], "created_at": "2026-06-24T20:40:00.000Z"}, {"author": "Evan_ss6", "text": "Pre-earnings posted chart with caption 'Something like this on $MU could hurt a lot of people.' Post-earnings: 'yay earnings just saved my bags.' Also: 'DRAM will soon make up 90% of the cost of humanoids — Memory Supercycle' (flagged as hyperbole, but the direction is real).", "tweet_url": "https://x.com/Evan_ss6/status/2069876266853879866", "images": ["https://pbs.twimg.com/media/HLmDbllXUAAl-5I.png"], "created_at": "2026-06-24T20:12:13.000Z"}, {"author": "lord_fed", "text": "Reported $MU 3Q adj. gross margin 84.9% vs est. 81.9%. Positioned: short the 1050 weekly straddle at $120 post-earnings.", "tweet_url": "https://x.com/lord_fed/status/2069876043238764781", "images": ["https://pbs.twimg.com/media/HLmtSVPXkAABefC.jpg"], "created_at": "2026-06-24T20:10:00.000Z"}]}, {"title": "Hormuz Reopening Floods Oil Markets — WTI Below $70, Yields Finally React", "category": "energy", "description": "Post US-Iran agreement, cargoes accelerated out of Hormuz. WTI broke $70; Treasuries fell 9bp after a multi-day delay.", "items": [{"author": "JavierBlas", "text": "Key parts of the oil market are 'suddenly awash in supply' as a stream of cargoes out of the Strait of Hormuz accelerates after the US-Iran agreement to open the waterway. Bloomberg article linked.", "tweet_url": "https://x.com/JavierBlas/status/2069870571874091150", "images": [], "created_at": "2026-06-24T19:49:35.000Z"}, {"author": "elerianm", "text": "Most notable US market price action: Treasury yields finally fell 9bp in response to oil declines — puzzling given many prior days of oil drops. Suspects two psychological levels triggered the move: oil back to end-of-February levels and WTI dipping below $70 intra-session. The delay illustrates how markets process sustained moves versus discrete level breaks.", "tweet_url": "https://x.com/elerianm/status/2069871112121684082", "images": ["https://pbs.twimg.com/media/HLmmzoBWYAEN-mi.jpg"], "created_at": "2026-06-24T19:51:44.000Z"}]}, {"title": "STRC/MSTR Preferred Selloff — Bull-Bear Debate", "category": "crypto", "description": "Strategy STRC preferred series sold off, triggering multi-party debate on fair value, BTC dependency, and investor protections.", "items": [{"author": "thedefivillain", "text": "STRC selloff is irrational unless BTC collapses materially. STRC fair value directly tied to BTC price — being bearish on STRC mechanically means being bearish on BTC. Catch-22: if market refuses to bid BTC before Saylor suffers, he would sell BTC to defend STRC, crashing BTC further. Saylor's first goal will be to defend STRC by selling MSTR/BTC/USD reserves and increasing dividends paid monthly.", "tweet_url": "https://x.com/thedefivillain/status/2069864732899885103", "images": [], "created_at": "2026-06-24T19:26:00.000Z"}, {"author": "rektmando", "text": "Flags Bitmine equity mNAV already at 0.88x — could drop to 0.7x in a Saylor fallout scenario. Unlike MicroStrategy, CEO Tom Lee doesn't have shareholder control and could be fired, leading to ETH sales to reach mNAV 1. Notes STRC-type instruments have very light investor protections with no recourse to underlying Bitcoin.", "tweet_url": "https://x.com/rektmando/status/2069829790572351529", "images": ["https://pbs.twimg.com/media/HLmDNzPXIAAuTZc.jpg"], "created_at": "2026-06-24T17:07:00.000Z"}, {"author": "dampedspring", "text": "Likes long $STRC / short $STRF: picks up ~300bp, gains seniority and ability to defer dividends. Notes borrow on $STRF is likely unavailable.", "tweet_url": "https://x.com/dampedspring/status/2069835442590040276", "images": [], "created_at": "2026-06-24T17:29:59.000Z"}, {"author": "zhusu", "text": "Saylor almost doesn't need to do anything except let STRC cycle from weaker to stronger hands. Should signal that in a dividend-pause scenario, STRC is somehow redeemable for underlying BTC.", "tweet_url": "https://x.com/zhusu/status/2069907011337097644", "images": [], "created_at": "2026-06-24T22:14:23.000Z"}, {"author": "dgt10011", "text": "Long essay on digital credit reckoning: mNAV and BPS have been intellectually inconsistent for over a year. Current stress in preferreds is a reckoning — pent-up mismatch between expectation and reality finally meeting Mr. Market's voting machine. The industry needs to do better; the healing can now begin.", "tweet_url": "https://x.com/dgt10011/status/2069942511443845162", "images": [], "created_at": "2026-06-25T01:08:00.000Z"}]}, {"title": "Korea KOSPI — Sidecar Halts Program Buying", "category": "macro", "description": "Korea Exchange activated circuit breaker on program buying intraday.", "items": [{"author": "lord_fed", "text": "KOREA EXCHANGE ACTIVATES SIDECAR TO HALT KOSPI PROGRAM BUYING.", "tweet_url": "https://x.com/lord_fed/status/2069936109061128536", "images": [], "created_at": "2026-06-25T00:10:00.000Z"}]}, {"title": "Venezuela GDP — 70%+ Contraction Over 15 Years", "category": "em", "description": "El-Erian highlighted FT article on Venezuela economic collapse comparable to Lebanon and Zimbabwe.", "items": [{"author": "elerianm", "text": "FT data shows Venezuela may have contracted over 70% in 15 years — one of the most dramatic contractions in history. Comparables per Gemini AI: Lebanon and Zimbabwe. Will be subject to intense analytical debate. The scale of this collapse is stark.", "tweet_url": "https://x.com/elerianm/status/2069897530905706963", "images": ["https://pbs.twimg.com/media/HLnAjLsXEAAvxQe.jpg"], "created_at": "2026-06-24T21:36:42.000Z"}]}], "insights": [{"author": "Pentosh1", "category": "ai", "text": "Decade supercycle thesis: next 10 years will be the largest bubble in human history. Japan committing multiple trillions to AI buildout; other governments will follow. Robots will outnumber humans within 10 years — robotics companies mostly not yet public. Robots solve the $59T global labor problem at under $3-4/lifetime vs $38/hour human avg wage. AI buildout still years from completion on energy and infrastructure. AI will radically accelerate medicine. 'Greatest investment opportunities of our lives ahead' — but requires decade-long view. Notes AI is a national security issue: US must lead or cede to China.", "tweet_url": "https://x.com/Pentosh1/status/2069911402765000910", "images": [], "created_at": "2026-06-24T22:31:50.000Z", "is_thread": true}, {"author": "aleabitoreddit", "category": "tech", "text": "Photonics supercycle: still very early, major revenue ramps begin mid-2027. Acknowledges massive drawdown in own book — too much concentration in CPO names ($AXTI, $SOI, $AAOI, Foci, Msscorp) vs memory and other sectors, insufficient hedging. Disagrees with negative institutional reports on Soitec. $AXTI hit by float expansion/dilution concerns; $AAOI pulled down by theme. Corrections expected on the way up; thesis intact. Major inflection mid-2027, scaling into 2028. 'Markets don't typically wait to price things in advance — some ideas are a tad early in H2 2026.'", "tweet_url": "https://x.com/aleabitoreddit/status/2069967746377662587", "images": ["https://pbs.twimg.com/media/HLoAsS4b0AAZUxw.jpg", "https://pbs.twimg.com/media/HLoAsS6aUAAUsPU.jpg", "https://pbs.twimg.com/media/HLoAsS4bEAAAVvC.jpg"], "created_at": "2026-06-25T02:15:43.000Z", "is_thread": true}, {"author": "cryptopunk7213", "category": "ai", "text": "OpenAI reportedly designed an AI chip primarily using AI models (Codex plus internal tools). This opens a new race as important as frontier coding AI: custom AI hardware. 'No use having frontier intelligence if it runs on sub-optimal infra.' OpenAI only needs chips to work well on their own models to significantly accelerate development — more inference, better optimization.", "tweet_url": "https://x.com/cryptopunk7213/status/2069911945956692149", "images": [], "created_at": "2026-06-24T22:35:00.000Z", "is_thread": false}, {"author": "aleabitoreddit", "category": "ai", "text": "Anthropic directly accused Alibaba Qwen of distilling frontier models via thousands of fake accounts and 28.8M exchanges. No real penalties enforced yet. If Qwen marketshare grows from effective distillation, rewards outweigh risks because there is no punishment — which is why they do it. Many US AI startups already using Qwen for cost-effectiveness vs Gemini. Questions why the US isn't enforcing penalties. Optically bearish for Anthropic's moat.", "tweet_url": "https://x.com/aleabitoreddit/status/2069938631817699588", "images": ["https://pbs.twimg.com/media/HLnlTydbUAAzZz4.jpg"], "created_at": "2026-06-25T00:20:02.000Z", "is_thread": true}, {"author": "stacy_muur", "category": "crypto", "text": "Thesis: OG Web3 is dead, everything moving to Web2.5. Chainlink case: joined Project Pangea — coalition of 47 banks targeting real-time stablecoin FX settlement across the Europe-South Korea corridor. Goal: replace T+2 with T+0 atomic PvP settlement using regulated euro- and won-pegged stablecoins. 'Chainlink will become the boring infra for classic finance.' Meaningful institutional adoption signal for LINK's oracle and cross-chain infrastructure — but changes crypto as we know it.", "tweet_url": "https://x.com/stacy_muur/status/2069872942159450492", "images": [], "created_at": "2026-06-24T19:59:00.000Z", "is_thread": false}, {"author": "Delphi_Digital", "category": "crypto", "text": "Incumbents absorbing stablecoin backend: Visa stablecoin settlement pilot at $7B annualized across 9 chains; Mastercard expanding. Both extending control down into stablecoin rails, leaving their dominant card layer intact. Crypto neobanks win only by owning distribution incumbents can't follow or solving regional pain points legacy banks have ignored. Separately: xStocks onchain AUM crossed $500M for the first time with 177k unique holders; top 10 stocks = 80%+ of total AUM.", "tweet_url": "https://x.com/Delphi_Digital/status/2069868927497240617", "images": ["https://pbs.twimg.com/media/HLml8arWgAA4stk.jpg"], "created_at": "2026-06-24T19:34:00.000Z", "is_thread": false}, {"author": "0xSammy", "category": "crypto", "text": "Open-source AI plus decentralized inference as a popular narrative = 'huge unlock for crypto when that happens.' OrnnExchange building underlying commodity market for raw GPU capacity — an entirely new financial layer on top of compute/inference. Key analytical question: which tier in the AI stack is accruing the most value?", "tweet_url": "https://x.com/0xSammy/status/2069835572252668205", "images": [], "created_at": "2026-06-24T17:30:30.000Z", "is_thread": true}, {"author": "zriboua", "category": "geopolitics", "text": "Multi-part analysis on Third-Worldism as ideology: conservatives fail to grasp it because they treat it as a policy platform when it operates as a moral creed — power lies in claiming moral purity and converting resentment into virtue. Anti-Zionism debates were never just about Israel — they were rehearsal for arguments to decolonize the US itself. Islamism and Third-Worldism are tactical allies sharing the West as ultimate adversary. Universities have bred this sensibility for decades, teaching binary victim/oppressor framing. Mamdani's rise is the political outcome. Published two Substack pieces linked below.", "tweet_url": "https://x.com/zriboua/status/2069905493464666592", "images": [], "created_at": "2026-06-24T22:08:21.000Z", "is_thread": true}, {"author": "patrick_oshag", "category": "macro", "text": "Paul Tudor Jones on trading vs investing: 'My big lesson — you make your money by riding a trend for the longest time.' PTJ's fund has -0.12 correlation with the S&P 500 over 40 years, meaning 100% of returns are alpha. He long envied Buffett: 'Just believe in America — when you're down 50%, who cares.' Separately, Lee Ainslie (Maverick Capital, Tiger alum) on parenting: the only universal advice from parents of well-adjusted kids was quantity time, not quality time — kids learn by watching, not listening.", "tweet_url": "https://x.com/patrick_oshag/status/2069907481820532823", "images": ["https://pbs.twimg.com/media/HLmU8-xWsAAF5tY.jpg"], "created_at": "2026-06-24T22:16:15.000Z", "is_thread": false}, {"author": "saxena_puru", "category": "macro", "text": "Buy & Hold works at the index level over long periods and for genuinely dominant companies. It does NOT work on most individual stocks, many of which give back years of gains within 9-12 months and never recover. Stage analysis allows you to ride the uptrend and sell before disaster. Examples: $LULU, $PYPL, $ADBE, $CRM, $NKE, $TTD, $SNAP.", "tweet_url": "https://x.com/saxena_puru/status/2069824009890578854", "images": ["https://pbs.twimg.com/media/HLl9T3qXMAAbYjd.jpg"], "created_at": "2026-06-24T17:12:00.000Z", "is_thread": false}, {"author": "Melt_Dem", "category": "tech", "text": "Qualcomm acquiring Modular (Mojo compiler language) — the great wave of vertical integration is beginning: hardware players moving into compilers and orchestration software, lenders into colo operations and cloud. Recommends 'Accelerando' by Charles Stross as highest ROI sci-fi for builders — the book's metacortex (distributed software agents negotiating over compute/bandwidth where scarcity is a 'primate superstition') maps directly to the agentic economy ahead.", "tweet_url": "https://x.com/Melt_Dem/status/2069820275961573836", "images": [], "created_at": "2026-06-24T17:16:00.000Z", "is_thread": false}, {"author": "AndreCronjeTech", "category": "crypto", "text": "30+ stressed liquidations in the past week on FlyingTulip margin accounts. Average haircut: less than 1%. Near dollar-for-dollar debt repayments. Conclusion: maintenance margin (vs LTV) with soft RFQ-based liquidations works — causes less overall market pressure and keeps positions healthier than hard liquidations.", "tweet_url": "https://x.com/AndreCronjeTech/status/2069922928720806338", "images": [], "created_at": "2026-06-24T23:17:00.000Z", "is_thread": false}, {"author": "zachxbt", "category": "crypto", "text": "Exposes MemeCore team for $M token manipulation. Separately: guide to trusted crypto forensics — only CryptoForensic Investigators or ZeroShadow (firms) and Chainalysis or TRM (analytics); Slow Mist and Elliptic are inconsistent. Core problem: most illicit-flow reports don't share source material, making claims unverifiable and numbers inflated — fundamentally undermines the field.", "tweet_url": "https://x.com/zachxbt/status/2069989768465973552", "images": ["https://pbs.twimg.com/media/HLoUt4BbEAAJJ1h.jpg", "https://pbs.twimg.com/media/HLoUt36bwAAdijL.jpg"], "created_at": "2026-06-25T03:43:14.000Z", "is_thread": false}, {"author": "karpathy", "category": "ai", "text": "On Microsoft's new AI: 'This is not a crappy Slack bot feature and it's not a Claw — it is an org-level harness. The difference will become clearer over time.' On Twitter: toxicity has never been higher in almost 2 decades on the platform — the algorithm actively RL-rewards it, breeding Reddit-like dynamics. Has been posting less as a result.", "tweet_url": "https://x.com/karpathy/status/2069822834160124091", "images": [], "created_at": "2026-06-24T16:44:00.000Z", "is_thread": true}, {"author": "Chartfest1", "category": "macro", "text": "Nasdaq market quality deterioration: approximately 50% of Nasdaq volume concentrated in just two penny stocks — a sign of degenerate speculative structure beneath the headline index moves.", "tweet_url": "https://x.com/Chartfest1/status/2069843974676722055", "images": [], "created_at": "2026-06-24T18:03:54.000Z", "is_thread": false}, {"author": "theallinpod", "category": "tech", "text": "Ryan Cohen 3-part plan to fix eBay (after $EBAY rejected his $56B bid): (1) Cut $2B in costs from $5.5B opex with $2.4B in sales/marketing generating no user growth; (2) Build eBay Live in the $400B live commerce market — eBay has users, brands, and platform, just needs execution; (3) Create a liquid marketplace for in-game digital items — 'should already exist and doesn't,' providing the real utility NFTs promised but failed to deliver.", "tweet_url": "https://x.com/theallinpod/status/2069850982293340476", "images": [], "created_at": "2026-06-24T18:25:00.000Z", "is_thread": false}, {"author": "reidhoffman", "category": "ai", "text": "Satya Nadella on infrastructure for 20,000,000 AI agents to work alongside employees at Microsoft. Shared as signal of the enterprise AI adoption scale being contemplated at the highest level.", "tweet_url": "https://x.com/reidhoffman/status/2069904004813926707", "images": [], "created_at": "2026-06-24T22:02:26.000Z", "is_thread": false}], "contrarian": [{"author": "DonAlt", "category": "crypto", "text": "Against pro-Saylor narrative: 'Saylor's ponzis nuking while BTC stays somewhat afloat. The world is healing.' Views MSTR preferred selloff as healthy price discovery, not crisis.", "tweet_url": "https://x.com/DonAlt/status/2069885512316551234", "images": [], "created_at": "2026-06-24T20:50:00.000Z", "is_thread": false}, {"author": "TruthGundlach", "category": "macro", "text": "Against 'private credit is resilient' consensus: DOJ investigating odd NAV behavior at one of the largest private credit funds. Ever-larger redemption requests each quarter. Lawsuits alleging valuation fraud. Management: 'Don't worry, everything's fine.' Potential early warning signal for sector stress.", "tweet_url": "https://x.com/TruthGundlach/status/2069945720392806821", "images": [], "created_at": "2026-06-25T01:24:00.000Z", "is_thread": false}, {"author": "Tyler_Neville_", "category": "macro", "text": "Against misreading institutional ownership: Jane Street as top holder simply means monetizing volatility — long stock because short volatility, not fundamental long. Broader point: sell-side has been hollowed out; junior people with big titles making calls they shouldn't — enormous known-but-unspoken industry problem.", "tweet_url": "https://x.com/Tyler_Neville_/status/2069920305380724884", "images": [], "created_at": "2026-06-24T23:08:00.000Z", "is_thread": true}, {"author": "aleabitoreddit", "category": "ai", "text": "Against SV valuation logic: 'Global markets in a nutshell — Japanese company with active monopoly over random chokepoints in hyperscaler AI buildout, valued at $150M-$350M. Silicon Valley: here's $200M for a Seed Round.' A stark illustration of pricing disconnect between Japan public small-caps and US private AI startups.", "tweet_url": "https://x.com/aleabitoreddit/status/2070008157892751624", "images": ["https://pbs.twimg.com/media/HLoiXEYagAAMHv1.jpg"], "created_at": "2026-06-25T04:56:18.000Z", "is_thread": false}, {"author": "lord_fed", "category": "crypto", "text": "Against BTC permabull consensus: 'What's actually stopping Bitcoin from going back to $35K?' — framed as a naive question from someone new to BTC trading, but unresolved.", "tweet_url": "https://x.com/lord_fed/status/2069849921147019632", "images": [], "created_at": "2026-06-24T18:23:00.000Z", "is_thread": false}, {"author": "udiWertheimer", "category": "crypto", "text": "Sardonic on memory mania: 'Proposal to rebrand Bitcoin as decentralized memory — we can already inscribe jpegs, shouldn't be too hard to inscribe .md files.' Mocks the DRAM/memory narrative bleeding into every corner of crypto Twitter.", "tweet_url": "https://x.com/udiWertheimer/status/2069887928872902895", "images": [], "created_at": "2026-06-24T20:58:33.000Z", "is_thread": false}], "positioning": [{"author": "dampedspring", "category": "positioning", "text": "Long $STRC / Short $STRF pair trade: picks up ~300bp, gains seniority and ability to defer dividends. Notes borrow on $STRF likely unavailable — check before sizing.", "tweet_url": "https://x.com/dampedspring/status/2069835442590040276", "images": [], "created_at": "2026-06-24T17:29:59.000Z", "is_thread": false}, {"author": "lord_fed", "category": "positioning", "text": "Short $MU 1050 weekly straddle at $120 post-earnings — volatility selling after the massive AH spike.", "tweet_url": "https://x.com/lord_fed/status/2069876043238764781", "images": ["https://pbs.twimg.com/media/HLmtSVPXkAABefC.jpg"], "created_at": "2026-06-24T20:10:00.000Z", "is_thread": false}, {"author": "aleabitoreddit", "category": "positioning", "text": "$DRAM ETF: positive view for memory exposure — holds SK Hynix + Samsung + $MU + $SNDK in one vehicle. 'Everything people want for memory exposure.'", "tweet_url": "https://x.com/aleabitoreddit/status/2069940182418370732", "images": [], "created_at": "2026-06-25T00:26:11.000Z", "is_thread": false}, {"author": "Geiger_Capital", "category": "positioning", "text": "$WYFI as proxy bet on AI infrastructure: +52% since Cerebras ($CBRS) IPO on May 14th while $CBRS itself is -46%. Proxy thesis significantly outperforming the direct play. Also flagged $DFTX +420% from prior call, now +19% on the day.", "tweet_url": "https://x.com/Geiger_Capital/status/2069858999667712318", "images": ["https://pbs.twimg.com/media/HLmdyhAXEAAF7M2.jpg"], "created_at": "2026-06-24T19:03:36.000Z", "is_thread": true}, {"author": "CirrusNFT", "category": "positioning", "text": "$365K loan on a Zombie Cryptopunk NFT. If borrower repays: ~$34K profit over 180 days. If default: acquires the NFT (floor now 550K+). 'At least I'll have a new profile picture to change to.'", "tweet_url": "https://x.com/CirrusNFT/status/2069849724899786851", "images": ["https://pbs.twimg.com/media/HLmU3ctWAAAkrWf.png"], "created_at": "2026-06-24T18:25:00.000Z", "is_thread": true}, {"author": "MelMattison1", "category": "positioning", "text": "Added 6/26 $1,145/$1,150 call spreads at under $1 with $MU around $1,215. Position up nicely post-earnings beat.", "tweet_url": "https://x.com/MelMattison1/status/2069887225618448846", "images": [], "created_at": "2026-06-24T20:55:00.000Z", "is_thread": false}], "links": [{"author": "JavierBlas", "url": "https://www.bloomberg.com/news/articles/2026-06-24/hormuz-reopening-is-quickly-flooding-oil-markets-with-supply", "description": "Bloomberg: Hormuz reopening flooding oil markets with supply"}, {"author": "zriboua", "url": "https://open.substack.com/pub/zinebriboua/p/zohran-mamdani-third-worldism-and", "description": "Substack: Zohran Mamdani, Third-Worldism and the US"}, {"author": "zriboua", "url": "https://open.substack.com/pub/zinebriboua/p/third-worldism-islamism-and-the-return", "description": "Substack: Third-Worldism, Islamism and the Return"}, {"author": "Delphi_Digital", "url": "https://members.delphidigital.io/reports/state-of-token-markets", "description": "Delphi Digital: State of Token Markets (free report)"}, {"author": "RaoulGMI", "url": "https://app.realvision.com/share/note/drinks-with-raoul-special-xwQgfmlFB", "description": "Real Vision: Drinks with Raoul Q&A — open for questions"}, {"author": "reidhoffman", "url": "https://t.co/K1wPUMP7t8", "description": "Satya Nadella on infrastructure for 20M Microsoft AI agents"}], "stats": {"received": 177, "after_filter": 98, "authors": 60, "coverage": 0.7}};
+
+const CAT_VARS = {
+  macro: 'var(--cat-macro)',
+  crypto: 'var(--cat-crypto)',
+  energy: 'var(--cat-energy)',
+  tech: 'var(--cat-tech)',
+  ai: 'var(--cat-ai)',
+  'ai/infra': 'var(--cat-ai)',
+  geopolitics: 'var(--cat-geopolitics)',
+  positioning: 'var(--cat-positioning)',
+  regulation: 'var(--cat-regulation)',
+  society: 'var(--cat-society)',
+  em: 'var(--cat-em)',
+};
+function catColor(cat) {
+  if (!cat) return 'var(--cat-default)';
+  return CAT_VARS[String(cat).toLowerCase()] || 'var(--cat-default)';
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+function escapeAttr(s) {
+  return escapeHtml(s).replace(/`/g, '&#96;');
+}
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function pill(cat) {
+  if (!cat) return '';
+  return `<span class="pill" style="background:${catColor(cat)}">${escapeHtml(cat)}</span>`;
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+function renderThumbs(images) {
+  if (!images || !images.length) return '';
+  return `<div class="thumbs">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="thumb" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const thread = item.is_thread ? '<span class="item-thread">thread</span>' : '';
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet &#8594;</a>`
+    : '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${pill(item.category)}
+        ${authorTag(author)}
+        ${thread}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      <div class="item-text">${escapeHtml(item.text || '')}</div>
+      ${renderThumbs(item.images)}
+    </div>`;
+}
+
+function renderClusterItem(it) {
+  const author = it.author || it.author_username || '';
+  const time = relativeTime(it.created_at);
+  const link = it.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(it.tweet_url)}" target="_blank" rel="noopener">tweet &#8594;</a>`
+    : '';
+  return `
+    <div class="cluster-item filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      <div class="item-text">${escapeHtml(it.text || '')}</div>
+      ${renderThumbs(it.images)}
+    </div>`;
+}
+
+function renderCluster(cluster) {
+  const itemsHtml = (cluster.items || []).map(renderClusterItem).join('');
+  return `
+    <div class="cluster">
+      <div class="cluster-head">
+        ${pill(cluster.category)}
+        <div class="cluster-title">${escapeHtml(cluster.title || '')}</div>
+      </div>
+      ${cluster.description ? `<div class="cluster-desc">${escapeHtml(cluster.description)}</div>` : ''}
+      ${itemsHtml ? `<div class="cluster-items">${itemsHtml}</div>` : ''}
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author
+        ? authorTag(author, 'link-author')
+        : '<span class="link-author">&#8212;</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, items, type) {
+  if (!items || !items.length) return '';
+  let body;
+  if (type === 'events') {
+    body = items.map(renderCluster).join('');
+  } else if (type === 'links') {
+    body = items.map(renderLink).join('');
+  } else {
+    body = items.map(renderItem).join('');
+  }
+  const cls = type === 'contrarian' ? 'section section-contrarian' : 'section';
+  return `
+    <div class="${cls}">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${items.length}</span>
+        <span class="section-arrow">&#9658;</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const s = (d && d.stats) || d || {};
+  const parts = [];
+  if (s.received    != null) parts.push(`received <strong>${s.received}</strong>`);
+  if (s.after_filter!= null) parts.push(`after filter <strong>${s.after_filter}</strong>`);
+  if (s.authors     != null) parts.push(`authors <strong>${s.authors}</strong>`);
+  if (s.coverage    != null) {
+    const pct = (s.coverage <= 1 ? s.coverage * 100 : s.coverage);
+    parts.push(`coverage <strong>${pct.toFixed(0)}%</strong>`);
+  }
+  return parts.join(' | ');
+}
+
+function toggleSection(headEl) {
+  headEl.parentElement.classList.toggle('open');
+}
+
+function openLightbox(src) {
+  const img = document.getElementById('lightbox-img');
+  img.src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) {
+      el.classList.add('match');
+      el.classList.remove('dim');
+    } else {
+      el.classList.add('dim');
+      el.classList.remove('match');
+    }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match');
+    el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) {
+      closeLightbox();
+    } else if (activeFilter) {
+      clearFilter();
+    }
+  }
+});
+
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Events & Reactions',        d.events,                      'events'),
+    renderSection('B', 'Alpha & Insights',           d.insights || d.alpha,         'items'),
+    renderSection('C', 'Contrarian Views',           d.contrarian,                  'contrarian'),
+    renderSection('D', 'Positioning & Trade Ideas',  d.positioning,                 'items'),
+    renderSection('E', 'Link Queue',                 d.links,                       'links'),
+  ].join('');
+  const app = document.getElementById('app');
+  app.innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  document.querySelectorAll('.section').forEach((s, i) => {
+    if (i < 2) s.classList.add('open');
+  });
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
