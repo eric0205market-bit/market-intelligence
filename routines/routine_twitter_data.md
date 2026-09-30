@@ -159,14 +159,14 @@ Output the complete HTML file.
 Save the HTML report to the repository:
 
 ```bash
-git clone https://github.com/eric0205market-bit/market-intelligence.git
-cd market-intelligence
+# Stay in the clone from STEP 0 — do NOT re-clone (a fresh clone loses reports/ and
+# `git add` would record mass deletions; merge-to-main now rejects such branches).
 git checkout -b claude/twitter-data-$(date +%Y%m%d_%H%M)
 
 mkdir -p reports
 # Save HTML file as reports/twitter_data_YYYY-MM-DD_HHMM.html  (HHMM = current UTC time, e.g. $(date -u +%H%M))
 
-git add reports/
+git add reports/twitter_data_*.html   # add ONLY the new report — never `git add reports/`
 git commit -m "Twitter Data: YYYY-MM-DD HH:MM — N items, M data points"
 git push origin HEAD
 ```

@@ -117,7 +117,7 @@ In the template, find `__REPORT_DATA__` inside the `<script>` tag and replace wi
 git checkout -b claude/twitter-bank-research-$(date +%Y%m%d_%H%M)
 mkdir -p reports
 # Save HTML as reports/twitter_bank_research_YYYY-MM-DD_HHMM.html (HHMM = current UTC)
-git add reports/
+git add reports/twitter_bank_research_*.html   # add ONLY the new report — never `git add reports/`
 git commit -m "Bank Research: YYYY-MM-DD HH:MM — N items across K banks"
 git push origin HEAD
 ```
