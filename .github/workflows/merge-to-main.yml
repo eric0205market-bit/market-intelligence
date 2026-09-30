@@ -15,6 +15,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      # RULE 1 (deploy layer): never accept deletions under reports/ blindly.
+      # Routines only ADD reports. A routine whose working copy lost reports/
+      # (e.g. a re-clone) stages every missing file as a deletion via
+      # `git add reports/` — on 2026-09-30 one such branch (77fee379c) wiped
+      # 1773 reports from main. Reject any claude/** branch that deletes
+      # anything under reports/ relative to where it forked from main.
+      - name: Shrink-guard reports/
+        run: |
+          git fetch origin main
+          BASE=$(git merge-base origin/main ${{ github.sha }})
+          DELETED=$(git diff --diff-filter=D --name-only "$BASE" ${{ github.sha }} -- reports/)
+          if [ -n "$DELETED" ]; then
+            N=$(printf '%s\n' "$DELETED" | wc -l | tr -d ' ')
+            echo "::error::Branch ${{ github.ref_name }} deletes $N file(s) under reports/ — refusing to merge."
+            printf '%s\n' "$DELETED" | head -20
+            exit 1
+          fi
+          echo "OK: no deletions under reports/"
+
       - name: Merge to main
         run: |
           git config user.name "github-actions"
