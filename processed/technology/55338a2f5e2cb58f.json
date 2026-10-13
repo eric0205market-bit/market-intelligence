@@ -1,0 +1,338 @@
+{
+  "record_id": "55338a2f5e2cb58f",
+  "source_type": "technology",
+  "source_name": "NVIDIA Developer Blog",
+  "source_url": "https://developer.nvidia.com/blog/replayssm-rethinking-state-storage-for-faster-hybrid-model-decoding/",
+  "title": "ReplaySSM: Rethinking State Storage for Faster Hybrid-Model Decoding | NVIDIA Technical Blog",
+  "published_date": "2026-10-12",
+  "language": "en",
+  "processed_at": "2026-10-13T11:07:38Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "Tech",
+    "AI"
+  ],
+  "gist": "NVIDIA and Princeton's Dao AI Lab present ReplaySSM, which stores SSM state as a checkpoint plus a buffer of recent inputs, cutting state memory traffic roughly in half and speeding hybrid-model decode kernels 1.46x-1.80x at batch 256 on B300. It also removes speculative-decoding snapshots (1.85x-2.10x throughput on 120B-class models) and permits NVFP4 state reads with an FP16/FP8 recurrence to keep accuracy near FP32.",
+  "themes": [
+    {
+      "theme": "SSM layers as the decode bottleneck in hybrid models",
+      "insights": [
+        {
+          "claim": "Hybrid models (Nemotron 3, Qwen3.5 to Qwen3.8, Kimi-K3, GLM-5.3-Flash) interleave SSM layers (Mamba-2, Gated DeltaNet, Kimi Delta Attention) with a few attention layers, and at serving batch sizes the SSM layers rather than attention can be the latency bottleneck up to 100K tokens of context.",
+          "speaker": "Ze-Wei Liou",
+          "type": "thesis",
+          "entities": [
+            "Nemotron 3",
+            "Qwen3.5",
+            "Kimi-K3",
+            "GLM-5.3-Flash",
+            "Mamba-2",
+            "Gated DeltaNet"
+          ],
+          "conviction": "high",
+          "so_what": "The assumed efficiency edge of hybrid architectures at long context is conditional on kernel design; inference cost curves for hybrid models depend on fixing SSM state traffic.",
+          "quote": "At serving batch sizes, however, the SSM layers, not attention, can be the latency bottleneck up to 100K tokens of context.",
+          "locator": "SSM layers are designed to make decoding fast",
+          "quote_verified": true
+        },
+        {
+          "claim": "SSM decoding is bound by HBM bandwidth, not compute, because each step loads and stores the full state while doing little arithmetic; in Nemotron-3-Super-NVFP4 at batch 256 on one B300 this makes SSM the largest part of the decode step.",
+          "speaker": "Ze-Wei Liou",
+          "type": "causal",
+          "entities": [
+            "HBM",
+            "Nemotron-3-Super-NVFP4",
+            "Blackwell Ultra B300"
+          ],
+          "conviction": "high",
+          "so_what": "Memory bandwidth, not FLOPs, determines hybrid-model decode economics, favoring bandwidth-saving software over raw compute.",
+          "quote": "the kernel is bound by HBM bandwidth, not compute",
+          "locator": "State memory traffic",
+          "quote_verified": true
+        },
+        {
+          "claim": "One FP32 SSM layer state is 4 MiB per sequence versus 0.5 KiB per token for an FP8 KV entry, so a single SSM layer's state equals an attention layer's KV cache for 8K tokens, and the model has five times as many SSM as attention layers.",
+          "speaker": "Ze-Wei Liou",
+          "type": "data_point",
+          "entities": [
+            "SSM",
+            "KV cache",
+            "FP8",
+            "FP32"
+          ],
+          "conviction": "high",
+          "so_what": "Quantifies why SSM state dominates memory footprint and concurrency limits in hybrid serving.",
+          "quote": "an SSM layer’s state is the size of an attention layer’s KV cache for 8K tokens",
+          "locator": "Two factors drive this",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "ReplaySSM: checkpoint plus input buffer",
+      "insights": [
+        {
+          "claim": "ReplaySSM represents SSM state as a checkpoint plus a buffer of recent inputs, computing outputs every step but writing the checkpoint to HBM only once per window of L records (flush), which separates output computation from state updates.",
+          "speaker": "Ze-Wei Liou",
+          "type": "framework",
+          "entities": [
+            "ReplaySSM",
+            "Mamba-2",
+            "HBM",
+            "Dao AI Lab"
+          ],
+          "conviction": "high",
+          "so_what": "This is the core mechanism; it is a kernel-level change rather than a model change, so it can be applied to existing hybrid models.",
+          "quote": "It represents the SSM state as a checkpoint plus a buffer of recent inputs.",
+          "locator": "ReplaySSM makes SSM layers the fast part again",
+          "quote_verified": true
+        },
+        {
+          "claim": "ReplaySSM is joint work between NVIDIA and Princeton's Dao AI Lab and is already integrated in TensorRT-LLM, vLLM, SGLang and FlashInfer and in production in GLM-5.3-Flash and Kimi-K3 (which cites it as a concurrent approach).",
+          "speaker": "Ze-Wei Liou",
+          "type": "data_point",
+          "entities": [
+            "NVIDIA",
+            "Dao AI Lab",
+            "TensorRT-LLM",
+            "vLLM",
+            "SGLang",
+            "FlashInfer",
+            "GLM-5.3-Flash",
+            "Kimi-K3"
+          ],
+          "conviction": "high",
+          "so_what": "Rapid adoption across major open inference stacks and Chinese model providers suggests the technique becomes a standard and strengthens NVIDIA's software moat.",
+          "quote": "ReplaySSM is in production.",
+          "locator": "Get started with ReplaySSM",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Benefit 1: roughly halved state traffic",
+      "insights": [
+        {
+          "claim": "ReplaySSM roughly halves dominant state memory traffic because it still reads the checkpoint every step but writes it once per window, speeding SSM kernels 1.46x to 1.80x and the full decode step 1.20x to 1.47x at batch size 256 across four models.",
+          "speaker": "Ze-Wei Liou",
+          "type": "data_point",
+          "entities": [
+            "ReplaySSM",
+            "vLLM",
+            "Blackwell Ultra B300",
+            "H100"
+          ],
+          "conviction": "high",
+          "so_what": "Decode-step gains of 20-47% at serving batch sizes translate directly to lower cost per token for hybrid models on the same GPUs.",
+          "quote": "At batch size 256, the kernel runs 1.46× to 1.80× faster, and the decode step runs 1.20× to 1.47× faster across the four models",
+          "locator": "Benefit 1: Reduce state memory traffic",
+          "quote_verified": true
+        },
+        {
+          "claim": "ReplaySSM gives no speedup at batch size 1 in these tests, and its end-to-end gain grows with batch size because the SSM share of the decode step grows.",
+          "speaker": "Ze-Wei Liou",
+          "type": "data_point",
+          "entities": [
+            "ReplaySSM"
+          ],
+          "conviction": "high",
+          "so_what": "Benefits accrue to high-throughput batched serving, not latency-sensitive single-user use, so it matters most for large inference providers.",
+          "quote": "At batch size 1, other sources of latency dominate, and ReplaySSM provides no speedup in these tests.",
+          "locator": "Benefit 1: Reduce state memory traffic",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Benefit 2: simpler speculative decoding rollback",
+      "insights": [
+        {
+          "claim": "Speculative decoding barely helps SSMs at serving batch sizes because SSM state updates have no easy inverse, so engines like vLLM store a state snapshot after every draft token, costing one read and T writes per step and capping how many requests fit in GPU memory.",
+          "speaker": "Ze-Wei Liou",
+          "type": "causal",
+          "entities": [
+            "speculative decoding",
+            "vLLM",
+            "SSM"
+          ],
+          "conviction": "high",
+          "so_what": "Explains why a standard Transformer speedup technique has not carried over to hybrid models and where the opportunity lay.",
+          "quote": "speculative decoding, a reliable speedup for Transformers, barely helps SSMs at serving batch sizes",
+          "locator": "Rollback for speculative decoding",
+          "quote_verified": true
+        },
+        {
+          "claim": "ReplaySSM does rollback by appending draft inputs to the buffer and advancing a pointer after verification, like a KV cache, with no per-token snapshots; this yields 1.85x and 2.10x the speculative throughput of vLLM at batch size 512 on the two 120B-class models with matched acceptance lengths.",
+          "speaker": "Ze-Wei Liou",
+          "type": "data_point",
+          "entities": [
+            "ReplaySSM",
+            "vLLM",
+            "Nemotron-3-Super-120B-A12B",
+            "Qwen3.5-122B-A10B"
+          ],
+          "conviction": "high",
+          "so_what": "A roughly 2x serving throughput gain on 120B-class MoE hybrids on a single B300 is a material cost-per-token improvement.",
+          "quote": "ReplaySSM delivers 1.85× and 2.10× the throughput of vLLM’s speculative decoding, with matched acceptance lengths.",
+          "locator": "Figure 4 shows speculative serving throughput",
+          "quote_verified": true
+        },
+        {
+          "claim": "Output-only evaluation lets ReplaySSM verify draft tokens without forming intermediate state, using the same chunkwise computation as prefill kernels; it verifies eight tokens in about the time of one standard step, whereas vLLM's snapshot-per-token verification at T = 8 costs almost five times a standard step.",
+          "speaker": "Ze-Wei Liou",
+          "type": "data_point",
+          "entities": [
+            "ReplaySSM",
+            "vLLM",
+            "Tensor Cores"
+          ],
+          "conviction": "high",
+          "so_what": "Verification cost scaling with draft length is what limits speculation depth; flattening it enables more aggressive speculation.",
+          "quote": "it verifies eight tokens in about the time of one standard step, flushes included",
+          "locator": "Faster verification",
+          "quote_verified": true
+        },
+        {
+          "claim": "Conventional speculative decoding stops gaining beyond batch size 128 and on Qwen3.5-122B-A10B-NVFP4 falls below standard decoding at batch size 512 because snapshots consume GPU memory and cap concurrency, while ReplaySSM keeps scaling with batch size.",
+          "speaker": "Ze-Wei Liou",
+          "type": "causal",
+          "entities": [
+            "Qwen3.5-122B-A10B-NVFP4",
+            "ReplaySSM",
+            "GPU memory"
+          ],
+          "conviction": "high",
+          "so_what": "Memory capacity, not just bandwidth, constrains concurrency; removing snapshots raises achievable batch size per GPU.",
+          "quote": "Conventional speculation stops gaining beyond batch size 128",
+          "locator": "Higher concurrency",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Benefit 3: low-precision state without error accumulation",
+      "insights": [
+        {
+          "claim": "Quantized SSM state is harder than quantized KV cache because the state is both read for the output and fed into the next update, so rounding error re-enters the recurrence every step, whereas KV entries are never written back into themselves.",
+          "speaker": "Ze-Wei Liou",
+          "type": "causal",
+          "entities": [
+            "SSM state",
+            "KV cache",
+            "quantization"
+          ],
+          "conviction": "high",
+          "so_what": "Explains why low-precision formats like NVFP4 have been applied to weights and KV caches but SSM state stays FP32, leaving headroom for bandwidth savings.",
+          "quote": "its rounding error re-enters the recurrence at every step",
+          "locator": "State quantization",
+          "quote_verified": true
+        },
+        {
+          "claim": "Keeping a high-precision checkpoint for the recurrence and a separate low-precision copy only for non-flush reads stops rounding error propagating; at 128K tokens on Qwen3.5-4B, NVFP4 reads with an FP32 recurrence cut output KL divergence from 0.136 to 0.0038, and an FP16 recurrence with stochastic rounding tracks FP32 closely.",
+          "speaker": "Ze-Wei Liou",
+          "type": "data_point",
+          "entities": [
+            "Qwen3.5-4B",
+            "NVFP4",
+            "FP32",
+            "FP16",
+            "stochastic rounding"
+          ],
+          "conviction": "high",
+          "so_what": "Shows a path to 4-bit state reads with near-FP32 fidelity, directly relevant to Blackwell's NVFP4 hardware advantage.",
+          "quote": "NVFP4 reads with an FP32 recurrence cut the KL from 0.136 to 0.0038",
+          "locator": "Figure 6 measures the output error",
+          "quote_verified": true
+        },
+        {
+          "claim": "On Mamba-2, the non-flush kernel runs 3.8x faster reading NVFP4 state than FP32 state.",
+          "speaker": "Ze-Wei Liou",
+          "type": "data_point",
+          "entities": [
+            "Mamba-2",
+            "NVFP4",
+            "FP32"
+          ],
+          "conviction": "high",
+          "so_what": "Quantifies the upside of low-precision state reads on bandwidth-bound decoding.",
+          "quote": "the non-flush kernel runs 3.8× faster when reading NVFP4 state than when reading FP32 state",
+          "locator": "Benefit 3: Limit error accumulation with separate precisions",
+          "quote_verified": true
+        },
+        {
+          "claim": "On GPQA-Diamond a shared NVFP4 checkpoint loses 3 to 31 percentage points versus FP32 across four models, while NVFP4 reads with an FP16 or FP8 recurrence keep three of four models within about 2 points; Nemotron-3-Nano-4B still drops 5.6 to 6.7 points.",
+          "speaker": "Ze-Wei Liou",
+          "type": "data_point",
+          "entities": [
+            "GPQA-Diamond",
+            "Nemotron-3-Nano-4B",
+            "Nemotron-3-Super-NVFP4",
+            "Qwen3.5-122B-A10B-NVFP4"
+          ],
+          "conviction": "high",
+          "so_what": "Accuracy cost is model-dependent and larger for small models and long generations, so deployment requires per-model validation.",
+          "quote": "keep three out of four models within about 2 percentage points of FP32",
+          "locator": "We also checked whether the KL gap shows up in downstream accuracy",
+          "quote_verified": true
+        },
+        {
+          "claim": "On shorter-generation benchmarks (MMLU-Pro, Math-L5) three of four models lose at most 3 points with a shared NVFP4 checkpoint, and separate-checkpoint configurations stay within half a point of FP32 on average, indicating the damage from state quantization scales with generation length.",
+          "speaker": "Ze-Wei Liou",
+          "type": "data_point",
+          "entities": [
+            "MMLU-Pro",
+            "Math-L5",
+            "NVFP4"
+          ],
+          "conviction": "medium",
+          "so_what": "Long-reasoning workloads are most exposed to state-quantization error, which matters as agentic and reasoning generations lengthen.",
+          "quote": "MMLU-Pro and Math-L5",
+          "locator": "Figure 7 shows how accuracy loss varies",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Evaluation setup and caveats",
+      "insights": [
+        {
+          "claim": "Evaluation covers four hybrid models from Nemotron 3 (Mamba-2) and Qwen3.5 (GDN), from 4B dense models on one H100 to 120B-class MoE on one B300, comparing against vLLM's own kernels at best launch configuration, using window L = 16 and FP32 state for performance runs.",
+          "speaker": "Ze-Wei Liou",
+          "type": "framework",
+          "entities": [
+            "Nemotron 3",
+            "Qwen3.5",
+            "H100",
+            "B300",
+            "vLLM"
+          ],
+          "conviction": "medium",
+          "so_what": "Results are vendor and author benchmarks on selected models and one baseline, so independent replication is a useful monitoring item.",
+          "quote": "best-performing window size for all four models",
+          "locator": "How we evaluated ReplaySSM",
+          "quote_verified": true
+        }
+      ]
+    }
+  ],
+  "insight_total": 17,
+  "top_entities": [
+    "ReplaySSM",
+    "NVIDIA",
+    "Dao AI Lab",
+    "Nemotron 3",
+    "Qwen3.5",
+    "vLLM",
+    "TensorRT-LLM",
+    "Blackwell Ultra B300",
+    "Mamba-2",
+    "NVFP4",
+    "Kimi-K3",
+    "GLM-5.3-Flash"
+  ],
+  "source_meta": {
+    "author": "Ze-Wei Liou",
+    "word_count": 3229,
+    "paywalled": false
+  }
+}
