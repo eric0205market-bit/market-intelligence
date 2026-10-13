@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER DATA INTELLIGENCE",
+  "date": "2026-10-13 17:21 UTC",
+  "collected_at": "2026-10-13T17:21:04Z",
+  "input_stats": {
+    "total_tweets": 132,
+    "unique_authors": 10,
+    "tweets_with_images": 26,
+    "after_filter": 30
+  },
+  "summary": "30 data items from 10 authors covering fund flows, crypto markets, technicals, economic indicators, and new ETF products.\n\n**Key numbers:** Global MMF inflows +$166.4B (largest week since Apr 2020), US MMF assets record $8.0T; ETH ETF outflows -$85M, $720M deep red for October; BTC $83.2k, ETH $2,490, Oil -2% at $92, Gold +0.3% at $4,200; home purchase cancellations 14.5% (record September high, sellers outnumber buyers 63%); tech billionaires wealth +$845B YTD to record $4.6T.\n\n**Notable:** 21Shares launched first 100%-private-company synthetic ETP in Europe (Anthropic, $CLAU); tokenized equities hit record $3.9B market cap; Papertrade leads on-chain protocol revenue at $5.9M/day; S&P breadth narrow — only Financials confirmed latest high (Y2K analog flagged).",
+  "topics": [
+    {
+      "topic": "Fund Flows & Positioning",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "Global money market funds +$166.4B inflows week ending Oct 7, largest weekly inflow since April 2020. US MMFs alone +$72.3B, lifting total assets to record $8.0T. Since 2023, US MMF assets have risen +$3.0T. Bond funds +$33.8B; Treasury funds +$16.2B (15th consecutive weekly inflow, biggest since April 2025).",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2109992047461462026",
+          "images": ["https://pbs.twimg.com/media/HUgylbIWUAE9bEc.jpg"],
+          "data_points": ["MMF inflows +$166.4B (week)", "US MMF assets $8.0T record", "Bond fund inflows +$33.8B", "Treasury funds +$16.2B (15th consecutive week)"],
+          "created_at": "2026-10-13T12:58:00.000Z"
+        },
+        {
+          "author": "Tyler_Did_It",
+          "description": "ETH ETFs continue outflow streak with -$85M on Monday. Now $720M in net outflows in October — deep red for the month.",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2109954006780961036",
+          "images": ["https://pbs.twimg.com/media/HUgP-W9XYAAgeuK.jpg"],
+          "data_points": ["ETH ETF outflows -$85M (Monday)", "ETH ETF October total -$720M"],
+          "created_at": "2026-10-13T10:26:50.000Z"
+        },
+        {
+          "author": "Tyler_Did_It",
+          "description": "BTC ETFs saw -$65M in net outflows on Monday. Strategy bought 250 BTC for $21.5M at avg $86,194 (Oct 5–11), also repurchasing 1.93M STRC shares for $192.4M. Bitmine bought 12,532 ETH for ~$32M, now holds ~100K ETH (4.9% of target).",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2109973120593338391",
+          "images": ["https://pbs.twimg.com/media/HUghGZyWIAAyr7g.png", "https://pbs.twimg.com/media/HUghLCYXUAAeWWd.png", "https://pbs.twimg.com/media/HUghOl7WEAAeMd1.jpg", "https://pbs.twimg.com/media/HUghWzCWAAEGSiQ.png"],
+          "data_points": ["BTC ETF outflows -$65M (Monday)", "Strategy +250 BTC at avg $86,194", "Bitmine +12,532 ETH (~$32M)"],
+          "created_at": "2026-10-13T11:42:48.000Z"
+        },
+        {
+          "author": "EricBalchunas",
+          "description": "21Shares launched an Anthropic Synthetic ETP in Europe today — first product with 100% exposure to a private company. Ticker $CLAU. Uses total return swaps on the Kaiko Anthropic USD Reference Rate derived from Binance's Anthropic perpetual futures. Defiance also has a similar Pre-IPO leaders ETF filed (80% swaps tied to perps tracking private cos).",
+          "tweet_url": "https://x.com/EricBalchunas/status/2110035396394369178",
+          "images": ["https://pbs.twimg.com/media/HUhZlQlWYAA-o2E.png"],
+          "data_points": ["$CLAU ETP launched in Europe", "First 100% private-co synthetic ETP", "Structure: TRS on Kaiko/Binance perp"],
+          "created_at": "2026-10-13T15:50:15.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Market Data & Technicals",
+      "items": [
+        {
+          "author": "mark_ungewitter",
+          "description": "Chart showing a technical setup — caption: \"Barring a miracle...\" Bearish technical signal on an unspecified index or indicator.",
+          "tweet_url": "https://x.com/mark_ungewitter/status/2109979336837398908",
+          "images": ["https://pbs.twimg.com/media/HUgjBEkXMAAGcAV.jpg"],
+          "data_points": [],
+          "created_at": "2026-10-13T12:07:30.000Z"
+        },
+        {
+          "author": "mark_ungewitter",
+          "description": "Leuthold Group study on narrow market top setup: only one bellwether (Financials) has confirmed the S&P 500's latest high. Same number of red flags as March Y2K. At 2007 top all 8 were flashing warnings. Non-confirmations can be rehabilitated, but conditions for a top are present.",
+          "tweet_url": "https://x.com/mark_ungewitter/status/2109969073823940973",
+          "images": [],
+          "data_points": ["1/8 bellwethers confirmed S&P high", "Matches Y2K setup (March 2000)"],
+          "created_at": "2026-10-13T11:26:43.000Z"
+        },
+        {
+          "author": "mark_ungewitter",
+          "description": "BofA chart on small-cap underperformance: nothing unusual given secular bull-market regime. Small caps lagging large caps is historically normal in bull markets.",
+          "tweet_url": "https://x.com/mark_ungewitter/status/2109965020549595376",
+          "images": ["https://pbs.twimg.com/media/HUgZ89WXQAA9Frm.jpg"],
+          "data_points": [],
+          "created_at": "2026-10-13T11:10:36.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "Tech billionaires combined wealth surged +$845B in first 9 months of 2026, largest increase for this period on record. Total wealth at record $4.6T (36% of Bloomberg Billionaires Index despite only ~20% of members). Non-tech billionaires lost -$62B; consumer sector -$279B; communications -$92B. Americans accounted for 94% of all gains; all top-10 richest are now American (first since data began in 2012).",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2110017325948666108",
+          "images": ["https://pbs.twimg.com/media/HUhJhO1WIAA9u4i.png"],
+          "data_points": ["Tech billionaires +$845B YTD (record)", "Total tech billionaire wealth $4.6T", "Non-tech billionaires -$62B YTD", "Consumer sector billionaires -$279B", "Americans = 94% of all 2026 gains"],
+          "created_at": "2026-10-13T14:38:27.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Goldman's Pasquariello addresses market breadth concerns: says breadth \"isn't so bad\" but references the dot-com bubble twice in the same note. Article available at ZeroHedge.",
+          "tweet_url": "https://x.com/zerohedge/status/2110047950843879440",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-10-13T16:40:08.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Crypto Data & On-Chain",
+      "items": [
+        {
+          "author": "Tyler_Did_It",
+          "description": "Morning Minute (10.13) comprehensive crypto snapshot: BTC -0.3% at $83.2k, ETH -2% at $2,490, SOL -5% at $106.3, HYPE -5% at $82, ZEC -8% at $1,200. Top alt movers: STX +8%, JST +1%, TIA +1%. Oil -2% at $92; Gold +0.3% at $4,200. Stock futures: DOW +0.16%, Nasdaq -0.6%. Only 4 of top 100 coins in green.",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2109973120593338391",
+          "images": ["https://pbs.twimg.com/media/HUghGZyWIAAyr7g.png", "https://pbs.twimg.com/media/HUghLCYXUAAeWWd.png", "https://pbs.twimg.com/media/HUghOl7WEAAeMd1.jpg", "https://pbs.twimg.com/media/HUghWzCWAAEGSiQ.png"],
+          "data_points": ["BTC $83.2k (-0.3%)", "ETH $2,490 (-2%)", "SOL $106.3 (-5%)", "HYPE $82 (-5%)", "Oil $92 (-2%)", "Gold $4,200 (+0.3%)", "4/100 altcoins green"],
+          "created_at": "2026-10-13T11:42:48.000Z"
+        },
+        {
+          "author": "Tyler_Did_It",
+          "description": "Papertrade led onchain protocols in revenue on Monday with $5.9M, followed by Hyperliquid with $2.36M and Pump.fun with $2.29M. Pump.fun earned $15.76M in fees last week (second straight week above $15M) and burned $7.30M of PUMP.",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2109958576064111069",
+          "images": ["https://pbs.twimg.com/media/HUgSs1gWwAAFRfF.png"],
+          "data_points": ["Papertrade revenue $5.9M (Monday)", "Hyperliquid revenue $2.36M", "Pump.fun revenue $2.29M", "Pump.fun weekly fees $15.76M", "PUMP burned $7.30M"],
+          "created_at": "2026-10-13T10:45:00.000Z"
+        },
+        {
+          "author": "Tyler_Did_It",
+          "description": "Tokenized stocks hit record $3.9B in market cap onchain. BNB leads with $1.2B, followed by Ethereum at $842M and Solana at $742M.",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2109991291211616284",
+          "images": [],
+          "data_points": ["Tokenized stocks $3.9B total", "BNB $1.2B", "Ethereum $842M", "Solana $742M"],
+          "created_at": "2026-10-13T12:55:00.000Z"
+        },
+        {
+          "author": "Tyler_Did_It",
+          "description": "Capitulation in Robinhood Chain leaders, with some mid-tier strength. Pons -13% to $190M, Cashcat -15% to $99M, AI -10% to $87M. But Standard +40%, HOOKR +17%, ZZZ +65% led movers.",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2109964961116271025",
+          "images": ["https://pbs.twimg.com/media/HUgZhdJXcAA10c7.jpg"],
+          "data_points": ["Pons -13% to $190M", "Cashcat -15% to $99M", "AI token -10% to $87M", "Standard +40%", "ZZZ +65%"],
+          "created_at": "2026-10-13T11:10:22.000Z"
+        },
+        {
+          "author": "Tyler_Did_It",
+          "description": "Solana token (HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR) grinding up and holding $50M market cap while onchain leaders capitulate. Noted as significant divergence.",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2110029045446619300",
+          "images": ["https://pbs.twimg.com/media/HUhUO3SWYAAMFuZ.jpg"],
+          "data_points": ["SOL token holding $50M vs sector capitulation"],
+          "created_at": "2026-10-13T15:25:01.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "Majority of tokenized equity trading volume now occurs OUTSIDE regular market hours. BNB Chain: 70%+ of tokenized equity trading is after-hours (first blockchain to cross that threshold). Solana: 63% after-hours. Jupiter (largest Solana trading platform) reported +50% MoM growth in tokenized asset volumes. Total circulating supply of tokenized equities now at record $3.3B.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2110002877284388975",
+          "images": ["https://pbs.twimg.com/media/HUg8b0QWgAEDeza.png"],
+          "data_points": ["BNB tokenized equity trading 70%+ after-hours", "Solana 63% after-hours", "Jupiter +50% MoM tokenized volumes", "Tokenized equities supply $3.3B record"],
+          "created_at": "2026-10-13T13:41:02.000Z"
+        },
+        {
+          "author": "DefiLlama",
+          "description": "DeFi protocol funnel analysis (LlamaAI): Of 6,567 protocols tracked, 1,490 collect nonzero fees, 1,252 have nonzero revenue, 264 have nonzero holder revenue, 119 have growing holder revenue (90d or 365d), 25 have growing in both windows, 12 of those pass the $100K/mo revenue + $1M market cap floor.",
+          "tweet_url": "https://x.com/DefiLlama/status/2110046811192766468",
+          "images": [],
+          "data_points": ["6,567 DeFi protocols total", "1,490 with nonzero fees", "264 with holder revenue", "25 growing in both 90d+365d", "12 pass $100K revenue + $1M mcap filter"],
+          "created_at": "2026-10-13T16:35:37.000Z"
+        },
+        {
+          "author": "Tyler_Did_It",
+          "description": "NFT leaders were red with Blur announcing its shutdown. CryptoPunks flat at 31.5 ETH, BAYC -17% at 5.09 ETH, Pudgy Penguins -19% at 2.2 ETH. Quotrons +26% and Argonauts +19% led movers; Statements +90%.",
+          "tweet_url": "https://x.com/Tyler_Did_It/status/2109973120593338391",
+          "images": [],
+          "data_points": ["Punks 31.5 ETH (flat)", "BAYC 5.09 ETH (-17%)", "Pudgy 2.2 ETH (-19%)", "Blur front-end deprecated Nov 12"],
+          "created_at": "2026-10-13T11:42:48.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Real Estate & Economic Indicators",
+      "items": [
+        {
+          "author": "KobeissiLetter",
+          "description": "14.5% of home-purchase agreements that went under contract fell through in September — highest rate for any September on record. Only higher readings were pandemic shock (Mar-Apr 2020). Pre-2020 baseline was never above 12.0% (2017–2019). Jacksonville 19.9%, Tampa 18.8%, Las Vegas 18.6%, San Antonio 18.5% led city cancellations. Home sellers outnumbered buyers by ~63% — widest gap on record.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2110033590264250854",
+          "images": ["https://pbs.twimg.com/media/HUhYXiqXEAASVmj.jpg"],
+          "data_points": ["Home purchase cancellations 14.5% (record September)", "Jacksonville 19.9%", "Tampa 18.8%", "Las Vegas 18.6%", "Sellers outnumber buyers 63% (record gap)"],
+          "created_at": "2026-10-13T15:43:05.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Energy & Geopolitical",
+      "items": [
+        {
+          "author": "zerohedge",
+          "description": "Saudi Cabinet statement: will not allow threats to Red Sea shipping freedom. Context: Houthis active in the region.",
+          "tweet_url": "https://x.com/zerohedge/status/2110030236167413828",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-10-13T15:29:45.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Energy Department orders PJM to dispatch units and maintain backup power through mid-October.",
+          "tweet_url": "https://x.com/zerohedge/status/2110036619277295732",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-10-13T15:55:07.000Z"
+        },
+        {
+          "author": "KobeissiLetter",
+          "description": "Trump warns Houthis: \"behaving very badly\" — says \"I'll be there after the elections, and I will never forget.\" Polymarket: 17% Houthis close Bab el-Mandeb Strait by end of year.",
+          "tweet_url": "https://x.com/KobeissiLetter/status/2110039520720851313",
+          "images": ["https://pbs.twimg.com/media/HUhdZ7BWAAA_BMJ.png"],
+          "data_points": ["Polymarket: 17% Houthis close Bab el-Mandeb by EOY"],
+          "created_at": "2026-10-13T16:06:39.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Oil sector: Gulf refinery rebuild debate — Paul Sankey vs Arjun Murti on timeline to rebuild Gulf refinery capacity. Discussion at 7pm ET.",
+          "tweet_url": "https://x.com/zerohedge/status/2110055492970062277",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-10-13T17:10:07.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Global smartphone shipments plunging — memory crisis crushing budget models. ZeroHedge: \"More Pain To Come\".",
+          "tweet_url": "https://x.com/zerohedge/status/2110040903591104990",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-10-13T16:12:08.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Prediction Market Odds (Polymarket)",
+      "items": [
+        {
+          "author": "Polymarket",
+          "description": "2026 midterms: Democrats reportedly preparing wave of congressional investigations if they win. Polymarket: 62% chance Democrats sweep the midterms.",
+          "tweet_url": "https://x.com/Polymarket/status/2110033223291920832",
+          "images": [],
+          "data_points": ["62% Democrats sweep midterms"],
+          "created_at": "2026-10-13T15:41:37.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "SpaceX plans to launch and land up to 456 Starships per year from Texas Starbase, pending FAA environmental review. Polymarket: 76% chance Starship is fully reusable by end of next year.",
+          "tweet_url": "https://x.com/Polymarket/status/2110035628947833124",
+          "images": [],
+          "data_points": ["SpaceX target: 456 launches/year", "76% Starship fully reusable by end of 2027"],
+          "created_at": "2026-10-13T15:51:11.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Nvidia to acquire minority stake in French healthcare platform Doctolib for AI drug development. Polymarket: 10% chance U.S. government takes equity stake in Nvidia.",
+          "tweet_url": "https://x.com/Polymarket/status/2110046801470554311",
+          "images": [],
+          "data_points": ["10% US government takes Nvidia stake"],
+          "created_at": "2026-10-13T16:35:34.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Google opens Play Store to \"vibe coders\" — people with no programming experience can create and privately publish apps using AI.",
+          "tweet_url": "https://x.com/Polymarket/status/2110057684460351524",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-10-13T17:18:49.000Z"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/energy/will-refinery-damage-take-decades-repair-sankey-vs-murti-tonight",
+      "description": "Gulf refinery rebuild debate — Sankey vs Murti on oil future"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/markets/everythings-fine-goldmans-pasquariello-says-breadth-isnt-so-bad-then-brings-dot-com-bubble",
+      "description": "Goldman on market breadth + Dot-Com Bubble warnings"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/technology/more-pain-come-global-smartphone-shipments-plunge-memory-crisis-crushes-budget-models",
+      "description": "Global smartphone shipments plunge — memory crisis"
+    },
+    {
+      "author": "RyanDetrick",
+      "url": "https://www.youtube.com/watch?is=aSy3SFX0TShlK_ER&v=EGAnwR15mX0&feature=youtu.be",
+      "description": "4th birthday of the bull market — Ryan Detrick + Sonu Varghese video"
+    },
+    {
+      "author": "a16z",
+      "url": "https://www.youtube.com/watch?v=YgYiF86h0yU",
+      "description": "Patrick Collison + Amjad Masad on AI value capture (a16z)"
+    }
+  ],
+  "coverage": {
+    "authors_covered": 10,
+    "authors_total": 10
+  }
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  const s = d.input_stats || {};
+  if (s.total_tweets) parts.push(`raw tweets <strong>${s.total_tweets}</strong>`);
+  return parts.join(' | ');
+}
+
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
