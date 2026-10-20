@@ -1,0 +1,252 @@
+{
+  "record_id": "5d44067f2d19c9de",
+  "source_type": "technology",
+  "source_name": "NVIDIA Developer Blog",
+  "source_url": "https://developer.nvidia.com/blog/accelerating-mamba-2-with-high-performance-forward-pass-kernels-in-nvidia-cuda-tile/",
+  "title": "Accelerating Mamba-2 with High-Performance Forward Pass Kernels in NVIDIA CUDA Tile | NVIDIA Technical Blog",
+  "published_date": "2026-10-19",
+  "language": "en",
+  "processed_at": "2026-10-20T11:09:51Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "AI",
+    "Tech"
+  ],
+  "gist": "Jane Street and NVIDIA engineers show how to implement the three Mamba-2 forward-pass kernels in the Python-based CUDA Tile (cuTile) DSL, and report 1.14x to 1.82x kernel-level speedups over an open-source Triton implementation on a Blackwell Ultra B300. The post doubles as a showcase for cuTile and a quant trading firm's adoption of it.",
+  "themes": [
+    {
+      "theme": "cuTile and Jane Street adoption",
+      "insights": [
+        {
+          "claim": "CUDA Tile (cuTile) is a Python DSL and tile-centric programming model that hides thread- and warp-level scheduling so the compiler automatically targets Tensor Cores and other advanced GPU features.",
+          "speaker": "Sylvain Gugger",
+          "type": "framework",
+          "entities": [
+            "cuTile",
+            "NVIDIA",
+            "Tensor Cores"
+          ],
+          "conviction": "high",
+          "so_what": "NVIDIA is pushing a higher-level, Python-first kernel authoring path that competes with Triton for developer mindshare.",
+          "quote": "By abstracting thread- and warp-level scheduling behind high-level, tile-centric primitives, cuTile enables you to write GPU kernels in Python",
+          "locator": "Opening paragraphs",
+          "quote_verified": true
+        },
+        {
+          "claim": "Jane Street, described as a deeply technical global trading firm using deep learning for quantitative research, is an early adopter that implemented Mamba-2 in cuTile and partnered with NVIDIA to optimise the kernels.",
+          "speaker": "Sylvain Gugger",
+          "type": "anecdote",
+          "entities": [
+            "Jane Street",
+            "NVIDIA",
+            "Mamba-2"
+          ],
+          "conviction": "medium",
+          "so_what": "A sophisticated quant shop validating cuTile is useful reference-customer evidence for NVIDIA's software moat.",
+          "quote": "As an early adopter of cuTile, machine learning engineers at Jane Street implemented Mamba-2",
+          "locator": "Opening paragraphs",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Why Mamba-2 and how it maps to GPUs",
+      "insights": [
+        {
+          "claim": "Softmax attention trains fast on Tensor Cores but its inference compute and memory grow linearly with sequence length, while RNNs have constant inference cost but slow, nonparallelizable training; Mamba-2 aims for the best of both.",
+          "speaker": "Sylvain Gugger",
+          "type": "framework",
+          "entities": [
+            "Mamba-2",
+            "softmax attention",
+            "RNN"
+          ],
+          "conviction": "high",
+          "so_what": "Sequence-model architecture choice is a tradeoff between training parallelism and inference cost, which state-space models try to dissolve.",
+          "quote": "Sequence modeling architectures face a computational trade-off",
+          "locator": "Sequence modeling computational trade-off",
+          "quote_verified": true
+        },
+        {
+          "claim": "Mamba-2 keeps a fixed-size hidden state that is a matrix rather than an RNN vector, giving more representational capacity, with a recurrent update that can be computed chunkwise using Tensor Cores.",
+          "speaker": "Sylvain Gugger",
+          "type": "data_point",
+          "entities": [
+            "Mamba-2"
+          ],
+          "conviction": "medium",
+          "so_what": "The matrix state is what lets chunked matmul formulations exploit Tensor Cores.",
+          "quote": "Similar to an RNN, it has a fixed size hidden state and a recurrent update that can be computed chunkwise",
+          "locator": "Mamba-2 architecture",
+          "quote_verified": true
+        },
+        {
+          "claim": "A parallel-scan approach to training and prefill would materialise an enormous hidden-state tensor, making it memory-bound and unable to use Tensor Cores, so the chunked matrix-multiplication 'jump formula' is used instead.",
+          "speaker": "Sylvain Gugger",
+          "type": "causal",
+          "entities": [
+            "parallel scan",
+            "Tensor Cores"
+          ],
+          "conviction": "high",
+          "so_what": "Algorithm reformulation, not just kernel tuning, is what unlocks hardware utilisation for state-space models.",
+          "quote": "this approach requires materializing an enormous hidden state tensor making it primarily memory-bound and unable to utilize Tensor Cores",
+          "locator": "Mamba-2 architecture",
+          "quote_verified": true
+        },
+        {
+          "claim": "Without the decay term, Mamba-2 reduces to linear attention (without softmax) with some renaming, which is why its chunk computation looks like causal attention with a mask.",
+          "speaker": "Sylvain Gugger",
+          "type": "thesis",
+          "entities": [
+            "Mamba-2",
+            "linear attention"
+          ],
+          "conviction": "medium",
+          "so_what": "Close kinship with linear attention means kernel techniques can transfer across these architectures.",
+          "quote": "when the decay term is removed, Mamba-2 is just linear attention (with some renaming)",
+          "locator": "Mamba-2 architecture",
+          "quote_verified": true
+        },
+        {
+          "claim": "Because all decay values are negative, every kept exponential in the masked computation has a non-positive argument, which guarantees numerical stability; positive-argument exponentials are masked out before they can overflow.",
+          "speaker": "Sylvain Gugger",
+          "type": "causal",
+          "entities": [
+            "Mamba-2"
+          ],
+          "conviction": "medium",
+          "so_what": "Numerical safety is built into the formulation, allowing low-precision Tensor Core use.",
+          "quote": "Any exponentials of positive numbers are never kept, guaranteeing numerical stability.",
+          "locator": "Mamba-2 architecture",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Kernel design and optimisations",
+      "insights": [
+        {
+          "claim": "The forward pass is split into three kernels: chunk_cumsum for intra-chunk cumulative decay in log-space, fwd_pass_state for chunk-initial hidden states, and compute_out for outputs, with exp2 scaled by log2(e) used instead of exp for speed.",
+          "speaker": "Sylvain Gugger",
+          "type": "framework",
+          "entities": [
+            "chunk_cumsum",
+            "fwd_pass_state",
+            "compute_out"
+          ],
+          "conviction": "high",
+          "so_what": "A reusable decomposition for implementing state-space layers on tile-based GPU languages.",
+          "quote": "Since it’s much cheaper to compute exp2 instead of exp, the result is scaled by log2(e).",
+          "locator": "Kernel 1: Computing cumulative sums",
+          "quote_verified": true
+        },
+        {
+          "claim": "compute_out fuses the carried-state term, decayed causal interaction matrix and skip connection into one tiled kernel, keeping the C-times-B-transpose matrix in registers instead of materialising a full [B, n_chunks, chunk_size, chunk_size] tensor in global memory.",
+          "speaker": "Sylvain Gugger",
+          "type": "causal",
+          "entities": [
+            "compute_out"
+          ],
+          "conviction": "high",
+          "so_what": "Fusion that avoids global-memory round trips is the main source of speedup versus a naive PyTorch version.",
+          "quote": "compute_out fuses them into one tiled kernel and keeps that matrix in registers.",
+          "locator": "Kernel 3: compute_out",
+          "quote_verified": true
+        },
+        {
+          "claim": "On Blackwell's fifth-generation Tensor Core, operand A can live in Tensor Memory while operand B must be in Shared Memory, so the authors use the B^T A^T = (AB)^T identity to route the fused operand to A and relieve shared-memory contention.",
+          "speaker": "Sylvain Gugger",
+          "type": "causal",
+          "entities": [
+            "Blackwell",
+            "Tensor Memory"
+          ],
+          "conviction": "medium",
+          "so_what": "Blackwell-specific operand placement shows kernel authors must tune for new memory hierarchies.",
+          "quote": "operand A can live in Tensor Memory, but operand B must live in Shared Memory",
+          "locator": "Mamba-2 performance optimization",
+          "quote_verified": true
+        },
+        {
+          "claim": "Transposing decay_cumsum and dt to a [batch, head, token] layout makes memory access contiguous and enables TMA, avoiding cache-unfriendly strided LDG instructions.",
+          "speaker": "Sylvain Gugger",
+          "type": "causal",
+          "entities": [
+            "TMA"
+          ],
+          "conviction": "medium",
+          "so_what": "Memory layout changes are a major lever on achieved bandwidth.",
+          "quote": "The default strided memory access for decay_cumsum and dt lowers to cache-unfriendly LDG instructions.",
+          "locator": "GMEM layout",
+          "quote_verified": true
+        },
+        {
+          "claim": "Since bottlenecks shift with input shape, the authors use an autotuner over block size, occupancy and the other optimisation choices through cuTile's exhaustive_search to find the best configuration per shape.",
+          "speaker": "Sylvain Gugger",
+          "type": "framework",
+          "entities": [
+            "cuTile"
+          ],
+          "conviction": "medium",
+          "so_what": "Per-shape autotuning is becoming standard in high-performance kernel stacks.",
+          "quote": "no single optimization strategy fits every model configuration",
+          "locator": "cuTile-Python autotuner",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Benchmark results",
+      "insights": [
+        {
+          "claim": "On a single NVIDIA B300 SXM6 (Blackwell Ultra) the optimised cuTile Mamba-2 forward kernels were 1.14x to 1.82x faster than the open-source Triton mamba_ssm kernel, with gains growing at longer sequences and larger state sizes.",
+          "speaker": "Sylvain Gugger",
+          "type": "data_point",
+          "entities": [
+            "NVIDIA B300",
+            "Triton",
+            "mamba_ssm",
+            "cuTile"
+          ],
+          "conviction": "medium",
+          "so_what": "Vendor-run result on NVIDIA's newest hardware favouring NVIDIA's own DSL; useful but not independent.",
+          "quote": "the optimized cuTile forward-pass kernels are 1.14x to 1.82x faster",
+          "locator": "Mamba-2 forward pass performance benchmarks",
+          "quote_verified": true
+        },
+        {
+          "claim": "The speedups are kernel-level only, and end-to-end training outcomes will also depend on the backward pass, which a follow-up post will cover.",
+          "speaker": "Sylvain Gugger",
+          "type": "data_point",
+          "entities": [
+            "Mamba-2"
+          ],
+          "conviction": "high",
+          "so_what": "Headline gains may not translate fully to training throughput until the backward pass is optimised.",
+          "quote": "Note that these are kernel-level speedups only and end-to-end training results will also depend on the backward pass implementations.",
+          "locator": "Mamba-2 forward pass performance benchmarks",
+          "quote_verified": true
+        }
+      ]
+    }
+  ],
+  "insight_total": 14,
+  "top_entities": [
+    "NVIDIA",
+    "cuTile",
+    "Jane Street",
+    "Mamba-2",
+    "Tensor Cores",
+    "Blackwell",
+    "B300",
+    "Triton",
+    "TileGym",
+    "PyTorch"
+  ],
+  "source_meta": {
+    "author": "Sylvain Gugger",
+    "word_count": 3168,
+    "paywalled": false
+  }
+}
