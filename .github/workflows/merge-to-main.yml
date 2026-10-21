@@ -5,6 +5,18 @@ on:
     branches:
       - 'claude/**'
 
+# Serialize merges. Routines push several claude/** branches within the same
+# minute; parallel merge jobs each regenerate index.html, and the loser of the
+# push race used to die mid-rebase on an index.html conflict, silently never
+# merging its report (2026-10-19..21: three reports stranded).
+# cancel-in-progress MUST stay false and queue MUST be max: the default
+# queue (single) keeps only ONE pending run and cancels it when a newer one
+# arrives — with three same-minute pushes that would drop the middle report.
+concurrency:
+  group: merge-to-main
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   merge:
     runs-on: ubuntu-latest
@@ -61,9 +73,33 @@ jobs:
           git add -A
           git commit -m "Auto-merge + update index" --allow-empty || true
 
-      - name: Push to main (retry with rebase)
+      # A push can still lose a race (the collector commits to main directly).
+      # Never `pull --rebase` here: index.html is regenerated on both sides, so
+      # a rebase conflicts on it and strands the repo mid-rebase. Instead, on a
+      # failed push rebuild the merge from scratch on top of the newest main:
+      # reset to origin/main, re-apply only this branch's commit, restore
+      # collection paths, and regenerate the derived files on the new base.
+      - name: Push to main (retry by rebuilding on newest main)
         run: |
-          for i in 1 2 3; do
-            git push origin main && break
-            git pull --rebase origin main
+          set +e
+          SHA="${{ github.sha }}"
+          for i in 1 2 3 4 5; do
+            if git push origin main; then
+              echo "Pushed on attempt $i"
+              exit 0
+            fi
+            [ "$i" -eq 5 ] && break
+            echo "Push attempt $i failed — rebuilding merge on newest origin/main"
+            git rebase --abort 2>/dev/null || true
+            git merge --abort 2>/dev/null || true
+            git fetch origin main && git reset --hard origin/main
+            git merge "$SHA" --no-edit -X theirs || true
+            git checkout origin/main -- data/twitter/latest raw/twitter 2>/dev/null || true
+            python3 scripts/inject_back_button.py && git add reports
+            python3 scripts/update_dashboard.py && git add index.html
+            git add -A
+            git commit -m "Auto-merge + update index" --allow-empty || true
+            sleep $((i * 5))
           done
+          echo "::error::merge-to-main could not push branch ${{ github.ref_name }} after 5 attempts"
+          exit 1
