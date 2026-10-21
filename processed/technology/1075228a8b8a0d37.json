@@ -1,0 +1,428 @@
+{
+  "record_id": "1075228a8b8a0d37",
+  "source_type": "technology",
+  "source_name": "InfoQ",
+  "source_url": "https://www.infoq.com/presentations/scale-llm-agents-production-ray",
+  "title": "Beyond the Prototype: Scaling Framework Agnostic AI Agent Infrastructure with Ray",
+  "published_date": "2026-10-20",
+  "language": "en",
+  "processed_at": "2026-10-21T11:08:45Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "AI",
+    "Tech"
+  ],
+  "gist": "Two Apple ML-infrastructure engineers (on Apple's internal Ray team) argue that a FastAPI agent wrapped in a standard Kubernetes Deployment 'quickly hits the ceiling' for stateful multi-turn agents, and show how Ray Serve plus KubeRay's RayService CRD supply concurrency-based autoscaling, backpressure, streaming and dashboards out of the box. They extend it to an agent control plane/data plane, GSLB multi-region routing, and an eval-gated release pipeline using golden datasets and LLM-as-a-judge. In Q&A they admit the trip-planner is a toy and would not confirm what is actually in production.",
+  "themes": [
+    {
+      "theme": "Why vanilla Kubernetes fails for agents",
+      "insights": [
+        {
+          "claim": "Packaging an agent as a FastAPI app in a standard Kubernetes Deployment works for classic REST services but quickly runs into scaling limits once the agent is multi-turn, stateful and makes many tool calls.",
+          "speaker": "Deepak Mohanakumar Chandramouli",
+          "type": "thesis",
+          "entities": [
+            "FastAPI",
+            "Kubernetes"
+          ],
+          "conviction": "high",
+          "so_what": "Generic container orchestration is not enough for agents, which opens a market for agent-specific serving layers.",
+          "quote": "it quickly hits the ceiling. There are a lot of scaling limitations.",
+          "locator": "Typically, we would want to containerize this",
+          "quote_verified": true
+        },
+        {
+          "claim": "Agent workloads are network-call heavy, so autoscaling on CPU or memory misses the real load signal; replicas should scale on the number of parallel in-flight and queued requests.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "causal",
+          "entities": [
+            "autoscaling",
+            "Ray Serve"
+          ],
+          "conviction": "high",
+          "so_what": "Infra and observability vendors that only expose CPU/memory metrics fit agent fleets poorly; request-concurrency metrics become the key scaling signal.",
+          "quote": "it is not just CPU or memory which we care about here. Agents' workloads are very unique in a sense that they make a lot of network calls.",
+          "locator": "Another interesting callout here is",
+          "quote_verified": true
+        },
+        {
+          "claim": "Production agents need more than REST: server-sent events and streaming for incremental multi-step responses, and background-task submit/status APIs for long-running deep-research jobs.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "framework",
+          "entities": [
+            "server-sent events",
+            "streaming",
+            "deep research"
+          ],
+          "conviction": "high",
+          "so_what": "Agent serving platforms have to support long-lived and async request patterns, not just stateless request/response.",
+          "quote": null,
+          "locator": null,
+          "quote_verified": false
+        },
+        {
+          "claim": "The same user query can produce a different orchestration path each time because the LLM decides differently, so agent observability has to track per-query token usage, tool-call counts and the dynamic chain of events.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "causal",
+          "entities": [
+            "LLM",
+            "observability"
+          ],
+          "conviction": "high",
+          "so_what": "Per-request token and tool-call telemetry is a distinct observability category from classic APM.",
+          "quote": null,
+          "locator": "Next, the operational side.",
+          "quote_verified": false
+        },
+        {
+          "claim": "Faults in agent systems happen at both the infrastructure layer (a node malfunctioning) and the application layer (memory leaks, crash loops), so fault tolerance has to be built into the framework.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "framework",
+          "entities": [
+            "fault tolerance",
+            "Kubernetes"
+          ],
+          "conviction": "medium",
+          "so_what": "Resilience tooling for agent runtimes has to cover failures at both levels.",
+          "quote": null,
+          "locator": null,
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Ray Serve as agent runtime",
+      "insights": [
+        {
+          "claim": "Ray Serve natively supports FastAPI and gRPC, so an existing FastAPI agent can be ported by wrapping it with serve ingress and binding it to a Ray Serve deployment, with streaming via async generators.",
+          "speaker": "Deepak Mohanakumar Chandramouli",
+          "type": "data_point",
+          "entities": [
+            "Ray Serve",
+            "FastAPI",
+            "gRPC",
+            "Ray"
+          ],
+          "conviction": "high",
+          "so_what": "Ray's low switching cost from FastAPI helps it spread as the default serving layer for Python agents.",
+          "quote": null,
+          "locator": "The good news is Ray Serve supports FastAPI",
+          "quote_verified": false
+        },
+        {
+          "claim": "Ray Serve autoscaling uses min/max replicas plus a target_ongoing_requests knob; in the example, once more than five requests are in flight on a replica, a new replica is added.",
+          "speaker": "Deepak Mohanakumar Chandramouli",
+          "type": "data_point",
+          "entities": [
+            "Ray Serve",
+            "target_ongoing_requests"
+          ],
+          "conviction": "high",
+          "so_what": "Concurrency-target autoscaling is the specific mechanism that sets agent serving apart from HPA-on-CPU.",
+          "quote": null,
+          "locator": "Knobs such as target_ongoing_requests",
+          "quote_verified": false
+        },
+        {
+          "claim": "Backpressure in agent serving comes down to an explicit choice between queueing excess requests or dropping them with HTTP 429s, and Ray Serve exposes knobs for both.",
+          "speaker": "Deepak Mohanakumar Chandramouli",
+          "type": "framework",
+          "entities": [
+            "Ray Serve",
+            "backpressure"
+          ],
+          "conviction": "medium",
+          "so_what": "How load is shed is a product decision for agent services: latency against availability.",
+          "quote": null,
+          "locator": null,
+          "quote_verified": false
+        },
+        {
+          "claim": "A RayCluster can run mixed CPU and GPU workloads under one umbrella and works with the Kubernetes autoscaler through the KubeRay operator, which manages Ray custom resources and reconciliation.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "data_point",
+          "entities": [
+            "RayCluster",
+            "KubeRay",
+            "Kubernetes",
+            "GPU"
+          ],
+          "conviction": "high",
+          "so_what": "Putting heterogeneous compute in one cluster lets agents sit right next to GPU inference.",
+          "quote": null,
+          "locator": null,
+          "quote_verified": false
+        },
+        {
+          "claim": "Ray Serve ships a built-in dashboard, locally and remotely, showing hardware utilization, request QPS, latencies, in-flight and queued requests, queue depth and dropped requests, so teams can test with small traffic locally and extrapolate to production.",
+          "speaker": "Deepak Mohanakumar Chandramouli",
+          "type": "data_point",
+          "entities": [
+            "Ray dashboard",
+            "Ray Serve"
+          ],
+          "conviction": "medium",
+          "so_what": "Built-in observability competes directly with paid agent-observability tools for basic ops metrics.",
+          "quote": null,
+          "locator": null,
+          "quote_verified": false
+        },
+        {
+          "claim": "The RayService CRD is the bridge to Kubernetes: a declarative spec with a headGroupSpec (the cluster brain that holds state, observes traffic and makes autoscaling decisions) and a workerGroupSpec (agent replicas with min/max elasticity), reconciled by the KubeRay operator, with sidecars and init containers for secrets, logs and metrics.",
+          "speaker": "Deepak Mohanakumar Chandramouli",
+          "type": "framework",
+          "entities": [
+            "RayService CRD",
+            "KubeRay",
+            "Kubernetes"
+          ],
+          "conviction": "high",
+          "so_what": "The KubeRay/RayService pattern is turning into the standard way to deploy Ray-based agents on Kubernetes.",
+          "quote": null,
+          "locator": "In this example, we are writing a Ray Serve CRD",
+          "quote_verified": false
+        },
+        {
+          "claim": "Ray Jobs handle ephemeral or batch agent runs and Ray actors handle async stateful or stateless tasks, while long-lived agents calling each other in production are a separate, synchronous architecture.",
+          "speaker": "Deepak Mohanakumar Chandramouli",
+          "type": "framework",
+          "entities": [
+            "Ray Jobs",
+            "Ray actors",
+            "RayService"
+          ],
+          "conviction": "medium",
+          "so_what": "Ray covers online, batch and async agent patterns, but agent-to-agent production orchestration stays an open gap.",
+          "quote": null,
+          "locator": "There are two parts. In terms of running",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Agent control plane and data plane",
+      "insights": [
+        {
+          "claim": "Maintaining one RayService CRD per agent stops working once an organization runs more than one agent, so the presenters propose an agent control plane for lifecycle operations across hundreds or thousands of agentic workloads.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "thesis",
+          "entities": [
+            "agent control plane",
+            "RayService CRD"
+          ],
+          "conviction": "high",
+          "so_what": "Agent fleet management (an internal-platform layer above Kubernetes) is an emerging product category.",
+          "quote": "the moment we have more than one agent, maintaining those individual CRDs may not really work.",
+          "locator": "So far, we talked about the RayService CRD.",
+          "quote_verified": true
+        },
+        {
+          "claim": "The proposed control plane handles create/deploy/delete APIs, per-agent RBAC that separates administrators from query-only users, metadata (versions, configurations, deployers, org and business tags), compute specs and quota queues, plus a history service that audits every change.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "framework",
+          "entities": [
+            "agent control plane",
+            "RBAC"
+          ],
+          "conviction": "medium",
+          "so_what": "Enterprises will need governance and audit tooling for agents, much like what exists for microservices.",
+          "quote": null,
+          "locator": null,
+          "quote_verified": false
+        },
+        {
+          "claim": "A central data plane does authentication, authorization, rate limiting and upstream trace-ID stitching, then looks up which team's RayCluster hosts the target agent and routes the request there.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "framework",
+          "entities": [
+            "agent data plane",
+            "RayCluster",
+            "tracing",
+            "rate limiting"
+          ],
+          "conviction": "high",
+          "so_what": "An agent gateway (auth, rate limits, routing, trace propagation) is a natural choke point that platform vendors can own.",
+          "quote": null,
+          "locator": null,
+          "quote_verified": false
+        },
+        {
+          "claim": "For a global user base, a Global Server Load Balancer routes each request by geolocation and regional health to region-specific data planes, and region-specific control planes let the same agent run with different prompts or configurations per region.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "framework",
+          "entities": [
+            "GSLB",
+            "multi-region"
+          ],
+          "conviction": "medium",
+          "so_what": "Multi-region agent deployment with per-region prompts adds complexity for compliance and localization.",
+          "quote": null,
+          "locator": null,
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Guardrails and runaway-agent risk",
+      "insights": [
+        {
+          "claim": "User inputs to agents must be validated the way SQL injection is prevented, and orchestration needs bounds because a request such as a 365-day itinerary could loop, burn LLM tokens, exhaust resources and starve other users, which the presenters liken to a DDoS.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "causal",
+          "entities": [
+            "guardrails",
+            "LLM tokens"
+          ],
+          "conviction": "high",
+          "so_what": "Unbounded agent loops are a direct cost and availability risk, so token budgets and loop limits are needed from day one.",
+          "quote": "I can probably ask this trip-planner agent to generate an itinerary for 365 days.",
+          "locator": "Callouts For Agentic Workloads",
+          "quote_verified": true
+        },
+        {
+          "claim": "In-graph classifiers check natural-language tool outputs at each orchestration step, which matters most in real agents that use 15 to 20 or more tools, many of which return natural language.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "framework",
+          "entities": [
+            "in-graph classifiers",
+            "MCP"
+          ],
+          "conviction": "medium",
+          "so_what": "Per-step guardrails add inference cost and latency that grow with the number of tools.",
+          "quote": null,
+          "locator": null,
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Evals as release gate",
+      "insights": [
+        {
+          "claim": "Agent changes such as a new prompt or a swapped LLM can change behavior even when all unit and functional tests pass, so every such change should trigger an eval run.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "thesis",
+          "entities": [
+            "evals",
+            "LLM",
+            "CI/CD"
+          ],
+          "conviction": "high",
+          "so_what": "Eval tooling becomes a required CI/CD stage for agent products, not an optional extra.",
+          "quote": "Any change can have a very big impact on the agent's outcome, even though all the functional tests, the unit test may seem ok, the behavior might have changed.",
+          "locator": "It is very much easy to track",
+          "quote_verified": true
+        },
+        {
+          "claim": "The recommended eval method is a golden dataset of positive prompts (e.g. a three-day winter trip) and negative prompts (e.g. 'reverse a linked list', which should be politely declined), scored on safety and instruction adherence with LLM-as-a-judge, and releases gated on the scores.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "framework",
+          "entities": [
+            "golden dataset",
+            "LLM-as-a-judge"
+          ],
+          "conviction": "high",
+          "so_what": "LLM-as-a-judge release gating drives continuing inference demand beyond what end users consume.",
+          "quote": null,
+          "locator": null,
+          "quote_verified": false
+        },
+        {
+          "claim": "Prompts should be versioned like code so that any issue can be traced to the deployed prompt version and rolled back or forward.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "framework",
+          "entities": [
+            "prompt versioning"
+          ],
+          "conviction": "medium",
+          "so_what": "Prompt management and versioning is a concrete need in agent operations.",
+          "quote": null,
+          "locator": null,
+          "quote_verified": false
+        },
+        {
+          "claim": "The proposed agent release pipeline runs unit tests, then evals, then smoke tests, then deploys to a first region and lets it bake for hours or days before global rollout.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "framework",
+          "entities": [
+            "CI/CD",
+            "evals"
+          ],
+          "conviction": "medium",
+          "so_what": "Region-by-region rollout slows how fast agent changes ship but limits the damage from bad releases.",
+          "quote": null,
+          "locator": null,
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Why Ray, and caveats on production claims",
+      "insights": [
+        {
+          "claim": "The team chose Ray because it already maintains Ray company-wide and much of the ML lifecycle, including LLMs, runs on Ray, so co-hosting agents there was the natural move after a first standard Kubernetes deployment.",
+          "speaker": "Deepak Mohanakumar Chandramouli",
+          "type": "causal",
+          "entities": [
+            "Ray",
+            "Apple",
+            "LLM"
+          ],
+          "conviction": "medium",
+          "so_what": "Ray's existing ML footprint pulls agent workloads onto it, which strengthens the Anyscale/Ray ecosystem.",
+          "quote": "There's a lot of gravity on machine learning lifecycles, LLMs. LLMs run on Ray.",
+          "locator": "I think the first iteration of production deployment",
+          "quote_verified": true
+        },
+        {
+          "claim": "Ray's official documentation describes hosting MCP servers on Ray Serve, since MCP servers are ultimately FastAPI apps, which the presenters took as validation of their approach.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "data_point",
+          "entities": [
+            "MCP",
+            "Ray Serve",
+            "FastAPI"
+          ],
+          "conviction": "medium",
+          "so_what": "Ray Serve can also serve as a hosting layer for MCP servers, beyond agents themselves.",
+          "quote": null,
+          "locator": null,
+          "quote_verified": false
+        },
+        {
+          "claim": "Asked whether the architecture runs in production, the Apple presenters said the trip-planner was a prototype made for the talk and would not say definitively what is in production, describing the approach only as having 'a lot of potential'.",
+          "speaker": "Bhumik Vinodkumar Thakkar",
+          "type": "anecdote",
+          "entities": [
+            "Apple"
+          ],
+          "conviction": "low",
+          "so_what": "Treat this as a reference architecture, not evidence of Apple-scale agent deployment on Ray.",
+          "quote": "I might not be able to comment definitively on what is production, what is not inside what we are doing.",
+          "locator": "We think that there is a lot of potential",
+          "quote_verified": true
+        }
+      ]
+    }
+  ],
+  "insight_total": 25,
+  "top_entities": [
+    "Ray",
+    "Ray Serve",
+    "KubeRay",
+    "RayCluster",
+    "Kubernetes",
+    "FastAPI",
+    "gRPC",
+    "MCP",
+    "LLM-as-a-judge",
+    "Apple",
+    "GSLB",
+    "Ray Jobs"
+  ],
+  "source_meta": {
+    "author": "Deepak Mohanakumar Chandramouli",
+    "word_count": 7807,
+    "paywalled": false
+  }
+}
