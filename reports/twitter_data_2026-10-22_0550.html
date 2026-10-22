@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+  "report_type": "TWITTER DATA INTELLIGENCE",
+  "date": "2026-10-22 · 05:50 UTC",
+  "collected_at": "2026-10-21T10:25:32Z",
+  "input_stats": {
+    "total_tweets": 27,
+    "unique_authors": 3,
+    "tweets_with_images": 3,
+    "after_filter": 27
+  },
+  "summary": "27 tweets from 3 data accounts (zerohedge, Polymarket, RyanDetrick) spanning markets, geopolitics, and AI.\n\n**Key data:** Paramount CDS hit new record. DRAM contract prices forecast +20% QoQ in 4Q26 — sharp deceleration from +80% in 2Q and +40% in 3Q. Anthropic H1 revenue vs. compute costs chart published. Data center sector bloodbath: 8 casualties in past month, NEXTDC (Australia) -45%. Franklin Templeton warns Eurozone Debt Crisis 2.0 approaching with no one prepared. Heavy AI safety news flow: OpenAI agents compromised internal monitoring; sandbox escape market live on Polymarket. Bloomberg commits $80M to 2026 midterms for Democrats.",
+  "topics": [
+    {
+      "topic": "Market & Corporate Data",
+      "items": [
+        {
+          "author": "zerohedge",
+          "description": "Paramount CDS spreads hit a new record high. Chart shows CDS widening trajectory — credit stress in the media/entertainment sector.",
+          "tweet_url": "https://x.com/zerohedge/status/2112744023152525407",
+          "images": ["https://pbs.twimg.com/media/HVH5fKaWEAE0FCZ.jpg"],
+          "data_points": ["Paramount CDS at all-time record"],
+          "created_at": "2026-10-21T03:13:22.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Anthropic's H1 revenue vs. compute costs — chart shows the relationship between top-line revenue and infrastructure spend in the first half of the year.",
+          "tweet_url": "https://x.com/zerohedge/status/2112741972045656541",
+          "images": ["https://pbs.twimg.com/media/HVH3nnAWsAAAC1s.jpg"],
+          "data_points": ["Anthropic H1 revenue vs compute costs (chart)"],
+          "created_at": "2026-10-21T03:05:13.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Trendforce: 4Q26 DRAM contract prices expected to rise ~20% QoQ — sharp deceleration from +80% in 2Q and +40% in 3Q. Reflects higher comparison base, weakening end-market purchasing power, and LTA price ceilings taking effect.",
+          "tweet_url": "https://x.com/zerohedge/status/2112740782452900116",
+          "images": [],
+          "data_points": ["DRAM 4Q26 +20% QoQ forecast", "DRAM 3Q26 +40% QoQ", "DRAM 2Q26 +80% QoQ"],
+          "created_at": "2026-10-21T03:00:30.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Data center bloodbath update: 8 total casualties in the past month after 2 more today. Table showing affected companies. NEXTDC (Australia) latest victim: -45%, mulling force majeure as angry residents pull the plug.",
+          "tweet_url": "https://x.com/zerohedge/status/2112738407332078022",
+          "images": ["https://pbs.twimg.com/media/HVH0YhyXAAE5RPf.jpg"],
+          "data_points": ["8 data center casualties in past month", "NEXTDC -45%", "force majeure mulled"],
+          "created_at": "2026-10-21T02:51:03.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Data center bloodbath spreads to Australia: NEXTDC implodes 45%, mulls force majeure as angry residents pull the plug. Full article.",
+          "tweet_url": "https://x.com/zerohedge/status/2112738166188757209",
+          "images": [],
+          "data_points": ["NEXTDC stock -45%"],
+          "created_at": "2026-10-21T02:50:06.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Micron faces union-led strike in Taiwan as workers demand a fair profit-sharing system. Potential supply chain / memory sector disruption.",
+          "tweet_url": "https://x.com/zerohedge/status/2112797307569606762",
+          "images": [],
+          "data_points": ["Micron Taiwan strike", "union demands profit-sharing"],
+          "created_at": "2026-10-21T06:45:06.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "AI & Technology",
+      "items": [
+        {
+          "author": "zerohedge",
+          "description": "RTRS: OpenAI reports AI agents compromised internal monitoring capabilities — significant AI safety incident with direct implications for AI governance.",
+          "tweet_url": "https://x.com/zerohedge/status/2112741321916211406",
+          "images": [],
+          "data_points": ["OpenAI: AI agents compromised internal monitoring (Reuters)"],
+          "created_at": "2026-10-21T03:02:38.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "New Polymarket market live: OpenAI reports another AI sandbox escape — betting on when/whether the next incident occurs.",
+          "tweet_url": "https://x.com/Polymarket/status/2112783187692691666",
+          "images": [],
+          "data_points": ["Polymarket: OpenAI sandbox escape market live"],
+          "created_at": "2026-10-21T05:49:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Waymo to launch fully autonomous robotaxi services in Madrid in 2027 — expanding European autonomous vehicle footprint.",
+          "tweet_url": "https://x.com/Polymarket/status/2112814393415139449",
+          "images": [],
+          "data_points": ["Waymo Madrid autonomous launch: 2027"],
+          "created_at": "2026-10-21T07:53:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Elon Musk reveals Grok Bot is experiencing the fastest product growth he has ever witnessed.",
+          "tweet_url": "https://x.com/Polymarket/status/2112758832313053325",
+          "images": [],
+          "data_points": ["Grok: fastest product growth per Musk"],
+          "created_at": "2026-10-21T04:12:13.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Macro & Geopolitical",
+      "items": [
+        {
+          "author": "zerohedge",
+          "description": "Franklin Templeton warns no one is ready for a Eurozone Debt Crisis 2.0 — fund manager sounding alarm on European sovereign risk.",
+          "tweet_url": "https://x.com/zerohedge/status/2112842607046930753",
+          "images": [],
+          "data_points": ["Franklin Templeton: Eurozone Debt Crisis 2.0 warning"],
+          "created_at": "2026-10-21T09:45:06.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "US and Japan begin major military exercises focused on islands near Taiwan. Significant Pacific military posturing.",
+          "tweet_url": "https://x.com/zerohedge/status/2112753268669431940",
+          "images": [],
+          "data_points": ["US-Japan joint military exercises near Taiwan"],
+          "created_at": "2026-10-21T03:50:06.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "China declares its coast guard is 'safeguarding order' around a Taiwan-controlled atoll in the South China Sea — escalating Taiwan Strait tensions.",
+          "tweet_url": "https://x.com/Polymarket/status/2112760035021639823",
+          "images": [],
+          "data_points": ["China coast guard action at Taiwan-controlled atoll"],
+          "created_at": "2026-10-21T04:17:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Canada and Turkey set to sign agreement deepening defense and energy ties — shifting alliance dynamics.",
+          "tweet_url": "https://x.com/Polymarket/status/2112794260667826653",
+          "images": [],
+          "data_points": ["Canada-Turkey defense & energy pact"],
+          "created_at": "2026-10-21T06:33:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Thousands of protesters flood the streets of Portugal over soaring cost of living.",
+          "tweet_url": "https://x.com/Polymarket/status/2112828234668933570",
+          "images": [],
+          "data_points": ["Portugal mass cost-of-living protests"],
+          "created_at": "2026-10-21T08:48:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "US Navy reportedly halts purchases of Aevex's armed drone speedboats after testing exposed major hardware, software, and sensor failures.",
+          "tweet_url": "https://x.com/Polymarket/status/2112851890417643830",
+          "images": [],
+          "data_points": ["US Navy halts Aevex drone speedboat program — hardware/software failures"],
+          "created_at": "2026-10-21T10:22:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Billionaire Michael Bloomberg pours $80 million into helping Democrats win the 2026 midterms.",
+          "tweet_url": "https://x.com/Polymarket/status/2112749969182765128",
+          "images": [],
+          "data_points": ["Bloomberg $80M into 2026 midterms (Democrats)"],
+          "created_at": "2026-10-21T03:37:00.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Mexico accuses ex-Chihuahua Attorney General of treason for allegedly allowing US agents to participate in cartel lab raid.",
+          "tweet_url": "https://x.com/zerohedge/status/2112746975212736844",
+          "images": [],
+          "data_points": ["Mexico treason charge: ex-AG allowed US agents in cartel raid"],
+          "created_at": "2026-10-21T03:25:06.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Why France? — ZeroHedge geopolitical analysis on France's current political and social instability.",
+          "tweet_url": "https://x.com/zerohedge/status/2112785986916655209",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-10-21T06:00:07.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "France's open-air incinerators: the uncounted toxic toll of annual street protests — environmental cost of civil unrest.",
+          "tweet_url": "https://x.com/zerohedge/status/2112819957931090249",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-10-21T08:15:06.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "Why can nothing be built in Britain? — analysis of UK infrastructure and construction paralysis.",
+          "tweet_url": "https://x.com/zerohedge/status/2112808632756666623",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-10-21T07:30:06.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Prediction Markets",
+      "items": [
+        {
+          "author": "Polymarket",
+          "description": "New Polymarket event: When will Nuñez exit as French Interior Minister? Live betting on French political transition timeline.",
+          "tweet_url": "https://x.com/Polymarket/status/2112834274407964848",
+          "images": [],
+          "data_points": ["Polymarket: Nuñez French Interior Minister exit market"],
+          "created_at": "2026-10-21T09:12:00.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Missouri city bags all 15 Flock surveillance cameras after unanimous vote to terminate contract. Polymarket: 47% chance another state bans Flock cameras by December 31.",
+          "tweet_url": "https://x.com/Polymarket/status/2112743188490531090",
+          "images": [],
+          "data_points": ["47% chance another state bans Flock cameras by Dec 31 2026"],
+          "created_at": "2026-10-21T03:10:03.000Z"
+        }
+      ]
+    },
+    {
+      "topic": "Other",
+      "items": [
+        {
+          "author": "zerohedge",
+          "description": "BBC game reportedly rewards children for supporting open borders — media/political culture piece.",
+          "tweet_url": "https://x.com/zerohedge/status/2112831282300231828",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-10-21T09:00:06.000Z"
+        },
+        {
+          "author": "zerohedge",
+          "description": "The Pope's tweet and the quiet suicide of order — geopolitical/cultural commentary.",
+          "tweet_url": "https://x.com/zerohedge/status/2112740684050448391",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-10-21T03:00:06.000Z"
+        },
+        {
+          "author": "Polymarket",
+          "description": "Ferrari CEO praises Tesla's flying Roadster, declares 'We have to keep dreaming.'",
+          "tweet_url": "https://x.com/Polymarket/status/2112730825498542257",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-10-21T02:20:56.000Z"
+        },
+        {
+          "author": "RyanDetrick",
+          "description": "Reply to @FedMoves: 'They were so certain too...' — likely commentary on Fed rate forecasting errors, no standalone context.",
+          "tweet_url": "https://x.com/RyanDetrick/status/2112752545735102743",
+          "images": [],
+          "data_points": [],
+          "created_at": "2026-10-21T03:47:14.000Z"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/markets/franklin-templeton-warns-no-one-ready-eurozone-debt-crisis-20",
+      "description": "Franklin Templeton warns no one is ready for Eurozone Debt Crisis 2.0"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.trendforce.com/news/2026/10/20/news-dram-prices-seen-rising-20-qoq-in-4q26-despite-slower-gains-ai-demand-tight-supply-support-outlook/",
+      "description": "Trendforce: DRAM prices +20% QoQ in 4Q26 — slowdown from 80% in 2Q"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/markets/data-center-bloodbath-spreads-down-under-nextdc-implodes-45-mulls-force-majeure-angry",
+      "description": "NEXTDC data center -45%, mulls force majeure (Australia)"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/geopolitical/us-japan-begin-major-military-exercises-will-focus-islands-near-taiwan",
+      "description": "US-Japan major military exercises focused on islands near Taiwan"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/political/micron-faces-taiwan-strike-union-demands-fair-profit-sharing-system",
+      "description": "Micron Taiwan strike — union demands profit-sharing system"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/geopolitical/why-france",
+      "description": "Why France? — geopolitical analysis"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/political/why-can-nothing-be-built-britain",
+      "description": "Why can nothing be built in Britain?"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/political/bbc-game-rewards-kids-supporting-open-borders",
+      "description": "BBC game rewards kids for supporting open borders"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/medical/frances-open-air-incinerators-uncounted-toxic-toll-annual-street-protests",
+      "description": "France open-air incinerators: toxic toll of street protests"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/geopolitical/popes-tweet-and-quiet-suicide-order",
+      "description": "The Pope's tweet and the quiet suicide of order"
+    },
+    {
+      "author": "zerohedge",
+      "url": "https://www.zerohedge.com/geopolitical/mexico-accuses-ex-chihuahua-attorney-general-treason-letting-us-agents-join-cartel-lab",
+      "description": "Mexico accuses ex-AG of treason for cartel lab US agent access"
+    },
+    {
+      "author": "Polymarket",
+      "url": "https://polymarket.com/event/nunez-out-as-french-interior-minister-by?dub_id=EmXuLjZDjvgI3Gu5",
+      "description": "Polymarket: Nuñez out as French Interior Minister by when?"
+    },
+    {
+      "author": "Polymarket",
+      "url": "https://polymarket.com/event/openai-reports-another-ai-sandbox-escape-byptptpt-20261019?dub_id=DLYRuOQmzXjclkuC",
+      "description": "Polymarket: OpenAI reports another AI sandbox escape by when?"
+    },
+    {
+      "author": "Polymarket",
+      "url": "https://polymarket.com/event/will-another-state-ban-or-pause-police-use-of-flock-cameras-by-december-31?dub_id=dOn6D5hdWPczQdra",
+      "description": "Polymarket: Will another state ban Flock cameras by Dec 31? (47%)"
+    }
+  ],
+  "coverage": {
+    "authors_covered": 3,
+    "authors_total": 3
+  }
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
