@@ -1,0 +1,284 @@
+{
+  "record_id": "f9b499debdda31c0",
+  "source_type": "technology",
+  "source_name": "Hugging Face Blog",
+  "source_url": "https://huggingface.co/blog/amazon/profiling-torchneuron-part-1",
+  "title": "Profiling TorchNeuron (Part 1): System-level profiling on AWS Trainium.",
+  "published_date": "2026-10-21",
+  "language": "en",
+  "processed_at": "2026-10-23T11:15:52Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "Tech",
+    "AI"
+  ],
+  "gist": "Amazon tutorial on profiling PyTorch workloads on AWS Trainium via the TorchNeuron backend, using torch.profiler and Neuron Explorer. For RMSNorm, a naive eager implementation uses 2,355 microseconds of Neuron device time across 6 operator calls, versus 403 microseconds for torch.rms_norm and 376 microseconds for torch.compile, each a single fused dispatch.",
+  "themes": [
+    {
+      "theme": "TorchNeuron backend on Trainium",
+      "insights": [
+        {
+          "claim": "AWS Trainium is a purpose-built AI chip for deep learning training and inference, and TorchNeuron is its open source native PyTorch backend supporting eager execution, torch.compile and standard PyTorch APIs with minimal code changes.",
+          "speaker": "Josh Longenecker",
+          "type": "data_point",
+          "entities": [
+            "AWS Trainium",
+            "TorchNeuron",
+            "PyTorch",
+            "torch.compile"
+          ],
+          "conviction": "high",
+          "so_what": "Native PyTorch support lowers migration cost from NVIDIA GPUs to Trainium.",
+          "quote": "TorchNeuron supports standard PyTorch workflows on Trainium, including eager execution, torch.compile, and standard PyTorch APIs, with minimal code changes.",
+          "locator": "opening",
+          "quote_verified": true
+        },
+        {
+          "claim": "TorchNeuron integrates with the Neuron Kernel Interface (NKI) to enable custom operators and performance optimization for Trainium hardware.",
+          "speaker": "Josh Longenecker",
+          "type": "data_point",
+          "entities": [
+            "Neuron Kernel Interface",
+            "NKI",
+            "Trainium"
+          ],
+          "conviction": "medium",
+          "so_what": "NKI is the escape hatch for hand-tuned kernels, analogous to custom CUDA work.",
+          "quote": "TorchNeuron integrates with Neuron Kernel Interface (NKI) to enable custom operators and performance optimization for Trainium hardware.",
+          "locator": "opening",
+          "quote_verified": true
+        },
+        {
+          "claim": "The Neuron backend uses PyTorch's PrivateUse1 extension point, which lets an accelerator integrate with the framework without adding a dedicated dispatch key such as cuda, via the torch_neuronx package.",
+          "speaker": "Josh Longenecker",
+          "type": "framework",
+          "entities": [
+            "PrivateUse1",
+            "torch_neuronx",
+            "PyTorch"
+          ],
+          "conviction": "high",
+          "so_what": "Upstream-sanctioned extension mechanism makes the backend more maintainable than a fork.",
+          "quote": "The Neuron backend uses PyTorch's PrivateUse1 extension point.",
+          "locator": "Neuron as a PyTorch Backend",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Profiling setup and tooling",
+      "insights": [
+        {
+          "claim": "Profiling a Neuron workload uses NeuronConfig to choose data streams and NeuronCores and NeuronProfiler to export traces, passing ProfilerActivity.PrivateUse1 to torch.profiler and setting correlate_device_time=True so the key_averages() table shows Neuron device time.",
+          "speaker": "Josh Longenecker",
+          "type": "framework",
+          "entities": [
+            "NeuronConfig",
+            "NeuronProfiler",
+            "torch.profiler",
+            "key_averages"
+          ],
+          "conviction": "high",
+          "so_what": "A practical recipe for getting device-level timing out of Trainium.",
+          "quote": "Setting correlate_device_time=True propagates device time from the trace into the key_averages() table",
+          "locator": "Set Up the Profiler",
+          "quote_verified": true
+        },
+        {
+          "claim": "Without calling torch.neuron.synchronize() inside the profiler loop, the profiler can export before the device finishes and leave the Neuron time column empty.",
+          "speaker": "Josh Longenecker",
+          "type": "causal",
+          "entities": [
+            "torch.neuron.synchronize",
+            "torch.profiler"
+          ],
+          "conviction": "high",
+          "so_what": "A common pitfall that produces misleading blank profiles.",
+          "quote": "Without this synchronization, the profiler can export before the device finishes and leave the Neuron time column empty.",
+          "locator": "Profile 1: Naive PyTorch Operations",
+          "quote_verified": true
+        },
+        {
+          "claim": "Neuron Explorer is a browser-based viewer for system trace, device timeline and per-engine breakdown, and profiles use paired .neff (compiled executable) and .ntff (hardware instruction trace) files sharing a numeric hash.",
+          "speaker": "Josh Longenecker",
+          "type": "data_point",
+          "entities": [
+            "Neuron Explorer",
+            "NEFF",
+            "NTFF"
+          ],
+          "conviction": "medium",
+          "so_what": "Profiling tooling maturity is relevant to Trainium's developer experience versus GPU profilers.",
+          "quote": "Neuron Explorer is a browser-based viewer for the system trace, device timeline, and per-engine breakdown.",
+          "locator": "Tooling: Neuron Explorer",
+          "quote_verified": true
+        },
+        {
+          "claim": "In Neuron Explorer each ATen operation follows the same lifecycle: creation in the framework lane, scheduling in the runtime lane as nrta_execute_schedule, and device execution in the hardware lane as nc_exec_running, and a dependency chain viewer traces one op across lanes.",
+          "speaker": "Josh Longenecker",
+          "type": "framework",
+          "entities": [
+            "Neuron Explorer",
+            "nrta_execute_schedule",
+            "nc_exec_running"
+          ],
+          "conviction": "medium",
+          "so_what": "Lets engineers localize latency to dispatch, scheduling or execution.",
+          "quote": "Each ATen operation follows the same pattern",
+          "locator": "Read the Trace in Explorer",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "RMSNorm profiling results",
+      "insights": [
+        {
+          "claim": "In eager mode, naive RMSNorm built from individual PyTorch ops spends 2.355 ms of Neuron device time, with the three aten::mul calls accounting for 1,164.5 microseconds or 49.5%, aten::add 434.6 microseconds, aten::rsqrt 415.0 microseconds and aten::mean 340.8 microseconds.",
+          "speaker": "Josh Longenecker",
+          "type": "data_point",
+          "entities": [
+            "RMSNorm",
+            "aten::mul",
+            "aten::add",
+            "aten::rsqrt",
+            "aten::mean"
+          ],
+          "conviction": "high",
+          "so_what": "Shows how many small unfused ops dominate device time on this backend.",
+          "quote": "The key averages table shows that three aten::mul calls account for the largest share of Neuron device time.",
+          "locator": "Profile 1: Naive PyTorch Operations",
+          "quote_verified": true
+        },
+        {
+          "claim": "aten::add triggers a host-to-device copy because the epsilon scalar starts on the CPU, an overhead that appears in the full key_averages() output.",
+          "speaker": "Josh Longenecker",
+          "type": "causal",
+          "entities": [
+            "aten::add",
+            "host-to-device copy"
+          ],
+          "conviction": "medium",
+          "so_what": "Hidden transfers inflate cost of tiny ops and are only visible through profiling.",
+          "quote": "aten::add adds the epsilon value and triggers a host-to-device copy because the scalar starts on the CPU.",
+          "locator": "Profile 1: Naive PyTorch Operations",
+          "quote_verified": true
+        },
+        {
+          "claim": "torch.rms_norm lowers to a single fused Neuron kernel (aten::_fused_rms_norm) with 403.3 microseconds of device time and about 48 microseconds of CPU time versus about 125 microseconds for the naive version.",
+          "speaker": "Josh Longenecker",
+          "type": "data_point",
+          "entities": [
+            "torch.rms_norm",
+            "aten::_fused_rms_norm"
+          ],
+          "conviction": "high",
+          "so_what": "Using built-in fused ops is a free performance win on Trainium.",
+          "quote": "Neuron lowers the operation to one fused kernel",
+          "locator": "Profile 2: torch.rms_norm",
+          "quote_verified": true
+        },
+        {
+          "claim": "Compiling the naive RMSNorm with torch.compile(backend='neuron') produces one Torch-Compiled Region and one NEFF with 375.5 microseconds of device time and 98.4 microseconds of CPU time, comparable to the hand-fused torch.rms_norm at 403 microseconds.",
+          "speaker": "Josh Longenecker",
+          "type": "data_point",
+          "entities": [
+            "torch.compile",
+            "Neuron backend",
+            "NEFF",
+            "TorchDynamo"
+          ],
+          "conviction": "high",
+          "so_what": "The compiler discovers fusion automatically, so developers need not rewrite model code to use fused kernels.",
+          "quote": "the compiler discovers the fusion from the original Python function",
+          "locator": "Profile 3: Naive PyTorch with torch.compile",
+          "quote_verified": true
+        },
+        {
+          "claim": "Both torch.rms_norm and torch.compile take about one-sixth of the naive implementation's device time because fusion removes gaps between hardware executions and avoids materializing intermediates like x_sq and mean_sq.",
+          "speaker": "Josh Longenecker",
+          "type": "causal",
+          "entities": [
+            "kernel fusion",
+            "RMSNorm"
+          ],
+          "conviction": "high",
+          "so_what": "Kernel fusion and avoiding intermediate tensors are the main lever for inference performance on Trainium.",
+          "quote": "Fusion removes the gaps between hardware executions",
+          "locator": "Side-by-Side Summary",
+          "quote_verified": true
+        },
+        {
+          "claim": "With TorchDynamo capturing an FX graph and AOTAutograd lowering to ATen ops, the Neuron backend receives the complete graph, fuses operations, optimizes memory access and compiles it into a single NEFF that runs as one hardware dispatch.",
+          "speaker": "Josh Longenecker",
+          "type": "framework",
+          "entities": [
+            "TorchDynamo",
+            "AOTAutograd",
+            "FX graph",
+            "Neuron backend"
+          ],
+          "conviction": "medium",
+          "so_what": "Explains the compile path that Trainium users depend on for efficiency.",
+          "quote": "The artifact runs as one hardware dispatch.",
+          "locator": "Profile 3: Naive PyTorch with torch.compile",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Method and series roadmap",
+      "insights": [
+        {
+          "claim": "The recommended profiling workflow is to find a hotspot in the key_averages() table, verify it in the trace, and then determine whether a fused operation or torch.compile can reduce its cost, and it applies to larger models.",
+          "speaker": "Josh Longenecker",
+          "type": "framework",
+          "entities": [
+            "key_averages",
+            "Neuron Explorer",
+            "torch.compile"
+          ],
+          "conviction": "high",
+          "so_what": "A repeatable method for optimizing inference on Trainium.",
+          "quote": "find a hotspot in the table, verify it in the trace, and then determine whether a fused operation or torch.compile can reduce its cost",
+          "locator": "Conclusion",
+          "quote_verified": true
+        },
+        {
+          "claim": "Part 2 of the series will move to device-level profiling: opening the NEFF, inspecting TensorEngine, VectorEngine and DMA breakdown, and placing the kernel on the roofline to decide if it is compute-bound or memory-bound.",
+          "speaker": "Josh Longenecker",
+          "type": "prediction",
+          "entities": [
+            "TensorEngine",
+            "VectorEngine",
+            "DMA",
+            "roofline"
+          ],
+          "conviction": "medium",
+          "so_what": "Signals upcoming deeper hardware-level content on Trainium engines.",
+          "quote": "place the kernel on the roofline to determine whether it is compute-bound or memory-bound",
+          "locator": "Conclusion",
+          "quote_verified": true
+        }
+      ]
+    }
+  ],
+  "insight_total": 15,
+  "top_entities": [
+    "AWS Trainium",
+    "TorchNeuron",
+    "PyTorch",
+    "Neuron Explorer",
+    "NKI",
+    "torch.compile",
+    "RMSNorm",
+    "NEFF",
+    "torch.profiler",
+    "PrivateUse1"
+  ],
+  "source_meta": {
+    "author": "Josh Longenecker",
+    "word_count": 1838,
+    "paywalled": false
+  }
+}
