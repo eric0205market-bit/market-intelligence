@@ -1,0 +1,344 @@
+{
+  "record_id": "37551a5f138f8467",
+  "source_type": "technology",
+  "source_name": "InfoQ",
+  "source_url": "https://www.infoq.com/articles/spring-batch-without-broker/",
+  "title": "Distributed Spring Batch Without a Message Broker",
+  "published_date": "2026-10-21",
+  "language": "en",
+  "processed_at": "2026-10-23T11:17:50Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "Tech"
+  ],
+  "gist": "Janardhan Reddy Chejarla shows how to scale Spring Batch horizontally using only the relational database it already needs, replacing the message broker of remote partitioning with SQL tables, per-job masters, compare-and-set partition claims and a two-phase heartbeat failover. It targets roughly two to twenty nodes, with an explicit at-least-once vs at-most-once contract and database contention as the ceiling.",
+  "themes": [
+    {
+      "theme": "Why drop the broker",
+      "insights": [
+        {
+          "claim": "Spring Batch's standard answer to scaling past one machine is remote partitioning over a broker such as Kafka, RabbitMQ or JMS, but a broker is an extra operational tier that many teams would not otherwise run and have little appetite to stand up, secure and monitor just to fan out batch partitions.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "thesis",
+          "entities": [
+            "Spring Batch",
+            "Apache Kafka",
+            "RabbitMQ",
+            "JMS"
+          ],
+          "conviction": "high",
+          "so_what": "Operational simplicity and cost drive a database-only alternative for mid-sized batch clusters.",
+          "quote": null,
+          "locator": "Remote partitioning is a proven approach.",
+          "quote_verified": false
+        },
+        {
+          "claim": "Distributed batch must answer four questions (how to divide work, who is in charge, how a worker owns a partition without duplication, and what happens when a node dies), which a broker answers implicitly and a broker-free design must answer explicitly in SQL.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "framework",
+          "entities": [
+            "Spring Batch",
+            "broker"
+          ],
+          "conviction": "high",
+          "so_what": "Removing middleware moves requirements into your code rather than deleting them.",
+          "quote": null,
+          "locator": "If you reduce the distributed batch to its essentials",
+          "quote_verified": false
+        },
+        {
+          "claim": "The design uses the database Spring Batch already requires as the sole coordination plane, with no ZooKeeper, so all cluster state lives in ordinary SQL tables and can be inspected with a SELECT.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "data_point",
+          "entities": [
+            "Apache ZooKeeper",
+            "SQL"
+          ],
+          "conviction": "high",
+          "so_what": "Debugging stuck runs becomes a SQL query rather than a broker console task.",
+          "quote": "the whole cluster is inspectable with a SELECT statement",
+          "locator": "The design treats the database Spring Batch already needs",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Architecture and integration",
+      "insights": [
+        {
+          "claim": "Three tables augment Spring Batch's schema: BATCH_NODES (registry, status, heartbeat, load), BATCH_PARTITIONS (partition lifecycle pending/claimed/completed/failed with assigned node and transferability) and BATCH_JOB_COORDINATION (job execution to master binding).",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "data_point",
+          "entities": [
+            "BATCH_NODES",
+            "BATCH_PARTITIONS",
+            "BATCH_JOB_COORDINATION"
+          ],
+          "conviction": "high",
+          "so_what": "The small schema footprint makes the pattern easy to audit and adopt.",
+          "quote": null,
+          "locator": "Three tables augment Spring Batch’s own schema.",
+          "quote_verified": false
+        },
+        {
+          "claim": "There is no standing cluster master: the node that launches a job becomes master for that execution only, so losing a master affects one job rather than the cluster and no leader election is needed.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "thesis",
+          "entities": [
+            "master",
+            "leader election"
+          ],
+          "conviction": "high",
+          "so_what": "Per-job mastership avoids the single point of failure that dropping the broker was meant to eliminate.",
+          "quote": "There is no coordinator to elect and none to lose.",
+          "locator": "Coordination is decentralized by design.",
+          "quote_verified": true
+        },
+        {
+          "claim": "The approach plugs into Spring Batch's existing Partitioner and PartitionHandler extension points, so a developer changes only two beans and the worker step, aggregator and restart behaviour remain standard.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "data_point",
+          "entities": [
+            "Partitioner",
+            "PartitionHandler",
+            "StepExecutionAggregator"
+          ],
+          "conviction": "high",
+          "so_what": "Low code-change cost improves adoption odds in existing Spring Batch estates.",
+          "quote": "That partitionHandler(...) line is the whole seam.",
+          "locator": "That covers the manager.",
+          "quote_verified": true
+        },
+        {
+          "claim": "The database still has to be a shared durable job repository, since partition payloads are exchanged across JVMs, a requirement that remote partitioning also has because its broker carries only a pointer; the design removes the broker, not the repository.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "data_point",
+          "entities": [
+            "JobRepository",
+            "ExecutionContext"
+          ],
+          "conviction": "high",
+          "so_what": "The shared database becomes a dependency to run at high standard.",
+          "quote": "What this design removes is the broker, not the repository.",
+          "locator": "One thing this design does not remove",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Sizing, assignment and claiming",
+      "insights": [
+        {
+          "claim": "Standard remote partitioning chooses grid size blind, often a fixed constant, whereas here the master queries live nodes first and passes the count to the partitioner so the split matches the cluster at that instant.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "contrarian",
+          "entities": [
+            "partitioner",
+            "remote partitioning"
+          ],
+          "conviction": "high",
+          "so_what": "Capacity-aware splitting avoids idle nodes or excess overhead.",
+          "quote": null,
+          "locator": "Standard remote partitioning splits work before it knows how much capacity exists",
+          "quote_verified": false
+        },
+        {
+          "claim": "Partitions are assigned by round-robin, fixed-node-count or least-loaded strategies, but assignment is fixed at placement, so a node that finishes early does not pull work from a slower peer, trading away the runtime rebalancing a broker's pull semantics give for free.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "causal",
+          "entities": [
+            "round-robin",
+            "least-loaded"
+          ],
+          "conviction": "high",
+          "so_what": "Straggler nodes can lengthen job time; a known cost of the design.",
+          "quote": null,
+          "locator": "An assignment strategy then maps those partitions onto nodes",
+          "quote_verified": false
+        },
+        {
+          "claim": "A single guarded UPDATE with a WHERE clause on assigned_node and status IN ('PENDING','CLAIMED') drives claim, complete and fail transitions, so a late write cannot move a terminal or reassigned partition and exactly one competing write takes effect.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "framework",
+          "entities": [
+            "compare-and-set",
+            "batch_partitions"
+          ],
+          "conviction": "high",
+          "so_what": "Compare-and-set row transitions replace queue-delivery guarantees, enabling correctness without a broker.",
+          "quote": null,
+          "locator": "The WHERE clause is the whole point.",
+          "quote_verified": false
+        },
+        {
+          "claim": "The design is not a SELECT ... FOR UPDATE SKIP LOCKED pull queue because partitions are preassigned, so the guarded update governs lifecycle rather than dispatch.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "contrarian",
+          "entities": [
+            "SKIP LOCKED"
+          ],
+          "conviction": "high",
+          "so_what": "Preassignment avoids lock contention on the claim path.",
+          "quote": null,
+          "locator": "This is not a contended pull-queue",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Failure handling",
+      "insights": [
+        {
+          "claim": "Heartbeats use the database clock so liveness is unaffected by clock skew between machines, and every node runs cleanup sweeps while each job's own master reassigns removed nodes' partitions.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "data_point",
+          "entities": [
+            "heartbeat"
+          ],
+          "conviction": "high",
+          "so_what": "Using one time source avoids false failovers from skew.",
+          "quote": null,
+          "locator": "Nodes fail.",
+          "quote_verified": false
+        },
+        {
+          "claim": "Recovery is two-phase: a node stale beyond ten seconds is marked unreachable and beyond thirty seconds is removed, with the grace window absorbing garbage collection pauses and network blips so only sustained absence triggers reassignment.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "framework",
+          "entities": [
+            "unreachable",
+            "grace period"
+          ],
+          "conviction": "high",
+          "so_what": "Thresholds tune the trade-off between fast recovery and spurious failover.",
+          "quote": null,
+          "locator": "Recovery is a two-phase process",
+          "quote_verified": false
+        },
+        {
+          "claim": "Transferability is declared per partition as a contract: transferable work is at-least-once and must be idempotent, while non-transferable work is at-most-once and is failed rather than moved, such as appending to an external ledger or calling a pay-once API.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "framework",
+          "entities": [
+            "idempotent",
+            "at-least-once",
+            "at-most-once"
+          ],
+          "conviction": "high",
+          "so_what": "Engineers must classify each partition's idempotency; mistakes cause duplicate side effects.",
+          "quote": "transferability is declared, not inferred",
+          "locator": "Treat Transferability as a Contract, Not a Hint",
+          "quote_verified": true
+        },
+        {
+          "claim": "Fencing, where a node losing its heartbeat stops claiming and aborts claimed partitions, is only best effort since a hard-paused JVM can wake and finish reassigned work, so transferable work must truly be idempotent; the system never silently loses a partition.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "causal",
+          "entities": [
+            "fencing",
+            "JVM"
+          ],
+          "conviction": "high",
+          "so_what": "Never rely on fencing alone for correctness.",
+          "quote": null,
+          "locator": "A node that loses its own heartbeat stops claiming work",
+          "quote_verified": false
+        },
+        {
+          "claim": "Master failure is handled by fail-and-restart: a surviving node atomically claims a stranded job and marks it failed, so restarts must be idempotent and non-transferable work needs reconciliation on restart, while automatic takeover remains on the roadmap.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "data_point",
+          "entities": [
+            "master failure"
+          ],
+          "conviction": "medium",
+          "so_what": "Master loss still means job restart, a limitation versus resume-in-place.",
+          "quote": null,
+          "locator": "Worker failure is automatic, but master failure is harder.",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Limits and alternatives",
+      "insights": [
+        {
+          "claim": "The pattern targets roughly two to twenty nodes, and the ceiling is database contention because heartbeats, polling and status updates grow with node count and job concurrency and compete with the workload for connections and I/O.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "data_point",
+          "entities": [
+            "database contention"
+          ],
+          "conviction": "high",
+          "so_what": "Load-test within your own range before adopting; beyond it use a broker.",
+          "quote": null,
+          "locator": "The pattern targets roughly two to twenty nodes",
+          "quote_verified": false
+        },
+        {
+          "claim": "Choose a broker for many dozens of nodes, sub-second coordination latency, an existing streaming backbone, or work that maps to broker delivery and ordering semantics; choose database coordination when the database is well-managed and simplicity and cost matter.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "framework",
+          "entities": [
+            "broker",
+            "database coordination"
+          ],
+          "conviction": "high",
+          "so_what": "A decision rule for infrastructure architecture trade-offs.",
+          "quote": null,
+          "locator": "Database coordination is not a universal replacement",
+          "quote_verified": false
+        },
+        {
+          "claim": "Neighbouring approaches differ: Spring Batch remote partitioning lacks live-worker awareness and automatic reassignment, the Spring Cloud Task deployer provisions a worker per partition via a platform like Kubernetes, and Quartz, db-scheduler and JobRunr coordinate via a database but target scheduling or general background jobs.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "data_point",
+          "entities": [
+            "Spring Cloud Task",
+            "Kubernetes",
+            "Quartz",
+            "db-scheduler",
+            "JobRunr"
+          ],
+          "conviction": "medium",
+          "so_what": "Positions the pattern in the field of batch and scheduling tools.",
+          "quote": null,
+          "locator": "It helps to place the database-coordinated approach against its neighbors.",
+          "quote_verified": false
+        },
+        {
+          "claim": "The author notes the design comes from his open-source framework spring-batch-db-cluster-partitioning, peer-reviewed and published in the Journal of Open Source Software.",
+          "speaker": "Janardhan Reddy Chejarla",
+          "type": "anecdote",
+          "entities": [
+            "spring-batch-db-cluster-partitioning",
+            "Journal of Open Source Software"
+          ],
+          "conviction": "high",
+          "so_what": "The evidence is a single author-built implementation, so independent validation is limited.",
+          "quote": null,
+          "locator": "The design described here is drawn from spring-batch-db-cluster-partitioning",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 20,
+  "top_entities": [
+    "Spring Batch",
+    "Apache Kafka",
+    "RabbitMQ",
+    "Apache ZooKeeper",
+    "PartitionHandler",
+    "BATCH_PARTITIONS",
+    "Spring Cloud Task",
+    "Kubernetes",
+    "Quartz",
+    "JobRunr"
+  ],
+  "source_meta": {
+    "author": "Janardhan Reddy Chejarla",
+    "word_count": 4917,
+    "paywalled": false
+  }
+}
