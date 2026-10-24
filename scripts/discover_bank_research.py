@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import collect_twitter as ct  # noqa: E402 — reuse the existing API client/plumbing
 
 # NET 1 — seed relayers (their own image tweets + their reposters' image tweets)
-SEEDS = ["neilksethi", "MikeZaccardi", "eliant_capital", "LanceRoberts",
+SEEDS = ["neilksethi", "neilsethinew", "MikeZaccardi", "eliant_capital", "LanceRoberts",
          "TheChartReport", "HFI_Research"]
 
 # NET 2 — distinctive research-report vocabulary ("Exhibit" kept but noisy)

@@ -6,6 +6,10 @@ import os
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 
+# Neil Sethi's handles (lowercase): @neilksethi was suspended by X; he restarted
+# as @neilsethinew. Neil's posts are kept even without a bank tag.
+NEIL_HANDLES = {'neilksethi', 'neilsethinew'}
+
 
 def norm_text(s):
     s = s.lower().strip()
@@ -44,7 +48,7 @@ def main():
     for t in considered:
         banks = t.get('banks', [])
         author = t.get('author_username', '').lower()
-        if banks or author == 'neilksethi':
+        if banks or author in NEIL_HANDLES:
             kept_raw.append(dict(t))  # shallow copy
 
     dropped_count = len(considered) - len(kept_raw)
@@ -91,7 +95,7 @@ def main():
         if banks:
             for b in banks:
                 bank_groups[b].append(t)
-        elif author == 'neilksethi':
+        elif author in NEIL_HANDLES:
             neil_general.append(t)
 
     bank_order = sorted(bank_groups.keys(), key=lambda b: (-len(bank_groups[b]), b))
@@ -188,8 +192,8 @@ def main():
     for t in final_kept:
         banks = t.get('banks', [])
         author = t.get('author_username', '').lower()
-        assert banks or author == 'neilksethi', \
-            f"FAIL: item {t.get('id')} has no banks and is not neilksethi"
+        assert banks or author in NEIL_HANDLES, \
+            f"FAIL: item {t.get('id')} has no banks and is not Neil ({sorted(NEIL_HANDLES)})"
         assert t.get('images'), \
             f"FAIL: item {t.get('id')} has no images"
     # by_bank_counts vs banks items
