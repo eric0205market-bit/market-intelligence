@@ -9,7 +9,7 @@ Collects recent IMAGE tweets from a curated set of bank-research relayer account
 (search by AUTHOR, never by bank keyword; no engagement filter), tags each tweet
 with the bank(s) named in its text, and writes a compact stream.
 
-Run:  GETXAPI_KEY=xxxxx python3 scripts/collect_bank_research.py [--days 5] [--max-pages 3]
+Run:  GETXAPI_KEY=xxxxx python3 scripts/collect_bank_research.py [--days 5] [--max-pages 6]
 """
 import argparse
 import datetime
@@ -76,7 +76,8 @@ def tag_banks(text):
 def main():
     ap = argparse.ArgumentParser(description="Bank-research relayer collection stream.")
     ap.add_argument("--days", type=int, default=5, help="lookback window, days")
-    ap.add_argument("--max-pages", type=int, default=3, help="pages per query")
+    # 6 pages x 20 = up to 120 tweets; 3 pages capped every run at exactly 60.
+    ap.add_argument("--max-pages", type=int, default=6, help="pages per query")
     args = ap.parse_args()
 
     api_key = os.environ.get("GETXAPI_KEY")
@@ -140,6 +141,10 @@ def main():
     raw_dir.mkdir(parents=True, exist_ok=True)
     (raw_dir / "bank_research.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Mark success too, not only failure — otherwise a past "fail" stays in the
+    # health file forever even after collections are fresh again.
+    ct.write_collection_health("ok", len(tweets), api_calls,
+                               script="collect_bank_research")
 
     # ---- stdout summary ----
     by_author = {}
