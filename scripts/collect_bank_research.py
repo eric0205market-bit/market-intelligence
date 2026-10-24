@@ -29,10 +29,14 @@ BANK_RESEARCH_ACCOUNTS = ["neilksethi", "neilsethinew", "MikeZaccardi", "LanceRo
 # Canonical bank -> tokens for deterministic tagging (case-insensitive, word-ish).
 # Prefixes like "BoA:"/"Goldman:" are caught (word-boundary start) along with
 # in-body mentions. A tweet may match several banks; none -> [].
+# A token may also be a pre-compiled regex, used as-is (no IGNORECASE) — for
+# short abbreviations that must match only in capitals as a whole word.
 BANK_TAGS = [
     ("BofA", ["BofA", "BoA", "Bank of America",
               "Hartnett", "Subramanian", "Bull & Bear", "FMS", "Fund Manager Survey"]),
-    ("Goldman", ["Goldman", "GS:", "GS ",
+    # "GS" as a standalone CAPITALS word: "GS:", "GS ", "... GS\nTop 10%",
+    # "GS," — but not lowercase "gs" inside ordinary text.
+    ("Goldman", ["Goldman", re.compile(r"\bGS\b"),
                  "Kostin", "Pasquariello", "Risk Appetite", "Sentiment Indicator",
                  "John Flood"]),
     ("Apollo/Slok", ["Apollo", "Slok"]),
@@ -63,7 +67,9 @@ BANK_TAGS = [
     ("Jefferies", ["Jefferies"]),
     ("PIMCO", ["PIMCO"]),
 ]
-_TAG_PATTERNS = [(name, [re.compile(r"\b" + re.escape(t), re.IGNORECASE) for t in toks])
+_TAG_PATTERNS = [(name, [t if isinstance(t, re.Pattern)
+                         else re.compile(r"\b" + re.escape(t), re.IGNORECASE)
+                         for t in toks])
                  for name, toks in BANK_TAGS]
 
 
