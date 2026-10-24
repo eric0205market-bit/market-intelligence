@@ -100,10 +100,10 @@ If any check fails, fix and re-verify before rendering.
 
 ## STEP 4 — FETCH TEMPLATE
 
-Reuse the Twitter Data report template (same image-first catalog style):
+Fetch the Twitter Bank Research report template:
 
 ```
-https://raw.githubusercontent.com/eric0205market-bit/market-intelligence/main/templates/twitter_data_report.html
+https://raw.githubusercontent.com/eric0205market-bit/market-intelligence/main/templates/twitter_bank_research_report.html
 ```
 
 In the template, find `__REPORT_DATA__` inside the `<script>` tag and replace with the JSON object from STEP 3 (raw object, not stringified).

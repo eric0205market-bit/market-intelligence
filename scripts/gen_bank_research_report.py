@@ -17,7 +17,7 @@ def norm_text(s):
 
 def main():
     data_path = '/home/user/market-intelligence/data/twitter/latest/tweets_bank_research.json'
-    tpl_path  = '/home/user/market-intelligence/templates/twitter_data_report.html'
+    tpl_path  = '/home/user/market-intelligence/templates/twitter_bank_research_report.html'
     out_dir   = '/home/user/market-intelligence/reports'
 
     with open(data_path, 'r', encoding='utf-8') as f:
