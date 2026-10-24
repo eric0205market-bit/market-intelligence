@@ -17,12 +17,9 @@ If the gate prints `FRESHNESS GATE FAILED` or exits non-zero, **STOP**: do not r
 
 ## STEP 1 — SELECT RESEARCH ITEMS (key filter)
 
-Read `data/twitter/latest/tweets_bank_research.json` ENTIRELY. Consider only tweets whose `created_at` is within the **last 4 days** of the file's `collected_at`. From the considered set, **KEEP** an item only if:
+Read `data/twitter/latest/tweets_bank_research.json` ENTIRELY. Consider only tweets whose `created_at` is within the **last 4 days** of the file's `collected_at`. From the considered set, **KEEP** an item only if its `banks` tag is non-empty (a canonical bank or strategist matched) — research; keep regardless of author, Neil included.
 
-  (a) its `banks` tag is non-empty (a canonical bank or strategist matched) — research; keep regardless of author; OR
-  (b) its `banks` tag is empty BUT `author_username` is one of `{neilksethi, neilsethinew}` (case-insensitive) — `@neilksethi` was suspended by X; `@neilsethinew` is his new account; treat both as Neil. His image tweets are almost all research; keep.
-
-**DROP** the rest. Rationale: empty-banks tweets from high-volume relayers like MikeZaccardi are price-chart / meme noise without a research signal.
+**DROP** the rest. Rationale: empty-banks tweets are price-chart / meme noise without a research signal.
 
 ## STEP 2 — CONTENT DEDUP
 
@@ -94,7 +91,7 @@ Top of the report — **SUMMARY** (4–6 lines): recurring themes across banks +
 
 - [ ] STEP 0 actually run and PASS reproduced verbatim at the top of the JSON output.
 - [ ] `kept + dropped == considered`; `considered ≤ total_tweets`.
-- [ ] Every KEPT item has `banks` non-empty OR `author_username` in `{neilksethi, neilsethinew}` (lowercased).
+- [ ] Every KEPT item has `banks` non-empty.
 - [ ] Every kept item carries ≥1 image.
 - [ ] `by_bank_counts` matches the sum of `items` in `banks`.
 - [ ] No paraphrasing in any `text` field.

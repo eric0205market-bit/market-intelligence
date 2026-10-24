@@ -6,10 +6,6 @@ import os
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 
-# Neil Sethi's handles (lowercase): @neilksethi was suspended by X; he restarted
-# as @neilsethinew. Neil's posts are kept even without a bank tag.
-NEIL_HANDLES = {'neilksethi', 'neilsethinew'}
-
 
 def norm_text(s):
     s = s.lower().strip()
@@ -46,9 +42,7 @@ def main():
     # STEP 1 — keep/drop filter
     kept_raw = []
     for t in considered:
-        banks = t.get('banks', [])
-        author = t.get('author_username', '').lower()
-        if banks or author in NEIL_HANDLES:
+        if t.get('banks', []):  # only bank-tagged tweets, any author
             kept_raw.append(dict(t))  # shallow copy
 
     dropped_count = len(considered) - len(kept_raw)
@@ -87,16 +81,10 @@ def main():
 
     # STEP 3 — group by bank
     bank_groups = defaultdict(list)
-    neil_general = []
 
     for t in final_kept:
-        banks = t.get('banks', [])
-        author = t.get('author_username', '').lower()
-        if banks:
-            for b in banks:
-                bank_groups[b].append(t)
-        elif author in NEIL_HANDLES:
-            neil_general.append(t)
+        for b in t.get('banks', []):
+            bank_groups[b].append(t)
 
     bank_order = sorted(bank_groups.keys(), key=lambda b: (-len(bank_groups[b]), b))
 
@@ -106,7 +94,6 @@ def main():
         'JPM':       'Dimon on market exuberance — "not bad" but risks flagged',
         'Ned Davis': 'Global debt ratios at 231% of GDP, back to pre-pandemic level',
     }
-    neil_theme = 'May/week/day market wrap — indices, BoJ/BoC policy, Asia outperformance, consumer prices'
 
     def make_item(t):
         item = {
@@ -130,12 +117,6 @@ def main():
             'topic': f'{b} — {themes.get(b, "")}',
             'theme': themes.get(b, ''),
             'items': [make_item(t) for t in bank_groups[b]],
-        })
-    if neil_general:
-        topics.append({
-            'topic': f'Neil Sethi — {neil_theme}',
-            'theme': neil_theme,
-            'items': [make_item(t) for t in neil_general],
         })
 
     by_bank_counts = {b: len(bank_groups[b]) for b in bank_order}
@@ -190,10 +171,8 @@ def main():
     assert len(considered) <= total_tweets, \
         f"FAIL: considered={len(considered)} > total_tweets={total_tweets}"
     for t in final_kept:
-        banks = t.get('banks', [])
-        author = t.get('author_username', '').lower()
-        assert banks or author in NEIL_HANDLES, \
-            f"FAIL: item {t.get('id')} has no banks and is not Neil ({sorted(NEIL_HANDLES)})"
+        assert t.get('banks', []), \
+            f"FAIL: item {t.get('id')} has no banks"
         assert t.get('images'), \
             f"FAIL: item {t.get('id')} has no images"
     # by_bank_counts vs banks items
