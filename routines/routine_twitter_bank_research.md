@@ -95,6 +95,7 @@ Top of the report — **SUMMARY** (4–6 lines): recurring themes across banks +
 - [ ] Every kept item carries ≥1 image.
 - [ ] `by_bank_counts` matches the sum of `items` in `banks`.
 - [ ] No paraphrasing in any `text` field.
+- [ ] Before saving: the JSON has a top-level `banks` array and every bank in it has a non-empty `items` array (the template renders `banks`; an empty or missing `banks` publishes a blank report).
 
 If any check fails, fix and re-verify before rendering.
 

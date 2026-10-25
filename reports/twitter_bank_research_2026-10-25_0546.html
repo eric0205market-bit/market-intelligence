@@ -222,13 +222,23 @@ function renderDataPoints(points) {
   ).join('') + `</div>`;
 }
 
-function renderItem(item) {
+function renderRelayers(item) {
+  const r = item.relayers || [];
+  if (!r.length) return '';
+  // gen_bank_research_report.py already puts this line into data_points.
+  if ((item.data_points || []).some(p => String(p).startsWith('also carried by'))) return '';
+  return `<div class="data-points"><span class="dp-tag">also carried by: ${
+    r.map(a => '@' + escapeHtml(a)).join(', ')}</span></div>`;
+}
+
+function renderItem(item, preferText) {
   const author = item.author || item.author_username || '';
   const time = relativeTime(item.created_at);
   const link = item.tweet_url
     ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
     : '';
-  const body = item.description || item.text || '';
+  const body = preferText ? (item.text || item.description || '')
+                          : (item.description || item.text || '');
   return `
     <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
       <div class="item-head">
@@ -238,12 +248,13 @@ function renderItem(item) {
       </div>
       ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
       ${renderDataPoints(item.data_points)}
+      ${renderRelayers(item)}
       ${renderCharts(item.images)}
     </div>`;
 }
 
 function renderTopic(topic, idx) {
-  const items = (topic.items || []).map(renderItem).join('');
+  const items = (topic.items || []).map(it => renderItem(it, topic._fromBanks)).join('');
   const name = topic.topic || topic.name || `Topic ${idx + 1}`;
   return `
     <div class="topic">
@@ -287,6 +298,20 @@ function renderSummary(text) {
   return `<div class="summary">${paragraphs}</div>`;
 }
 
+// The bank-research routine emits `banks` [{bank, theme, items[{text,...}]}];
+// older reports (and the Data template's schema) use `topics`. Render `banks`
+// directly when present, else fall back to `topics`.
+function reportGroups(d) {
+  if (Array.isArray(d.banks) && d.banks.length) {
+    return { label: 'Banks', unit: 'banks', groups: d.banks.map(b => ({
+      topic: b.theme ? `${b.bank} — ${b.theme}` : (b.bank || ''),
+      items: b.items || [],
+      _fromBanks: true,
+    })) };
+  }
+  return { label: 'Topics', unit: 'topics', groups: d.topics || [] };
+}
+
 function renderStats(d) {
   const parts = [];
   const cov = d.coverage || {};
@@ -294,9 +319,10 @@ function renderStats(d) {
     const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
     parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
   }
-  const topicCount = (d.topics || []).length;
-  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
-  parts.push(`topics <strong>${topicCount}</strong>`);
+  const g = reportGroups(d);
+  const topicCount = g.groups.length;
+  const itemCount = g.groups.reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`${g.unit} <strong>${topicCount}</strong>`);
   parts.push(`items <strong>${itemCount}</strong>`);
   if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
   return parts.join(' | ');
@@ -347,13 +373,14 @@ function renderReport(d) {
   if (!d || typeof d !== 'object') d = {};
   document.getElementById('report-date').textContent = d.date || '';
 
-  const topicsBody = (d.topics || []).map(renderTopic).join('')
-                  || '<div class="empty">No topics.</div>';
+  const g = reportGroups(d);
+  const topicsBody = g.groups.map(renderTopic).join('')
+                  || `<div class="empty">No ${g.unit}.</div>`;
   const linksBody = (d.links || []).map(renderLink).join('');
 
   const sections = [
     renderSummary(d.summary),
-    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    renderSection('A', g.label, topicsBody, g.groups.length),
     linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
   ].join('');
 
