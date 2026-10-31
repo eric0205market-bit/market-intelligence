@@ -1,0 +1,331 @@
+{
+  "record_id": "cb5e900784f073b8",
+  "source_type": "technology",
+  "source_name": "Hugging Face Blog",
+  "source_url": "https://huggingface.co/blog/LeagueLabs/optimizing-diffgemma-decision-model-vllm-cpu-i",
+  "title": "A Low-Cost Decision Model on CPU: Optimizing DiffusionGemma with vLLM - Part I",
+  "published_date": "2026-10-29",
+  "language": "en",
+  "processed_at": "2026-10-31T11:12:29Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "AI",
+    "Tech"
+  ],
+  "gist": "League Labs optimized vLLM so eligible DiffusionGemma 26B-A4B structured decision reads run in one engine step instead of two on Intel AMX CPUs, cutting latency 18.8% on C4, lifting throughput 5.5-15% and lowering monthly replica cost 79% versus an A100. Under sustained load GPUs remain cheaper per decision; decision-stability analysis is deferred to Part II.",
+  "themes": [
+    {
+      "theme": "Why CPU decision serving",
+      "insights": [
+        {
+          "claim": "League, a healthcare company, wants a self-hosted open-weights decision model like TypeSafe's Jev with low latency, and chose DiffusionGemma (Apache 2.0) because diffusion fills all answer slots in parallel instead of generating tokens one at a time.",
+          "speaker": "Mia Ojeda",
+          "type": "thesis",
+          "entities": [
+            "League",
+            "DiffusionGemma",
+            "TypeSafe",
+            "Jev",
+            "vLLM"
+          ],
+          "conviction": "high",
+          "so_what": "Open-weights, self-hostable decision models are being built as alternatives to hosted services, especially in regulated healthcare.",
+          "quote": null,
+          "locator": "2.1 Why DiffusionGemma?",
+          "quote_verified": false
+        },
+        {
+          "claim": "DiffusionGemma 26B-A4B in BF16 needs 48.1 GiB, which exceeds two 24GB L4 GPUs and forces an 80GB A100 costing $4,754 per month for one always-on Vertex AI replica.",
+          "speaker": "Mia Ojeda",
+          "type": "data_point",
+          "entities": [
+            "DiffusionGemma 26B-A4B",
+            "NVIDIA L4",
+            "NVIDIA A100",
+            "Vertex AI"
+          ],
+          "conviction": "high",
+          "so_what": "Model size relative to cheap-GPU memory is what pushes bursty workloads toward CPUs.",
+          "quote": null,
+          "locator": "2.2 Why CPU inference?",
+          "quote_verified": false
+        },
+        {
+          "claim": "A 24-vCPU Intel C4 node with AMX runs the BF16 model for about $996 per month, roughly a fifth of an A100, and lowers monthly replica cost by 44% versus C3 and 79% versus the A100.",
+          "speaker": "Mia Ojeda",
+          "type": "data_point",
+          "entities": [
+            "Intel C4",
+            "Intel AMX",
+            "Intel C3",
+            "NVIDIA A100"
+          ],
+          "conviction": "high",
+          "so_what": "For low-traffic bursty services, idle replica cost dominates, so cheap CPU instances beat GPUs on total cost.",
+          "quote": null,
+          "locator": "2.2 and Introduction",
+          "quote_verified": false
+        },
+        {
+          "claim": "GPU quota and availability constrained what League could deploy and when, which was a second motive for evaluating CPU serving.",
+          "speaker": "Mia Ojeda",
+          "type": "anecdote",
+          "entities": [
+            "League",
+            "GPU"
+          ],
+          "conviction": "medium",
+          "so_what": "GPU scarcity pushes enterprises toward CPU inference when the model is a fit.",
+          "quote": "Capacity was the other problem.",
+          "locator": "2.2 Why CPU inference?",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "The one-step optimization",
+      "insights": [
+        {
+          "claim": "vLLM executes every eligible structured read of DiffusionGemma in two engine steps because the canvas is routed through the speculative-decoding data path, a dependency the read does not actually have.",
+          "speaker": "Mia Ojeda",
+          "type": "causal",
+          "entities": [
+            "vLLM",
+            "DiffusionGemma",
+            "speculative decoding"
+          ],
+          "conviction": "high",
+          "so_what": "A pure software-path inefficiency, fixable without changing the model or hardware.",
+          "quote": "The split comes from the data path, not from a dependency in the read itself.",
+          "locator": "3.1 Understanding the original execution path",
+          "quote_verified": true
+        },
+        {
+          "claim": "The single_pass_reads flag fuses the canvas into the final prompt chunk so a read finishes in one engine step, keeping the prompt causal and the canvas bidirectional; it is proposed upstream as vllm-project/vllm#61480, opt-in and CPU-only.",
+          "speaker": "Mia Ojeda",
+          "type": "framework",
+          "entities": [
+            "single_pass_reads",
+            "vLLM",
+            "vllm-project/vllm#61480"
+          ],
+          "conviction": "high",
+          "so_what": "Upstream-bound open-source optimization; track whether it merges and extends to GPU.",
+          "quote": null,
+          "locator": "3.2 Executing eligible reads in one engine step",
+          "quote_verified": false
+        },
+        {
+          "claim": "Three CPU fixes for structured reads (narrow canvases, an int32 versus bool causal mask crash, and async output buffer overwrites) were merged upstream and shipped in vLLM v0.32.0.",
+          "speaker": "Mia Ojeda",
+          "type": "data_point",
+          "entities": [
+            "vLLM v0.32.0",
+            "vllm-project/vllm#59107",
+            "vllm-project/vllm#59992",
+            "vllm-project/vllm#59829"
+          ],
+          "conviction": "high",
+          "so_what": "Shows CPU diffusion-model serving is becoming a supported path in mainstream vLLM.",
+          "quote": null,
+          "locator": "2.4 Making structured reads run on CPU",
+          "quote_verified": false
+        },
+        {
+          "claim": "On 231 JevBench items the baseline took 462 engine steps and the flag-on build 231, and each removed step saved 0.12 to 0.17 seconds, which is 21-25% of a 188-token read but only 12-13% of a 1,250-token read.",
+          "speaker": "Mia Ojeda",
+          "type": "data_point",
+          "entities": [
+            "JevBench",
+            "single_pass_reads",
+            "vLLM"
+          ],
+          "conviction": "high",
+          "so_what": "Savings are a fixed per-step cost, so short-prompt decision workloads benefit most.",
+          "quote": null,
+          "locator": "3.3 Why the optimization improves performance",
+          "quote_verified": false
+        },
+        {
+          "claim": "The authors infer the extra step is costly because on a CPU every forward pass pays memory-bandwidth cost to read model weights, and each canvas token activates 8 of 128 experts per MoE layer, touching many experts.",
+          "speaker": "Mia Ojeda",
+          "type": "causal",
+          "entities": [
+            "Intel AMX",
+            "MoE",
+            "memory bandwidth"
+          ],
+          "conviction": "low",
+          "so_what": "Reasoned inference not directly tested; implies small-token passes are bandwidth-bound on CPUs.",
+          "quote": "Why that forward pass costs so much is our inference",
+          "locator": "3.3 Why the optimization improves performance",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Performance and cost results",
+      "insights": [
+        {
+          "claim": "On C4 the optimization cut concurrency-1 latency by 18.8% (95% CI 18.5-19.0%) and 21.2% on C3, moving median decision latency from about 660 ms to about 540 ms on C4.",
+          "speaker": "Mia Ojeda",
+          "type": "data_point",
+          "entities": [
+            "Intel C4",
+            "Intel C3",
+            "single_pass_reads"
+          ],
+          "conviction": "high",
+          "so_what": "Meets sub-second interactive requirements for agents making decisions while a user waits.",
+          "quote": null,
+          "locator": "4.1 Latency at concurrency 1",
+          "quote_verified": false
+        },
+        {
+          "claim": "The optimization lets every prompt format meet League's under-1-second p95 target, and requests slower than 1 second on C4 fell from 80 of 4,320 to 9, whereas the baseline missed it at 1,059 ms for the conditional-question format.",
+          "speaker": "Mia Ojeda",
+          "type": "data_point",
+          "entities": [
+            "League",
+            "Intel C4",
+            "vLLM"
+          ],
+          "conviction": "high",
+          "so_what": "Crossing a latency SLO is what makes CPU serving production-viable.",
+          "quote": null,
+          "locator": "4.1 Latency at concurrency 1",
+          "quote_verified": false
+        },
+        {
+          "claim": "Throughput gains are largest at low concurrency (15% on C4 at concurrency 2) and shrink to 5.5-9% from concurrency 5 to 20 as the machine saturates, with no throughput growth beyond concurrency 15.",
+          "speaker": "Mia Ojeda",
+          "type": "data_point",
+          "entities": [
+            "Intel C4",
+            "Intel C3",
+            "single_pass_reads"
+          ],
+          "conviction": "high",
+          "so_what": "The optimization helps most for sparse bursty traffic, the target use case, not saturated serving.",
+          "quote": null,
+          "locator": "4.2 Throughput under concurrency",
+          "quote_verified": false
+        },
+        {
+          "claim": "The 44-vCPU C3 pulls ahead of the 24-vCPU C4 on throughput from concurrency 5 onward, while C4 is slightly better at concurrency 2 and 3.",
+          "speaker": "Mia Ojeda",
+          "type": "data_point",
+          "entities": [
+            "Intel C3",
+            "Intel C4"
+          ],
+          "conviction": "medium",
+          "so_what": "More vCPUs only pay off when load is high enough, favoring the cheaper C4 for light traffic.",
+          "quote": null,
+          "locator": "4.2 Throughput under concurrency",
+          "quote_verified": false
+        },
+        {
+          "claim": "A repeat baseline run differed by only -0.2%, and the flag-off optimization build was 0.5% slower than baseline, which attributes the speedup to single_pass_reads rather than the prompt-logprob changes or run noise.",
+          "speaker": "Mia Ojeda",
+          "type": "data_point",
+          "entities": [
+            "single_pass_reads",
+            "vllm-project/vllm#61693",
+            "vllm-project/vllm#61679"
+          ],
+          "conviction": "high",
+          "so_what": "Controls support that the benchmark result is attributable to the flag.",
+          "quote": null,
+          "locator": "4.3 Attribution and run-to-run variation",
+          "quote_verified": false
+        },
+        {
+          "claim": "At 100,000 decisions a month a continuously running replica costs $9.96 per 1,000 decisions on C4, $16.74 on two L4s, $17.93 on C3 and $47.54 on an A100, and idle time makes C4 about 13 times costlier per decision at 1 million decisions a month than at full load ($0.078 per 1,000).",
+          "speaker": "Mia Ojeda",
+          "type": "data_point",
+          "entities": [
+            "Intel C4",
+            "NVIDIA L4",
+            "Intel C3",
+            "NVIDIA A100"
+          ],
+          "conviction": "high",
+          "so_what": "For bursty traffic the cheapest machine to keep running wins, favoring CPUs; utilization is the key cost variable.",
+          "quote": null,
+          "locator": "5. Serving cost",
+          "quote_verified": false
+        },
+        {
+          "claim": "Under sustained load GPUs are cheaper per decision: at concurrency 10, two L4s cost $0.027 and an A100 $0.046 per 1,000 decisions versus $0.088 on optimized C4, although the GPU runs are not like-for-like (FP8, shorter context, earlier vLLM nightly).",
+          "speaker": "Mia Ojeda",
+          "type": "contrarian",
+          "entities": [
+            "NVIDIA L4",
+            "NVIDIA A100",
+            "Intel C4"
+          ],
+          "conviction": "high",
+          "so_what": "CPU serving is not a general GPU replacement; when traffic exceeds one C4 replica, GPUs are likely better.",
+          "quote": "When traffic grows beyond what one C4 replica can serve, a GPU is likely the better choice.",
+          "locator": "5. Serving cost",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Decision stability",
+      "insights": [
+        {
+          "claim": "On 231 JevBench items the flag-on build changed 2 decisions on C4 and 4 on C3 with no statistically significant accuracy change, while moving the same baseline from C3 to C4 changed 10, so hardware moved decisions more than the optimization did.",
+          "speaker": "Mia Ojeda",
+          "type": "data_point",
+          "entities": [
+            "JevBench",
+            "Intel C3",
+            "Intel C4",
+            "single_pass_reads"
+          ],
+          "conviction": "high",
+          "so_what": "BF16 numerical differences across batch shapes and hardware alter individual outputs, so decision-model deployments need regression checks when infrastructure changes.",
+          "quote": null,
+          "locator": "6. Faster and cheaper, but are the decisions the same?",
+          "quote_verified": false
+        },
+        {
+          "claim": "Part II of the series will examine how batching, hardware and numerical precision (including FP32 repeats) change decisions and how readiness to deploy was judged.",
+          "speaker": "Mia Ojeda",
+          "type": "prediction",
+          "entities": [
+            "League",
+            "FP32",
+            "BF16"
+          ],
+          "conviction": "medium",
+          "so_what": "Watch Part II for evidence on reproducibility of decision models across hardware.",
+          "quote": null,
+          "locator": "6. Faster and cheaper, but are the decisions the same?",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 18,
+  "top_entities": [
+    "League",
+    "DiffusionGemma",
+    "vLLM",
+    "AMX",
+    "single_pass_reads",
+    "JevBench",
+    "A100",
+    "TypeSafe",
+    "Jev",
+    "Vertex AI"
+  ],
+  "source_meta": {
+    "author": "Mia Ojeda",
+    "word_count": 5094,
+    "paywalled": false
+  }
+}
