@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Twitter Data Intelligence</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-light: #f0ede4;
+  --text: #1a1a1a;
+  --text-2: #555;
+  --text-3: #8a8a8a;
+  --accent: #2563eb;
+  --accent-bg: #f0f5ff;
+  --accent-2: #1d4ed8;
+  --tag-text: #0e7490;
+  --tag-bg: #e8f4f8;
+  --yellow: #fff5b3;
+  --yellow-border: #f0d966;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.55;
+       background: var(--bg); color: var(--text); }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* HEADER */
+.header { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent); }
+.subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3); }
+
+/* FILTER BAR */
+.filter-bar { display: none; background: var(--yellow); border: 1px solid var(--yellow-border);
+              border-radius: 6px; padding: 8px 12px; margin-bottom: 16px;
+              align-items: center; gap: 10px; font-size: 13px; }
+.filter-bar.active { display: flex; }
+.filter-bar button { font-family: inherit; font-size: 12px; background: transparent;
+                     border: 1px solid var(--text); padding: 3px 10px; border-radius: 4px;
+                     cursor: pointer; }
+.filter-bar button:hover { background: rgba(0,0,0,0.05); }
+
+/* SUMMARY */
+.summary { background: var(--surface); border: 1px solid var(--border);
+           border-left: 4px solid var(--accent); border-radius: 6px;
+           padding: 16px 18px; margin-bottom: 20px; }
+.summary p { margin-bottom: 8px; }
+.summary p:last-child { margin-bottom: 0; }
+.summary strong { font-weight: 600; }
+
+/* SECTIONS (top-level collapsible) */
+.section { background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+.section-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                background: var(--accent-bg); cursor: pointer; user-select: none;
+                font-weight: 600; font-size: 13px; color: var(--accent-2); }
+.section-head:hover { background: #e1ecff; }
+.section-letter { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+                  min-width: 18px; }
+.section-name { flex: 1; }
+.section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+                 color: var(--text-3); }
+.section-arrow { font-size: 10px; transition: transform .2s; }
+.section.open .section-arrow { transform: rotate(90deg); }
+.section-body { display: none; padding: 6px 0; }
+.section.open .section-body { display: block; }
+
+/* TOPIC (nested collapsible inside Topics section) */
+.topic { border-bottom: 1px solid var(--border-light); }
+.topic:last-child { border-bottom: none; }
+.topic-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+              background: var(--accent-bg); cursor: pointer; user-select: none;
+              font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.topic-head:hover { background: #e1ecff; }
+.topic-name { flex: 1; }
+.topic-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.topic-arrow { font-size: 10px; transition: transform .2s; }
+.topic.open .topic-arrow { transform: rotate(90deg); }
+.topic-body { display: none; padding: 4px 0 6px; }
+.topic.open .topic-body { display: block; }
+
+/* ITEM CARDS */
+.item-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 6px; padding: 12px 14px; margin: 10px 16px; }
+.item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+             flex-wrap: wrap; }
+.item-author { font-weight: 600; color: var(--accent); cursor: pointer; }
+.item-author:hover { text-decoration: underline; }
+.item-time { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-3); }
+.item-link { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             color: var(--accent); text-decoration: none; }
+.item-link:hover { text-decoration: underline; }
+.item-text { font-size: 13.5px; line-height: 1.6; color: var(--text);
+             white-space: pre-wrap; word-wrap: break-word; }
+
+/* DATA POINT TAGS */
+.data-points { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+          background: var(--tag-bg); color: var(--tag-text);
+          padding: 2px 7px; border-radius: 4px; }
+
+/* CHARTS (large, NOT thumbnails) */
+.charts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chart { width: 100%; max-width: 420px; height: auto;
+         border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in;
+         background: #f0ede4; }
+
+/* LIGHTBOX */
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+            align-items: center; justify-content: center; z-index: 100; cursor: zoom-out; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 92vw; max-height: 92vh;
+                box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+/* LINKS */
+.link-row { padding: 8px 16px; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; display: flex; gap: 12px; align-items: baseline; }
+.link-row:last-child { border-bottom: none; }
+.link-author { color: var(--text-3); min-width: 110px; cursor: pointer; }
+.link-author:hover { color: var(--accent); }
+.link-url { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--accent); text-decoration: none; word-break: break-all; flex: 1; }
+.link-url:hover { text-decoration: underline; }
+.link-desc { color: var(--text-2); font-size: 12px; }
+
+/* AUTHOR FILTER STATES */
+.filterable.match { background: var(--yellow); border-color: var(--yellow-border); }
+.filterable.dim { opacity: 0.25; }
+
+/* STATS BAR */
+.stats { margin-top: 24px; padding: 10px 14px; background: var(--surface);
+         border: 1px solid var(--border); border-radius: 6px;
+         font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+         color: var(--text-2); display: flex; gap: 18px; flex-wrap: wrap; }
+.stats strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--text-3); font-size: 13px; padding: 14px 18px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 60px; }
+  .item-card { margin: 8px 10px; }
+  .link-row { flex-direction: column; gap: 4px; }
+  .link-author { min-width: 0; }
+  .header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .chart { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<a href="../index.html" id="mi-back" style="position:fixed;top:12px;left:12px;z-index:9999;background:#1a1a2e;color:white;border-radius:20px;padding:6px 14px;font-size:14px;text-decoration:none;opacity:0.85;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-height:44px;display:inline-flex;align-items:center;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← MI</a>
+<div class="container">
+  <div class="header">
+    <div class="title">Twitter Data Intelligence</div>
+    <div class="subtitle" id="report-date">—</div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span>Filtered to <strong id="filter-name"></strong></span>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
+  <div id="app"></div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" alt="">
+</div>
+
+<script>
+const REPORT_DATA = {
+ "report_type": "TWITTER DATA INTELLIGENCE",
+ "collected_at": "2026-11-08T06:21:15Z",
+ "input_stats": {
+  "total_tweets": 42,
+  "unique_authors": 14,
+  "tweets_with_images": 19,
+  "after_filter": 38
+ },
+ "summary": "38 items from 14 data accounts, with charts on options volume, silver, capex, housing, the Fed balance sheet and labor. Key numbers: CBOE put volume hit a record 11.23M contracts; core capex shipments reached a record $86B (+11.6% YoY); 30Y mortgage at 7.18% with purchase apps -50% vs 2019; Fed balance sheet $6.75T; silver ~30% below its 200DMA. Positioning: tech positioning implies negative EPS growth and Hyperliquid BTC whales are at their largest net short since Oct 2025.",
+ "topics": [
+  {
+   "topic": "Market Data (Equities, Options, Commodities)",
+   "items": [
+    {
+     "author": "KobeissiLetter",
+     "description": "CBOE put option volume hit a record 11.23M contracts Thursday, beating the Apr 4, 2025 high; 20-day average near record.",
+     "tweet_url": "https://x.com/KobeissiLetter/status/2119160893950828791",
+     "images": [
+      "https://pbs.twimg.com/media/HWjFmhEXMAAlk2_.jpg"
+     ],
+     "data_points": [
+      "Put volume 11.23M (record)",
+      "Prior ATH 10.22M (Apr 4, 2025)",
+      "20d avg ~7M vs ~4M in 2022",
+      "8 of top 10 days in 2026"
+     ],
+     "created_at": "2026-11-07T20:11:43.000Z"
+    },
+    {
+     "author": "TaviCosta",
+     "description": "Silver trading almost 30% below its 200-day moving average — the most stretched since March 2020.",
+     "tweet_url": "https://x.com/TaviCosta/status/2119186131980099967",
+     "images": [
+      "https://pbs.twimg.com/media/HWjciDVb0AEjAry.png"
+     ],
+     "data_points": [
+      "Silver ~-30% vs 200DMA",
+      "Last similar: Mar 2020"
+     ],
+     "created_at": "2026-11-07T21:52:01.000Z"
+    },
+    {
+     "author": "charliebilello",
+     "description": "Table of the worst-performing S&P 500 stocks year-to-date.",
+     "tweet_url": "https://x.com/charliebilello/status/2119124077978005958",
+     "images": [
+      "https://pbs.twimg.com/media/HWij5boWEAArbR6.png"
+     ],
+     "data_points": [
+      "S&P 500 YTD laggards list"
+     ],
+     "created_at": "2026-11-07T17:45:26.000Z"
+    },
+    {
+     "author": "PeterBerezinBCA",
+     "description": "Hedge fund performance through end-October across strategies/funds; most failing to beat the S&P 500.",
+     "tweet_url": "https://x.com/PeterBerezinBCA/status/2119126226250129749",
+     "images": [
+      "https://pbs.twimg.com/media/HWimEWTXwAEi8DG.jpg",
+      "https://pbs.twimg.com/media/HWimEWxXcAAeiOG.jpg"
+     ],
+     "data_points": [
+      "HF YTD returns as of Oct-end",
+      "Most HFs < S&P 500"
+     ],
+     "created_at": "2026-11-07T17:53:58.000Z"
+    },
+    {
+     "author": "crossbordercap",
+     "description": "Capital Wars Substack chart: 'The Blue Wave Turns Markets Red' — liquidity/markets chart post-election.",
+     "tweet_url": "https://x.com/crossbordercap/status/2119204363457458589",
+     "images": [
+      "https://pbs.twimg.com/media/HWjtILiXMAAOHI0.jpg"
+     ],
+     "data_points": [
+      "Capital Wars liquidity chart"
+     ],
+     "created_at": "2026-11-07T23:04:27.000Z"
+    },
+    {
+     "author": "crossbordercap",
+     "description": "Link to Capital Wars post 'The Blue Wave Turns Markets Red'.",
+     "tweet_url": "https://x.com/crossbordercap/status/2119202851339825356",
+     "images": [],
+     "data_points": [],
+     "created_at": "2026-11-07T22:58:27.000Z"
+    }
+   ]
+  },
+  {
+   "topic": "Fund Flows & Positioning",
+   "items": [
+    {
+     "author": "themarketear",
+     "description": "Tech positioning is now consistent with outright negative earnings growth (Market Ear).",
+     "tweet_url": "https://x.com/themarketear/status/2119127149651079527",
+     "images": [],
+     "data_points": [
+      "Tech positioning ≈ negative EPS growth implied"
+     ],
+     "created_at": "2026-11-07T17:57:38.000Z"
+    },
+    {
+     "author": "glassnode",
+     "description": "Hyperliquid whales' net BTC positioning flipped short 2 weeks ago after 7 months long; short exposure largest since Oct 2025.",
+     "tweet_url": "https://x.com/glassnode/status/2119134320862367965",
+     "images": [
+      "https://pbs.twimg.com/media/HWir2_cXIAAzh7C.jpg"
+     ],
+     "data_points": [
+      "Whales net short (2 wks)",
+      "Prior 7 months net long",
+      "Largest short since Oct 2025"
+     ],
+     "created_at": "2026-11-07T18:26:08.000Z"
+    }
+   ]
+  },
+  {
+   "topic": "Economic Indicators",
+   "items": [
+    {
+     "author": "neilsethinew",
+     "description": "Civilian labor force rose 421k to 170.683M in Friday's jobs report, highest since December.",
+     "tweet_url": "https://x.com/neilsethinew/status/2119308939204395426",
+     "images": [
+      "https://pbs.twimg.com/media/HWkkdO2WYAA8175.jpg"
+     ],
+     "data_points": [
+      "Labor force +421k",
+      "170.683M",
+      "Highest since Dec"
+     ],
+     "created_at": "2026-11-08T06:00:00.000Z"
+    },
+    {
+     "author": "EPBResearch",
+     "description": "Job-finding rate: 25.9% of unemployed found a job monthly (3-mo avg), up from 24.2%; job-loss rate 0.92%, lower than 95% of months since 1990.",
+     "tweet_url": "https://x.com/EPBResearch/status/2119127409521725653",
+     "images": [
+      "https://pbs.twimg.com/media/HWinBIQXEAAOjl8.png"
+     ],
+     "data_points": [
+      "Job-finding rate 25.9% (from 24.2%)",
+      "Job-loss rate 0.92%",
+      "Lower than 95% of months since 1990"
+     ],
+     "created_at": "2026-11-07T17:58:40.000Z"
+    },
+    {
+     "author": "EPBResearch",
+     "description": "Employee compensation is 59.6% of US personal income vs ~73% around 1970; transfers, dividends and rent now 31.1%.",
+     "tweet_url": "https://x.com/EPBResearch/status/2119130771344744951",
+     "images": [
+      "https://pbs.twimg.com/media/HWip_C_WUAAgL7F.jpg"
+     ],
+     "data_points": [
+      "Comp share 59.6% (vs ~73% 1970)",
+      "Transfers/dividends/rent 31.1%"
+     ],
+     "created_at": "2026-11-07T18:12:02.000Z"
+    },
+    {
+     "author": "KobeissiLetter",
+     "description": "US core capital goods shipments (nondefense ex-aircraft) +11.6% YoY in September to a record $86B; computer/server orders +27% YoY.",
+     "tweet_url": "https://x.com/KobeissiLetter/status/2119249539873886436",
+     "images": [
+      "https://pbs.twimg.com/media/HWZNtRYWQAIB6ul.jpg"
+     ],
+     "data_points": [
+      "Core capex shipments $86B (record)",
+      "+11.6% YoY, fastest since Jul 2021",
+      "3M annualized +16.5% (strongest since 2011 ex-pandemic)",
+      "Computers/servers orders +27% YoY (largest since Jan 1997)"
+     ],
+     "created_at": "2026-11-08T02:03:58.000Z"
+    },
+    {
+     "author": "KobeissiLetter",
+     "description": "MBA purchase mortgage applications fell 2% to 131, 2nd-lowest since Jan 2025; 30Y fixed at 7.18%.",
+     "tweet_url": "https://x.com/KobeissiLetter/status/2119201719099822544",
+     "images": [
+      "https://pbs.twimg.com/media/HWcoLHlXAAAxTZ7.jpg"
+     ],
+     "data_points": [
+      "Purchase index 131 (-2% w/w)",
+      "-32% since Jan",
+      "-50% vs 2019",
+      "30Y fixed 7.18% (+120bp since Feb)",
+      "7 straight weeks >7%"
+     ],
+     "created_at": "2026-11-07T22:53:57.000Z"
+    },
+    {
+     "author": "KobeissiLetter",
+     "description": "Fed balance sheet +$3B in week to Nov 4 to $6.75T; Treasuries up to $4.58T, MBS down to $1.88T.",
+     "tweet_url": "https://x.com/KobeissiLetter/status/2119181497529684135",
+     "images": [
+      "https://pbs.twimg.com/media/HWjYVzNWIAAl_zj.jpg"
+     ],
+     "data_points": [
+      "Fed assets $6.75T (+$3B w/w)",
+      "+$212B since Dec 2025 low",
+      "Treasuries $4.58T (+$390B)",
+      "MBS $1.88T (-$170B, lowest since Jun 2020)",
+      "+$2.99T (+80%) vs pre-pandemic"
+     ],
+     "created_at": "2026-11-07T21:33:36.000Z"
+    }
+   ]
+  },
+  {
+   "topic": "Earnings & Corporate",
+   "items": [
+    {
+     "author": "RealVision",
+     "description": "Raoul Pal: every AI stack layer (TSMC, Nvidia, data centers, hyperscalers, models) earns 30–65% margins; Anthropic S-1 shows 85%.",
+     "tweet_url": "https://x.com/RealVision/status/2119180997266714638",
+     "images": [],
+     "data_points": [
+      "AI stack margins 30–65%",
+      "Anthropic S-1 margin 85%"
+     ],
+     "created_at": "2026-11-07T21:31:36.000Z"
+    },
+    {
+     "author": "Polymarket",
+     "description": "Tesla adding an extra Cybertruck production shift to clear orders before dismantling the line in mid-2027.",
+     "tweet_url": "https://x.com/Polymarket/status/2119240707567394861",
+     "images": [],
+     "data_points": [
+      "Cybertruck line ends mid-2027"
+     ],
+     "created_at": "2026-11-08T01:28:52.000Z"
+    },
+    {
+     "author": "Polymarket",
+     "description": "Labubu sales down as much as 50% globally; US revenue down at least 70%.",
+     "tweet_url": "https://x.com/Polymarket/status/2119232732186517610",
+     "images": [
+      "https://pbs.twimg.com/media/HWkG79QWQAA_TIA.jpg",
+      "https://pbs.twimg.com/media/HWkG79QXUAApgNx.jpg"
+     ],
+     "data_points": [
+      "Global sales up to -50%",
+      "US revenue ≥ -70%"
+     ],
+     "created_at": "2026-11-08T00:57:11.000Z"
+    },
+    {
+     "author": "zerohedge",
+     "description": "Feds: 'Super Intelligence' fraud ring impersonating CEOs and lawyers stole $129M.",
+     "tweet_url": "https://x.com/zerohedge/status/2119271300665426297",
+     "images": [],
+     "data_points": [
+      "$129M stolen"
+     ],
+     "created_at": "2026-11-08T03:30:26.000Z"
+    },
+    {
+     "author": "zerohedge",
+     "description": "Starlink building an orbital bypass as undersea cable sabotage threats mount.",
+     "tweet_url": "https://x.com/zerohedge/status/2119241112334319819",
+     "images": [],
+     "data_points": [],
+     "created_at": "2026-11-08T01:30:29.000Z"
+    },
+    {
+     "author": "borrowed_ideas",
+     "description": "borrowed_ideas thread with Airbnb CEO: AI agents comparing all OTA prices could shift surplus to guests/agent owners and pressure Airbnb's economic profit; screenshot of agent-built booking page.",
+     "tweet_url": "https://x.com/borrowed_ideas/status/2119230924865012113",
+     "images": [
+      "https://pbs.twimg.com/media/HWkPvyjbEAATyBz.jpg"
+     ],
+     "data_points": [
+      "Airbnb/OTA agent price-comparison thesis"
+     ],
+     "created_at": "2026-11-08T00:50:00.000Z"
+    },
+    {
+     "author": "RealVision",
+     "description": "Real Vision: Jayant Krishnamurthy experimenting with an AI agent as CEO of a business.",
+     "tweet_url": "https://x.com/RealVision/status/2119135688977268998",
+     "images": [],
+     "data_points": [],
+     "created_at": "2026-11-07T18:31:34.000Z"
+    },
+    {
+     "author": "RyanDetrick",
+     "description": "Barron's coverage citing VIXandMore on muted stock rebound sentiment.",
+     "tweet_url": "https://x.com/RyanDetrick/status/2119237096863150554",
+     "images": [],
+     "data_points": [],
+     "created_at": "2026-11-08T01:14:32.000Z"
+    }
+   ]
+  },
+  {
+   "topic": "Crypto Data",
+   "items": [
+    {
+     "author": "RealVision",
+     "description": "Real Vision clip: institutions moving into crypto on regulatory, not legislative, clarity.",
+     "tweet_url": "https://x.com/RealVision/status/2119203981008257146",
+     "images": [],
+     "data_points": [],
+     "created_at": "2026-11-07T23:02:56.000Z"
+    }
+   ]
+  },
+  {
+   "topic": "Politics, Policy & Prediction Markets",
+   "items": [
+    {
+     "author": "Polymarket",
+     "description": "Local ballots: 40 of 41 races voted to restrict or ban new AI data centers.",
+     "tweet_url": "https://x.com/Polymarket/status/2119310950771675500",
+     "images": [],
+     "data_points": [
+      "40 of 41 races restrict/ban AI data centers"
+     ],
+     "created_at": "2026-11-08T06:08:00.000Z"
+    },
+    {
+     "author": "Polymarket",
+     "description": "David Sacks says GOP 'lost all the podcast bros'; Polymarket: 68% Republicans win 2028.",
+     "tweet_url": "https://x.com/Polymarket/status/2119279242240246010",
+     "images": [],
+     "data_points": [
+      "GOP 2028 win 68%"
+     ],
+     "created_at": "2026-11-08T04:02:00.000Z"
+    },
+    {
+     "author": "Polymarket",
+     "description": "Oldest evidence of cannabis use found (2,800 yrs); Polymarket: 10% chance of federal rescheduling this year.",
+     "tweet_url": "https://x.com/Polymarket/status/2119250542723465667",
+     "images": [],
+     "data_points": [
+      "Rescheduling this year 10%"
+     ],
+     "created_at": "2026-11-08T02:07:57.000Z"
+    },
+    {
+     "author": "Polymarket",
+     "description": "Georgia's new Insurance Commissioner vows to ban credit scores in insurance pricing.",
+     "tweet_url": "https://x.com/Polymarket/status/2119261122465562643",
+     "images": [],
+     "data_points": [],
+     "created_at": "2026-11-08T02:50:00.000Z"
+    },
+    {
+     "author": "Polymarket",
+     "description": "Federal judge orders NYC (Mamdani admin) to turn over shelter-resident records to ICE.",
+     "tweet_url": "https://x.com/Polymarket/status/2119272235177517272",
+     "images": [],
+     "data_points": [],
+     "created_at": "2026-11-08T03:34:09.000Z"
+    },
+    {
+     "author": "KobeissiLetter",
+     "description": "Trump asks UFC CEO Dana White to become White House Press Secretary.",
+     "tweet_url": "https://x.com/KobeissiLetter/status/2119139183746822639",
+     "images": [
+      "https://pbs.twimg.com/media/HWix2uGXoAAdqj4.jpg"
+     ],
+     "data_points": [],
+     "created_at": "2026-11-07T18:45:27.000Z"
+    },
+    {
+     "author": "KobeissiLetter",
+     "description": "Trump calls Democrat impeachment threats 'extortion', orders DOJ to investigate.",
+     "tweet_url": "https://x.com/KobeissiLetter/status/2119125226491387977",
+     "images": [
+      "https://pbs.twimg.com/media/HWilKUiWcAAOG7u.jpg"
+     ],
+     "data_points": [],
+     "created_at": "2026-11-07T17:50:00.000Z"
+    },
+    {
+     "author": "zerohedge",
+     "description": "Hegseth authorizes National Guard to use military vehicles, boats and patrol cars in DC.",
+     "tweet_url": "https://x.com/zerohedge/status/2119248651604066566",
+     "images": [],
+     "data_points": [],
+     "created_at": "2026-11-08T02:00:26.000Z"
+    },
+    {
+     "author": "zerohedge",
+     "description": "Leak reportedly exposed Netanyahu/Mossad plan to attack Iran before Israeli election.",
+     "tweet_url": "https://x.com/zerohedge/status/2119278847698837760",
+     "images": [],
+     "data_points": [],
+     "created_at": "2026-11-08T04:00:26.000Z"
+    },
+    {
+     "author": "zerohedge",
+     "description": "ZeroHedge: 'It's The War, Stupid'.",
+     "tweet_url": "https://x.com/zerohedge/status/2119233554521510301",
+     "images": [],
+     "data_points": [],
+     "created_at": "2026-11-08T01:00:27.000Z"
+    },
+    {
+     "author": "zerohedge",
+     "description": "ZeroHedge: how Washington think-tanks 'paved the road to serfdom'.",
+     "tweet_url": "https://x.com/zerohedge/status/2119293948623573217",
+     "images": [],
+     "data_points": [],
+     "created_at": "2026-11-08T05:00:26.000Z"
+    },
+    {
+     "author": "zerohedge",
+     "description": "ZeroHedge: inside CHIRLA's voter campaign.",
+     "tweet_url": "https://x.com/zerohedge/status/2119263752168104397",
+     "images": [],
+     "data_points": [],
+     "created_at": "2026-11-08T03:00:27.000Z"
+    },
+    {
+     "author": "zerohedge",
+     "description": "Feds post $50M bounty on Tren de Aragua's top three leaders.",
+     "tweet_url": "https://x.com/zerohedge/status/2119286400516292771",
+     "images": [],
+     "data_points": [
+      "$50M bounty"
+     ],
+     "created_at": "2026-11-08T04:30:26.000Z"
+    },
+    {
+     "author": "zerohedge",
+     "description": "ZeroHedge: deported contractor returned to defraud Seattle homeowners.",
+     "tweet_url": "https://x.com/zerohedge/status/2119256202018271454",
+     "images": [],
+     "data_points": [],
+     "created_at": "2026-11-08T02:30:27.000Z"
+    }
+   ]
+  },
+  {
+   "topic": "Other Data",
+   "items": [
+    {
+     "author": "Polymarket",
+     "description": "Viral Chicago flyer calls for volunteers to 'push' the Bean sculpture 7 inches left.",
+     "tweet_url": "https://x.com/Polymarket/status/2119294593262891234",
+     "images": [
+      "https://pbs.twimg.com/media/HWky8X_WIAA9dIk.jpg",
+      "https://pbs.twimg.com/media/HWky8X9WoAA5Buh.jpg"
+     ],
+     "data_points": [],
+     "created_at": "2026-11-08T05:03:00.000Z"
+    }
+   ]
+  }
+ ],
+ "links": [
+  {
+   "author": "zerohedge",
+   "url": "https://www.zerohedge.com/political/how-washington-think-tanks-paved-road-serfdom",
+   "tweet_url": "https://x.com/zerohedge/status/2119293948623573217",
+   "description": "How Washington Think-Tanks Paved The Road To Serfdom https://t.co/Mm9WNp1Gl5"
+  },
+  {
+   "author": "zerohedge",
+   "url": "https://www.zerohedge.com/political/feds-slap-50-million-bounty-tren-de-araguas-top-three",
+   "tweet_url": "https://x.com/zerohedge/status/2119286400516292771",
+   "description": "Feds Slap $50 Million Bounty On Tren De Aragua's Top Three https://t.co/vXTVEYjMRa"
+  },
+  {
+   "author": "Polymarket",
+   "url": "https://polymarket.com/event/which-party-wins-2028-us-presidential-election?dub_id=UZAelroHg2VoHlgF",
+   "tweet_url": "https://x.com/Polymarket/status/2119279242240246010",
+   "description": "JUST IN: Trump adviser David Sacks declares Republicans \"lost all the podcast bros,\" including Joe Rogan, Tucker Carlson, &amp; Theo Von."
+  },
+  {
+   "author": "zerohedge",
+   "url": "https://www.zerohedge.com/geopolitical/leak-reportedly-exposed-netanyahu-mossad-chiefs-plan-attack-iran-israeli-election",
+   "tweet_url": "https://x.com/zerohedge/status/2119278847698837760",
+   "description": "Leak Reportedly Exposed Netanyahu &amp; Mossad Chief's Plan To Attack Iran Before Israeli Election https://t.co/7LDW2kSmSH"
+  },
+  {
+   "author": "zerohedge",
+   "url": "https://www.zerohedge.com/political/super-intelligence-fraud-ring-impersonated-ceos-and-lawyers-steal-129-million-feds-say",
+   "tweet_url": "https://x.com/zerohedge/status/2119271300665426297",
+   "description": "'Super Intelligence' Fraud Ring Impersonated CEOs And Lawyers To Steal $129 Million, Feds Say https://t.co/2YaLUc0oZb"
+  },
+  {
+   "author": "zerohedge",
+   "url": "https://www.zerohedge.com/political/inside-chirlas-secret-voter-campaign",
+   "tweet_url": "https://x.com/zerohedge/status/2119263752168104397",
+   "description": "Inside CHIRLA's Secret Voter Campaign https://t.co/RIdJXMEyzV"
+  },
+  {
+   "author": "zerohedge",
+   "url": "https://www.zerohedge.com/political/ice-deported-brian-months-later-he-was-back-fleecing-seattle-homeowners-and-hes-one",
+   "tweet_url": "https://x.com/zerohedge/status/2119256202018271454",
+   "description": "ICE Deported 'Brian' - Months Later He Was Back Fleecing Seattle Homeowners, And He's One Of Dozens https://t.co/wcwMoL0gkL"
+  },
+  {
+   "author": "Polymarket",
+   "url": "https://polymarket.com/event/weed-rescheduled-by-march-31/weed-rescheduled-by-december-31?dub_id=0n6kXzM8UNM7qShk",
+   "tweet_url": "https://x.com/Polymarket/status/2119250542723465667",
+   "description": "BREAKING: Archaeologists uncover the oldest known evidence of humans using cannabis to get high, dating back 2,800 years in an ancient Siber"
+  },
+  {
+   "author": "zerohedge",
+   "url": "https://www.zerohedge.com/political/hegseth-authorizes-national-guard-use-military-vehicles-boats-patrol-cars-dc",
+   "tweet_url": "https://x.com/zerohedge/status/2119248651604066566",
+   "description": "Hegseth Authorizes National Guard To Use Military Vehicles, Boats, Patrol Cars In DC https://t.co/iwxItB8NN9"
+  },
+  {
+   "author": "zerohedge",
+   "url": "https://www.zerohedge.com/technology/musks-starlink-building-orbital-bypass-undersea-cable-sabotage-threats-mount",
+   "tweet_url": "https://x.com/zerohedge/status/2119241112334319819",
+   "description": "Musk's Starlink Is Building An Orbital Bypass As Undersea Cable Sabotage Threats Mount  https://t.co/RCtYwQmfXW"
+  },
+  {
+   "author": "RyanDetrick",
+   "url": "https://www.barrons.com/livecoverage/stock-market-news-today-110626/card/stock-rebound-is-muted-just-like-the-faith-gains-will-hold-7uIVIi2rkgCrG8HPtf7s",
+   "tweet_url": "https://x.com/RyanDetrick/status/2119237096863150554",
+   "description": "Love seeing my friend @VIXandMore getting some pub in @barronsonline. He is one of the good ones and I've learned a lot from him over the ye"
+  },
+  {
+   "author": "zerohedge",
+   "url": "https://www.zerohedge.com/political/its-war-stupid",
+   "tweet_url": "https://x.com/zerohedge/status/2119233554521510301",
+   "description": "It's The War, Stupid https://t.co/SkpLbD0NLU"
+  },
+  {
+   "author": "themarketear",
+   "url": "https://www.zerohedge.com/the-market-ear/really-market-now-implying-zero-earnings-growth",
+   "tweet_url": "https://x.com/themarketear/status/2119127149651079527",
+   "description": "Tech positioning is now in line with outright negative earnings growth."
+  },
+  {
+   "author": "charliebilello",
+   "url": "https://bilello.blog/newsletter",
+   "tweet_url": "https://x.com/charliebilello/status/2119124077978005958",
+   "description": "The worst performing stocks in the S&amp;P 500 this year...  "
+  },
+  {
+   "author": "TaviCosta",
+   "url": "https://tavicosta.substack.com/p/top-75-macro-charts",
+   "tweet_url": "https://x.com/TaviCosta/status/2119186131980099967",
+   "description": "Here is a chart to ponder over the weekend."
+  },
+  {
+   "author": "crossbordercap",
+   "url": "https://capitalwars.substack.com/p/the-blue-wave-turns-markets-red?r=1nnkxi&utm_campaign=post&utm_medium=web&showWelcomeOnShare=true",
+   "tweet_url": "https://x.com/crossbordercap/status/2119204363457458589",
+   "description": "Latest 'Capital Wars' Substack https://t.co/W0axezkC6Q https://t.co/SykccTR2yE"
+  }
+ ],
+ "coverage": {
+  "authors_covered": 14,
+  "authors_total": 14
+ }
+};
+
+// ---------- helpers ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+function renderBold(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const secs = Math.max(0, (Date.now() - dt.getTime()) / 1000);
+  if (secs < 60)   return Math.floor(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)   return Math.floor(mins) + 'm ago';
+  const hrs  = mins / 60;
+  if (hrs < 48)    return Math.floor(hrs) + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function authorTag(name, cls = 'item-author') {
+  if (!name) return '';
+  return `<span class="${cls}" onclick="filterAuthor('${escapeAttr(name)}')">@${escapeHtml(name)}</span>`;
+}
+
+// ---------- rendering ----------
+function renderCharts(images) {
+  if (!images || !images.length) return '';
+  return `<div class="charts">` + images.map(u =>
+    `<img src="${escapeAttr(u)}" class="chart" loading="lazy" alt="" onclick="openLightbox('${escapeAttr(u)}')">`
+  ).join('') + `</div>`;
+}
+
+function renderDataPoints(points) {
+  if (!points || !points.length) return '';
+  return `<div class="data-points">` + points.map(p =>
+    `<span class="dp-tag">${escapeHtml(p)}</span>`
+  ).join('') + `</div>`;
+}
+
+function renderItem(item) {
+  const author = item.author || item.author_username || '';
+  const time = relativeTime(item.created_at);
+  const link = item.tweet_url
+    ? `<a class="item-link" href="${escapeAttr(item.tweet_url)}" target="_blank" rel="noopener">tweet →</a>`
+    : '';
+  const body = item.description || item.text || '';
+  return `
+    <div class="item-card filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      <div class="item-head">
+        ${authorTag(author)}
+        ${time ? `<span class="item-time">${time}</span>` : ''}
+        ${link}
+      </div>
+      ${body ? `<div class="item-text">${escapeHtml(body)}</div>` : ''}
+      ${renderDataPoints(item.data_points)}
+      ${renderCharts(item.images)}
+    </div>`;
+}
+
+function renderTopic(topic, idx) {
+  const items = (topic.items || []).map(renderItem).join('');
+  const name = topic.topic || topic.name || `Topic ${idx + 1}`;
+  return `
+    <div class="topic">
+      <div class="topic-head" onclick="toggleTopic(this)">
+        <span class="topic-name">${escapeHtml(name)}</span>
+        <span class="topic-count">${(topic.items || []).length}</span>
+        <span class="topic-arrow">▸</span>
+      </div>
+      <div class="topic-body">${items || '<div class="empty">No items.</div>'}</div>
+    </div>`;
+}
+
+function renderLink(l) {
+  const author = l.author || l.author_username || '';
+  const url = l.url || (l.resolved || l.tco) || '';
+  return `
+    <div class="link-row filterable" data-author="${escapeAttr(author).toLowerCase()}">
+      ${author ? authorTag(author, 'link-author') : '<span class="link-author">—</span>'}
+      <a class="link-url" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      ${l.description ? `<span class="link-desc">${escapeHtml(l.description)}</span>` : ''}
+    </div>`;
+}
+
+function renderSection(letter, name, body, count) {
+  return `
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-letter">${letter}.</span>
+        <span class="section-name">${escapeHtml(name)}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-arrow">▸</span>
+      </div>
+      <div class="section-body">${body}</div>
+    </div>`;
+}
+
+function renderSummary(text) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\n\n+/).filter(Boolean)
+    .map(p => `<p>${renderBold(p)}</p>`).join('');
+  return `<div class="summary">${paragraphs}</div>`;
+}
+
+function renderStats(d) {
+  const parts = [];
+  const cov = d.coverage || {};
+  if (cov.authors_covered != null && cov.authors_total != null) {
+    const pct = cov.authors_total ? (100 * cov.authors_covered / cov.authors_total) : 0;
+    parts.push(`coverage <strong>${cov.authors_covered}/${cov.authors_total}</strong> (${pct.toFixed(0)}%)`);
+  }
+  const topicCount = (d.topics || []).length;
+  const itemCount = (d.topics || []).reduce((n, t) => n + (t.items || []).length, 0);
+  parts.push(`topics <strong>${topicCount}</strong>`);
+  parts.push(`items <strong>${itemCount}</strong>`);
+  if ((d.links || []).length) parts.push(`links <strong>${d.links.length}</strong>`);
+  return parts.join(' | ');
+}
+
+// ---------- interactions ----------
+function toggleSection(el) { el.parentElement.classList.toggle('open'); }
+function toggleTopic(el)   { el.parentElement.classList.toggle('open'); }
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+let activeFilter = null;
+function filterAuthor(name) {
+  if (!name) return;
+  activeFilter = String(name).toLowerCase();
+  document.querySelectorAll('.filterable').forEach(el => {
+    const a = (el.dataset.author || '').toLowerCase();
+    if (a === activeFilter) { el.classList.add('match'); el.classList.remove('dim'); }
+    else                    { el.classList.add('dim'); el.classList.remove('match'); }
+  });
+  document.getElementById('filter-name').textContent = '@' + name;
+  document.getElementById('filter-bar').classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.filterable').forEach(el => {
+    el.classList.remove('match'); el.classList.remove('dim');
+  });
+  document.getElementById('filter-bar').classList.remove('active');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+    else if (activeFilter) clearFilter();
+  }
+});
+
+// ---------- main ----------
+function renderReport(d) {
+  if (!d || typeof d !== 'object') d = {};
+  document.getElementById('report-date').textContent = d.date || '';
+
+  const topicsBody = (d.topics || []).map(renderTopic).join('')
+                  || '<div class="empty">No topics.</div>';
+  const linksBody = (d.links || []).map(renderLink).join('');
+
+  const sections = [
+    renderSummary(d.summary),
+    renderSection('A', 'Topics', topicsBody, (d.topics || []).length),
+    linksBody ? renderSection('B', 'Link Queue', linksBody, (d.links || []).length) : '',
+  ].join('');
+
+  document.getElementById('app').innerHTML = sections || '<div class="empty">No report data.</div>';
+
+  // Auto-open the main section and the first topic.
+  document.querySelectorAll('.section').forEach((s, i) => { if (i === 0) s.classList.add('open'); });
+  const firstTopic = document.querySelector('.topic');
+  if (firstTopic) firstTopic.classList.add('open');
+
+  document.getElementById('stats').innerHTML = renderStats(d);
+}
+
+renderReport(REPORT_DATA);
+</script>
+</body>
+</html>
