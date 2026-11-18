@@ -1,0 +1,479 @@
+{
+  "record_id": "fb0e0955d463a148",
+  "source_type": "technology",
+  "source_name": "InfoQ",
+  "source_url": "https://www.infoq.com/presentations/scale-llm-ranking-systems-linkedin",
+  "title": "Scaling LLM-Based Ranking Systems for Latency-Critical Search & Recommendation Workloads",
+  "published_date": "2026-11-17",
+  "language": "en",
+  "processed_at": "2026-11-18T11:07:43Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "AI",
+    "Tech"
+  ],
+  "gist": "LinkedIn's LLM inference lead details how its LLM job/people-search ranker meets sub-500ms P99 SLAs: multi-teacher distillation from 7B to a 400M pruned model, compressing 2,000-token job descriptions into a single embedding for ~75x throughput (290 to ~22K items/sec/GPU) at equal or better quality, and fixing hidden CPU/Python bottlenecks (tokenization, IPC, blocking copies, GC, GIL) in an SGLang-based stack. Core lesson: shrink model and context before capacity planning, and benchmark with bursty, production-like traffic.",
+  "themes": [
+    {
+      "theme": "LinkedIn LLM ranking stack",
+      "insights": [
+        {
+          "claim": "LinkedIn has moved job and people search to natural-language queries and now uses LLMs in the ranking layer of a three-stage pipeline (query understanding, KNN embedding retrieval, LLM ranker) serving ~1.3 billion members across 200 countries.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "data_point",
+          "entities": [
+            "LinkedIn",
+            "LLM ranking",
+            "vector search"
+          ],
+          "conviction": "high",
+          "so_what": "Confirms LLM inference is now in the hot path of consumer search at hyperscale, a durable driver of inference GPU demand beyond chatbots.",
+          "quote": "LinkedIn right now has close to 1.3 billion members worldwide across 200 countries",
+          "locator": "LinkedIn Search",
+          "quote_verified": false
+        },
+        {
+          "claim": "LinkedIn's production LLM ranker uses a trivially simple prompt asking whether a job matches the query and member profile, and derives the final score from the probabilities of the 'yes' vs 'no' tokens rather than generating text.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "data_point",
+          "entities": [
+            "LinkedIn",
+            "LLM ranking"
+          ],
+          "conviction": "high",
+          "so_what": "Ranking-as-classification means inference cost is prefill-only; vendors optimizing decode throughput are less relevant to this workload class.",
+          "quote": "can you output yes or no if the job matches the query?",
+          "locator": "Architecture",
+          "quote_verified": false
+        },
+        {
+          "claim": "LinkedIn's retrieval layer deliberately optimizes for recall over precision, preferring extra candidates to discarding relevant ones, and pushes the precision job to the expensive LLM ranker.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "framework",
+          "entities": [
+            "LinkedIn",
+            "retrieval",
+            "KNN search"
+          ],
+          "conviction": "medium",
+          "so_what": "Explains why ranker throughput (items/sec/GPU) dominates serving cost: candidate counts are hundreds per query.",
+          "quote": null,
+          "locator": "Now when we move on to the retrieval layer",
+          "quote_verified": false
+        },
+        {
+          "claim": "LinkedIn's LLM-based people search and job search was rolled out to all premium users and was expected to gradually reach all users by the end of the year.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "prediction",
+          "entities": [
+            "LinkedIn",
+            "LinkedIn Premium"
+          ],
+          "conviction": "medium",
+          "so_what": "Broad rollout implies a step-up in LinkedIn/Microsoft inference GPU footprint; watch Microsoft capex commentary for LinkedIn AI features.",
+          "quote": "gradually will get rolled out to all users by end of this year",
+          "locator": "Questions and Answers",
+          "quote_verified": false
+        },
+        {
+          "claim": "LinkedIn reported roughly a 5% to 10% improvement in relevance metrics from LLM-based re-ranking versus its previous ranking methods, which were small MLP models using cosine-similarity-style scoring.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "data_point",
+          "entities": [
+            "LinkedIn",
+            "MLP rankers",
+            "LLM ranking"
+          ],
+          "conviction": "low",
+          "so_what": "Quantifies the product-quality uplift justifying LLM ranking cost; supports thesis that recommenders migrate to LLMs despite higher compute.",
+          "quote": "close to like a 5% to 10% increase in the auction metrics",
+          "locator": "Participant 3",
+          "quote_verified": false
+        },
+        {
+          "claim": "At LinkedIn, product-quality metrics (relevance and engagement) are prioritized first, and throughput and cost optimization is pursued only after significant product improvement is demonstrated.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "thesis",
+          "entities": [
+            "LinkedIn"
+          ],
+          "conviction": "medium",
+          "so_what": "Big platforms accept higher compute cost for ranking quality first, then squeeze cost — supportive of near-term inference spend.",
+          "quote": "The throughput on the other things come next for big companies like LinkedIn.",
+          "locator": "Questions and Answers",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Ranking differs from generation",
+      "insights": [
+        {
+          "claim": "LLM ranking is a fundamentally different workload from chat generation: N candidate prompts go through a single batched prefill sharing a long common prefix, with no decode loop, under strict P99 latency SLAs and high concurrency.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "framework",
+          "entities": [
+            "LLM inference",
+            "prefill",
+            "decode"
+          ],
+          "conviction": "high",
+          "so_what": "Prefill-heavy, decode-free workloads favor compute-dense hardware and prefix/KV reuse; generic generation-optimized engines leave performance on the table.",
+          "quote": "Ranking is a very different problem all together.",
+          "locator": "Part Zero - LLM Ranking is a Different Problem",
+          "quote_verified": false
+        },
+        {
+          "claim": "For LinkedIn search and recommendation, P99 latency must usually be under 500 milliseconds, and results must cover hundreds of candidates per request.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "data_point",
+          "entities": [
+            "LinkedIn",
+            "P99 latency"
+          ],
+          "conviction": "high",
+          "so_what": "Hard latency budgets cap model size, which drives the industry toward small distilled models for production ranking.",
+          "quote": "Usually, the P99 has to be less than 500 milliseconds.",
+          "locator": "Part Three - Inference Optimizations",
+          "quote_verified": false
+        },
+        {
+          "claim": "Production LLM serving efficiency rests on three levers—smallest possible model, shortest possible context, most efficient inference—because tokens are the cost currency, and no single fix is sufficient.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "framework",
+          "entities": [
+            "LLM inference"
+          ],
+          "conviction": "high",
+          "so_what": "Cost per ranked item falls multiplicatively across levers; expect inference cost curves to drop faster than hardware improvements alone.",
+          "quote": "because token here is the currency",
+          "locator": "Part Zero - LLM Ranking is a Different Problem",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Distillation and pruning to 400M",
+      "insights": [
+        {
+          "claim": "LinkedIn used multi-teacher distillation: a ~7B teacher model provides training signal to two smaller teachers optimized separately for relevance and engagement, which then jointly train a 0.6B small-language-model ranker.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "data_point",
+          "entities": [
+            "LinkedIn",
+            "knowledge distillation",
+            "SLM ranker"
+          ],
+          "conviction": "high",
+          "so_what": "Large frontier-size models serve as offline teachers, not production servers; production inference shifts to sub-1B models.",
+          "quote": null,
+          "locator": "Part One - Model Optimizations",
+          "quote_verified": false
+        },
+        {
+          "claim": "LinkedIn then structurally pruned the 0.6B ranker (removing layers, MLP layers, attention heads) and re-distilled/fine-tuned it to a 400M-parameter production model, accepting a bounded quality loss.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "data_point",
+          "entities": [
+            "LinkedIn",
+            "pruning",
+            "SLM ranker"
+          ],
+          "conviction": "high",
+          "so_what": "A ~17x parameter reduction from teacher to served model shows how much serving compute can be removed for narrow tasks.",
+          "quote": "finally got this in the size of 400 million parameters",
+          "locator": "Part One - Model Optimizations",
+          "quote_verified": false
+        },
+        {
+          "claim": "Identifying prunable layers was a trial-and-error research process: masking layers via SFT-based techniques, evaluating quality, then recovering quality through post-training and RL-based fine-tuning.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "framework",
+          "entities": [
+            "LinkedIn",
+            "pruning",
+            "SFT",
+            "RL fine-tuning"
+          ],
+          "conviction": "medium",
+          "so_what": "Pruning remains artisanal engineering, a moat for teams with in-house ML talent rather than a commoditized tool.",
+          "quote": null,
+          "locator": "Participant 2",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Context compression economics",
+      "insights": [
+        {
+          "claim": "A LinkedIn job description is ~2,000 tokens, so ranking 100 jobs in one request means ~200K tokens, which is infeasible at 1.3 billion-member scale without compression.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "data_point",
+          "entities": [
+            "LinkedIn",
+            "context length"
+          ],
+          "conviction": "high",
+          "so_what": "Illustrates why naive LLM ranking costs explode with candidate count; context compression is the key unit-economics lever.",
+          "quote": null,
+          "locator": "Part Two - Context Optimizations",
+          "quote_verified": false
+        },
+        {
+          "claim": "Offline LLM summarization of job descriptions from 2,000 to 150 tokens (16x shorter) raised ranker throughput from ~290 to ~2,200 items per second per GPU with under 2% quality loss.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "data_point",
+          "entities": [
+            "LinkedIn",
+            "summarization",
+            "GPU throughput"
+          ],
+          "conviction": "high",
+          "so_what": "Roughly 8x fewer GPUs for the same ranking load at near-identical quality — a major deflationary force on per-query inference cost.",
+          "quote": "which is a 16x reduction in the prompt length",
+          "locator": "Part Two - Context Optimizations",
+          "quote_verified": false
+        },
+        {
+          "claim": "Compressing each full job description offline into a single LLM-produced embedding (last-token pooling) raised throughput another ~10x to ~22K items per second per GPU, with slightly better quality than the summarized text.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "data_point",
+          "entities": [
+            "LinkedIn",
+            "embeddings",
+            "last-token pooling",
+            "GPU throughput"
+          ],
+          "conviction": "high",
+          "so_what": "~75x total throughput gain vs full text signals huge latent efficiency in LLM recommenders; GPU demand per query can fall sharply as these techniques spread.",
+          "quote": "you were able to get a slightly better quality compared to the summarized text",
+          "locator": "The third data point on the right",
+          "quote_verified": false
+        },
+        {
+          "claim": "The best item representation for an LLM ranking workload is not the longest but the smallest that meets the required quality, and teams should fix model and context size before doing hardware estimates or capacity planning.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "contrarian",
+          "entities": [
+            "LLM inference",
+            "capacity planning"
+          ],
+          "conviction": "high",
+          "so_what": "GPU capacity plans built on unoptimized models overstate demand; discount naive inference-demand extrapolations.",
+          "quote": "the best representation for your workload is not necessarily the longest one",
+          "locator": "The third data point on the right",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Hidden system bottlenecks in serving",
+      "insights": [
+        {
+          "claim": "LinkedIn does not treat inference as solved: despite open-source engines like SGLang, vLLM and TensorRT-LLM, workload-specific system bottlenecks (runtime, language, engine) hid most of the lost throughput.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "thesis",
+          "entities": [
+            "SGLang",
+            "vLLM",
+            "TensorRT-LLM",
+            "LinkedIn"
+          ],
+          "conviction": "high",
+          "so_what": "Open-source engines are the base layer, but differentiation and GPU efficiency come from workload-specific engineering.",
+          "quote": "We didn't treat inference as a solved problem.",
+          "locator": "Part Three - Inference Optimizations",
+          "quote_verified": false
+        },
+        {
+          "claim": "Sequential per-prompt tokenization on the CPU stalled the GPU; switching to Hugging Face's batched fast tokenizer (Rust-implemented) and adding server-side cross-request batching removed the bottleneck.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "causal",
+          "entities": [
+            "Hugging Face",
+            "tokenizer",
+            "LinkedIn"
+          ],
+          "conviction": "medium",
+          "so_what": "CPU-side inefficiency can leave expensive GPUs idle; GPU utilization is often a software problem, not a hardware shortage.",
+          "quote": null,
+          "locator": "The first bottleneck was on the CPU side",
+          "quote_verified": false
+        },
+        {
+          "claim": "Sending prompts one-by-one as separate ZMQ messages between tokenizer and scheduler processes split batches; sending the whole batch in a single message restored batch integrity.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "causal",
+          "entities": [
+            "ZMQ",
+            "SGLang",
+            "multiprocessing"
+          ],
+          "conviction": "medium",
+          "so_what": "Small IPC design choices materially change GPU batch efficiency in Python serving stacks.",
+          "quote": null,
+          "locator": "The next bottleneck was even more subtle",
+          "quote_verified": false
+        },
+        {
+          "claim": "LinkedIn contributed a dedicated scoring API to open-source SGLang that skips sampling and full-vocabulary GPU-to-CPU copies, returning only the yes/no logits after one large prefill.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "data_point",
+          "entities": [
+            "SGLang",
+            "LinkedIn",
+            "scoring API"
+          ],
+          "conviction": "high",
+          "so_what": "Open-source engines are adding ranking/scoring primitives, lowering the barrier for other platforms to adopt LLM rankers.",
+          "quote": null,
+          "locator": "This motivated us to introduce the dedicated scoring API",
+          "quote_verified": false
+        },
+        {
+          "claim": "Synchronous, per-item GPU-to-CPU copies of yes/no probabilities (even a simple .tolist() call) left idle gaps between GPU kernel launches; batched asynchronous non-blocking copies let CPU work overlap with GPU dispatch.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "causal",
+          "entities": [
+            "CUDA",
+            "PyTorch",
+            "GPU utilization"
+          ],
+          "conviction": "medium",
+          "so_what": "Low GPU utilization in production often traces to CPU-side blocking, implying installed GPU fleets have headroom recoverable by software.",
+          "quote": "a simple dot to list Python call made the copy blocking",
+          "locator": "The third line is the GPU compute",
+          "quote_verified": false
+        },
+        {
+          "claim": "Concatenating the query and all candidate items into a single prompt with a custom item-aware attention mask inside the flash attention kernel lets the LLM score N items in one pass and reuse the query KV cache once.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "data_point",
+          "entities": [
+            "flash attention",
+            "KV cache",
+            "LinkedIn"
+          ],
+          "conviction": "high",
+          "so_what": "Multi-item single-pass scoring removes redundant query compute — another multiplicative cut to ranking inference cost.",
+          "quote": null,
+          "locator": "Let's revisit the ranking use case",
+          "quote_verified": false
+        },
+        {
+          "claim": "Python's garbage collector scanning long-lived model-server objects caused ~300ms P99 latency spikes every few seconds; warming up the server then calling gc.freeze stabilized P99.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "causal",
+          "entities": [
+            "Python",
+            "gc.freeze",
+            "P99 latency"
+          ],
+          "conviction": "high",
+          "so_what": "Python runtime quirks can blow latency SLAs in production AI serving; a lever for teams running Python-based inference.",
+          "quote": "the root cause turned out to be the garbage collector",
+          "locator": "The first interesting thing that we encountered in production",
+          "quote_verified": false
+        },
+        {
+          "claim": "Python's Global Interpreter Lock made a single gRPC servicer process and then a single SGLang worker process the throughput bottleneck; replacing each with multiple processes, each with its own model copy time-slicing the GPU, fixed it, enabled by the small model and ample GPU HBM.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "causal",
+          "entities": [
+            "Python GIL",
+            "gRPC",
+            "SGLang",
+            "HBM"
+          ],
+          "conviction": "high",
+          "so_what": "Small distilled models plus large GPU HBM enable multiple model replicas per GPU, raising utilization and lowering cost per query.",
+          "quote": "worry about this Global Interpreter Lock and this can be your single fix which can help improve the throughput",
+          "locator": "The next bottleneck was Python's infamous Global Interpreter Lock",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Benchmarking and org lessons",
+      "insights": [
+        {
+          "claim": "LinkedIn's GPU capacity estimate from offline benchmarks failed under production dark traffic because synthetic load was evenly spaced; real traffic is bursty, so benchmarks should replay recorded production traffic or use a Poisson arrival distribution.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "causal",
+          "entities": [
+            "LinkedIn",
+            "benchmarking",
+            "Poisson distribution"
+          ],
+          "conviction": "high",
+          "so_what": "Offline throughput benchmarks overstate real-world capacity; vendor or internal GPU-efficiency claims based on uniform load deserve skepticism.",
+          "quote": "simulate the synthetic traffic using a Poisson distribution instead of an even distribution",
+          "locator": "Part Four - Learnings at LinkedIn Scale",
+          "quote_verified": false
+        },
+        {
+          "claim": "Offline-online parity must be a launch gate: differing defaults between fine-tuning code, prompt-engineering code and the production model server—such as a beginning- or end-of-sequence tokenization flag—can silently change the whole prompt.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "framework",
+          "entities": [
+            "LLM serving",
+            "tokenization"
+          ],
+          "conviction": "high",
+          "so_what": "Execution risk in deploying LLM features is operational, not just model quality; favors teams with mature MLOps.",
+          "quote": "Disparity has to be a gate without which you cannot launch in production at all.",
+          "locator": "The second learning is what I call offline must match online",
+          "quote_verified": false
+        },
+        {
+          "claim": "The first optimization for production LLM systems is organizational: a recurring forum bringing together inference, model and prompt engineers and product managers catches many issues before production.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "thesis",
+          "entities": [
+            "LinkedIn"
+          ],
+          "conviction": "medium",
+          "so_what": "Cross-functional coordination is a hidden determinant of AI deployment speed and cost at large platforms.",
+          "quote": null,
+          "locator": "The final learning",
+          "quote_verified": false
+        },
+        {
+          "claim": "For LinkedIn people search, private member data not exposed on the public profile (e.g., date of birth) is masked and never fed to the ranking model; job descriptions are public and pre-filtered for PII.",
+          "speaker": "Sundara Raman Ramachandran",
+          "type": "data_point",
+          "entities": [
+            "LinkedIn",
+            "PII",
+            "privacy"
+          ],
+          "conviction": "medium",
+          "so_what": "Privacy-preserving input design reduces regulatory risk for LLM-powered search on social platforms.",
+          "quote": "Only the publicly available information goes as input to the model.",
+          "locator": "Participant 4",
+          "quote_verified": false
+        }
+      ]
+    }
+  ],
+  "insight_total": 28,
+  "top_entities": [
+    "LinkedIn",
+    "SGLang",
+    "LLM ranking",
+    "knowledge distillation",
+    "embeddings",
+    "Python GIL",
+    "flash attention",
+    "vLLM",
+    "TensorRT-LLM",
+    "Hugging Face",
+    "P99 latency"
+  ],
+  "source_meta": {
+    "author": "Sundara Raman Ramachandran",
+    "word_count": 8093,
+    "paywalled": false
+  }
+}
