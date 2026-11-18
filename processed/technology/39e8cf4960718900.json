@@ -1,0 +1,577 @@
+{
+  "record_id": "39e8cf4960718900",
+  "source_type": "technology",
+  "source_name": "Together AI Blog",
+  "source_url": "https://www.together.ai/blog/road-to-together-compiler",
+  "title": "Last year we built megakernels. This year we deleted them: The road to Together Compiler",
+  "published_date": "2026-11-16",
+  "language": "en",
+  "processed_at": "2026-11-18T11:09:26Z",
+  "processor": "claude-code-sub-opus",
+  "tags": [
+    "AI",
+    "Tech"
+  ],
+  "gist": "Together AI found that its record-setting megakernels were unproductizable and that default Torch Inductor kernels plus CUDA Graphs and PDL recover 98% of their performance; heterogeneous models and hardware make monolithic fusion suboptimal. It replaced rule-based compilation with a minimal agent-driven optimizer (Together Compiler) after learning that heavy scaffolding (IRs, knowledge hubs, expert strategies) hurt agents, claiming up to 1.7x over megakernels and up to 2.6x over optimized baselines.",
+  "themes": [
+    {
+      "theme": "Megakernels deleted: simple primitives match them",
+      "insights": [
+        {
+          "claim": "Together AI's hand-built Llama 1B megakernel reached 990 TPS on H100 (48% over Torch Inductor's 669 TPS), but after months of production work in late 2025 it supported only one model, one batch size (1), one precision (BF16) and one customer.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "anecdote",
+          "entities": [
+            "Together AI",
+            "Megakernels",
+            "Llama 1B",
+            "H100",
+            "Torch Inductor"
+          ],
+          "conviction": "high",
+          "so_what": "Record-breaking monolithic kernels can be commercially unproductizable; discount benchmark-only inference speed claims that lack workload flexibility.",
+          "quote": "we had a grand total of one model, one batch size, and one customer.",
+          "locator": "Introduction / Then we tried putting megakernels into production",
+          "quote_verified": true
+        },
+        {
+          "claim": "Default Torch Inductor kernels plus CUDA Graphs and fine-grained Programmatic Dependent Launch (PDL) reach 975 TPS on Llama 1B H100, 98% of the hand-optimized megakernel, without writing a single custom kernel.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "Torch Inductor",
+            "CUDA Graphs",
+            "PDL",
+            "NVIDIA",
+            "Llama 1B",
+            "H100"
+          ],
+          "conviction": "high",
+          "so_what": "Much of the 'custom kernel' performance moat in inference is replicable with stock NVIDIA primitives, compressing differentiation for kernel-specialist startups.",
+          "quote": "we could recover 98% of megakernel performance without writing a single kernel",
+          "locator": "Putting all of this together, default PyTorch Inductor kernels",
+          "quote_verified": true
+        },
+        {
+          "claim": "Stepwise ablation on Llama 1B H100: Torch Compile 669 TPS, +CUDA Graphs 864 TPS (87% of megakernel), +PDL 953 TPS (96%), +fine-grained PDL placement 975 TPS (98%).",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "Torch Compile",
+            "CUDA Graphs",
+            "PDL",
+            "Llama 1B"
+          ],
+          "conviction": "high",
+          "so_what": "Launch-overhead removal is the dominant lever in small-batch decode; CUDA Graphs alone captures most of the gain.",
+          "quote": null,
+          "locator": "Launch overhead. Kernel launch overhead is costly.",
+          "quote_verified": false
+        },
+        {
+          "claim": "In PyTorch, ATen dispatch costs 37 microseconds for an H100 Llama 1B down-projection whose GPU execution is only 15 microseconds; even pure C++ launches cost about 2 microseconds each, adding up across hundreds of kernels per forward pass.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "PyTorch",
+            "ATen",
+            "H100",
+            "Llama 1B"
+          ],
+          "conviction": "high",
+          "so_what": "CPU-side framework overhead, not GPU FLOPs, often bounds low-latency decode—favoring graph capture and host-side optimization tooling.",
+          "quote": "Thirty-seven microseconds of paperwork for fifteen microseconds of work",
+          "locator": "Launch overhead.",
+          "quote_verified": true
+        },
+        {
+          "claim": "Megakernels do not eliminate launch costs; they trade them for in-kernel synchronization: megakernel grid sync costs 646 ns on H100 vs 645 ns for CUDA Graph + PDL, while a normal cudaLaunchKernelEx costs 2,077 ns (2,496 ns on B200).",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "CUDA Graphs",
+            "PDL",
+            "H100",
+            "B200",
+            "NVIDIA"
+          ],
+          "conviction": "high",
+          "so_what": "The headline advantage of persistent megakernels is largely illusory once modern launch primitives are used.",
+          "quote": "it just trades launch overhead for similar synchronization costs inside the kernel",
+          "locator": "Synchronization cost across launch mechanisms on H100 and B200",
+          "quote_verified": true
+        },
+        {
+          "claim": "Intra-kernel synchronization is slightly slower on NVIDIA B200 than H100 because B200 is split into two separate dies; single-die sync matches H100 for an equivalent SM count.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "causal",
+          "entities": [
+            "NVIDIA",
+            "B200",
+            "H100",
+            "Blackwell"
+          ],
+          "conviction": "medium",
+          "so_what": "Multi-die GPU designs introduce sync penalties that favor software designs avoiding global grid barriers.",
+          "quote": null,
+          "locator": "Interestingly, intra-kernel synchronization is slightly slower on B200",
+          "quote_verified": false
+        },
+        {
+          "claim": "Compute-overlap benefits of persistent kernels are limited: in the Llama 1B H100 megakernel three of five producer-consumer edges per layer require full barriers (a fourth is effectively full), so only the attention instruction meaningfully benefits from overlap.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "causal",
+          "entities": [
+            "Megakernels",
+            "Llama 1B",
+            "H100"
+          ],
+          "conviction": "high",
+          "so_what": "Inherent serialization in transformer layers caps gains from exotic scheduling; skepticism warranted toward persistent-kernel marketing.",
+          "quote": null,
+          "locator": "Compute overlap. Wave quantization occurs",
+          "quote_verified": false
+        },
+        {
+          "claim": "Megakernel paged-memory weight preloading was worth only about 3.3% of forward time (990 to 961 TPS when removed), and PDL with carefully placed griddepcontrol.wait recovers up to 98% of that gain.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "Megakernels",
+            "PDL",
+            "Llama 1B"
+          ],
+          "conviction": "high",
+          "so_what": "Memory-prefetch tricks are second-order in decode; simpler tooling captures them.",
+          "quote": "Memory preloading helps, but not a lot",
+          "locator": "Memory overlap. Our earlier megakernel divided",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Why monolithic kernels fail on new hardware/models",
+      "insights": [
+        {
+          "claim": "Megakernels force one launch envelope (warp count, registers, cluster shape) on all ops: Hopper wgmma GEMMs run best at 12 warps, and forcing them into the megakernel's 20-warp configuration makes them 1.2-1.5x slower; AMD hardware faces the same register constraint, though Blackwell's tcgen05 does not.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "causal",
+          "entities": [
+            "Megakernels",
+            "Hopper",
+            "Blackwell",
+            "AMD",
+            "NVIDIA"
+          ],
+          "conviction": "high",
+          "so_what": "Hardware heterogeneity (NVIDIA generations plus AMD) structurally penalizes one-size kernel strategies, favoring adaptive compilers.",
+          "quote": null,
+          "locator": "Persistent kernels force hardware tradeoffs",
+          "quote_verified": false
+        },
+        {
+          "claim": "Packing a whole model into one megakernel binary overflows the SM instruction cache, causing evictions and refetches when operations repeat.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "causal",
+          "entities": [
+            "Megakernels",
+            "GPU instruction cache"
+          ],
+          "conviction": "medium",
+          "so_what": "Another hidden cost of monolithic fusion that grows with model complexity.",
+          "quote": null,
+          "locator": "Megakernels also add pressure to the SM's instruction cache",
+          "quote_verified": false
+        },
+        {
+          "claim": "Kimi K3 on Blackwell interleaves KDA and MLA layers that need different tensor-core cta_group modes (single-CTA vs CTA-pair), which PTX forbids mixing in one kernel, so a megakernel cannot run both optimally.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "causal",
+          "entities": [
+            "Kimi K3",
+            "Blackwell",
+            "KDA",
+            "MLA",
+            "PTX"
+          ],
+          "conviction": "high",
+          "so_what": "Architectural diversity in frontier open models (hybrid attention, MoE) makes inference optimization a per-model problem—a moat for continual optimization services.",
+          "quote": "PTX forbids mixing these two different modes into one kernel",
+          "locator": "Modern architectures don't fit single envelopes",
+          "quote_verified": true
+        },
+        {
+          "claim": "For Kimi K3, running MoE GEMMs tensor-parallel and attention projections data-parallel means TP GEMMs process 8x more tokens and need a different cluster size; forcing one cluster size causes a 5-19% slowdown.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "Kimi K3",
+            "MoE",
+            "Tensor parallelism"
+          ],
+          "conviction": "medium",
+          "so_what": "Mixed parallelism schemes in production MoE serving reward per-op tuning.",
+          "quote": null,
+          "locator": "During inference, different kernels may require different parallelism schemes",
+          "quote_verified": false
+        },
+        {
+          "claim": "Un-fusing can win: moving Kimi K3 expert dispatch to the GPU copy engine beat Mixture of Kittens' MoE megakernel by 6.9% under imbalanced routing, and FlashInfer's MegaMoE ran 17% faster by factoring dispatch out of its GEMM.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "contrarian",
+          "entities": [
+            "Kimi K3",
+            "Mixture of Kittens",
+            "FlashInfer",
+            "MegaMoE",
+            "MoE"
+          ],
+          "conviction": "high",
+          "so_what": "Contrary to the 'fuse everything' consensus, the edge is choosing which ops to couple—a search problem suited to automated/agentic tuning.",
+          "quote": "Fusion for the sake of fusion is not always ideal.",
+          "locator": "Examining open source kernels, we found",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Torch Inductor's heuristic and benchmarking gaps",
+      "insights": [
+        {
+          "claim": "Torch Inductor's 'freezing' flag improved throughput 10-26% at larger batch sizes but caused a 49% slowdown at batch size 1, because an FP32 weight conversion was not reversed for matrix-vector operations.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "Torch Inductor",
+            "PyTorch"
+          ],
+          "conviction": "high",
+          "so_what": "Static compiler heuristics can badly misfire on latency-critical batch-1 serving; workload-specific search has real value.",
+          "quote": null,
+          "locator": "The best optimization depends on the workload.",
+          "quote_verified": false
+        },
+        {
+          "claim": "As of Q3 2026 Torch Inductor exposes 607 tuning flags, 198 added in the past year, and their effects interact non-additively (aggressive_fusion alone cost 6 TPS on Llama 1B but combined with three other flags gained 3 TPS).",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "Torch Inductor",
+            "PyTorch",
+            "Llama 1B"
+          ],
+          "conviction": "high",
+          "so_what": "The exploding configuration space argues for systematic/agentic search over human-tuned compilers.",
+          "quote": "As of Q3 2026, Inductor exposes 607 tuning flags, 198 of which were added in the past year.",
+          "locator": "Optimizations interact in unpredictable ways.",
+          "quote_verified": true
+        },
+        {
+          "claim": "Inductor's isolated kernel benchmarks flush L2 cache and include CPU launch idle time, overestimating kernel times by 39-58% versus live inference and reporting 2.5 µs for an op doing no GPU work; this led it to pick a Triton GEMM 15% slower than cuBLAS on Llama 1B's output projection.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "causal",
+          "entities": [
+            "Torch Inductor",
+            "Triton",
+            "cuBLAS",
+            "Llama 1B",
+            "Nsight Systems"
+          ],
+          "conviction": "high",
+          "so_what": "Benchmark fidelity is a hidden performance lever; vendors measuring inside real forward passes gain edge.",
+          "quote": null,
+          "locator": "Finding #2: The fastest kernel in isolation",
+          "quote_verified": false
+        },
+        {
+          "claim": "Unrealistic benchmark inputs distort results: zero-initialized token IDs made torch.embedding 2.1x faster than random IDs at 64K tokens, and random inputs misjudged GLM 5.3's MoE grouped-GEMM latency by 4-21%.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "PyTorch",
+            "GLM 5.3",
+            "MoE"
+          ],
+          "conviction": "high",
+          "so_what": "Data-dependent architectures (MoE) make realistic-input profiling essential.",
+          "quote": "accurate benchmarking requires taking measurements from inside a real forward pass on real input data",
+          "locator": "Benchmark inputs can also distort cache behavior",
+          "quote_verified": true
+        },
+        {
+          "claim": "Inductor's greedy pairwise fusion scores candidates by memory-traffic savings and so rejects fusing kernels sharing no memory, even when one launches just 6 CTAs leaving most of an H100's 132 SMs idle.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "framework",
+          "entities": [
+            "Torch Inductor",
+            "H100"
+          ],
+          "conviction": "medium",
+          "so_what": "Fusion algorithms should optimize GPU utilization, not just memory traffic.",
+          "quote": "an algorithm for kernel fusion should reason about utilization, not just memory",
+          "locator": "Finding #3: Inductor leaves fusion opportunities on the table.",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Agent-built kernels need real data and context",
+      "insights": [
+        {
+          "claim": "A static repository of pre-generated agent kernels swapped into Torch graphs proved ineffective because the best kernel depends on the model, workload and surrounding operations.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "causal",
+          "entities": [
+            "Together AI",
+            "Coding agents",
+            "PyTorch"
+          ],
+          "conviction": "medium",
+          "so_what": "Kernel libraries/marketplaces have limited value vs in-context continual optimization.",
+          "quote": "a static registry could not easily account for this",
+          "locator": "In March when these experiments were taking place",
+          "quote_verified": true
+        },
+        {
+          "claim": "An agent-written top-k indexer ran in 20 µs on random inputs but 62 ms on real inputs, because ReLU-produced exact zeros concentrated candidates into one histogram bin and triggered quadratic work.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "anecdote",
+          "entities": [
+            "Coding agents",
+            "GPU kernels"
+          ],
+          "conviction": "high",
+          "so_what": "AI-generated kernels validated on synthetic data can catastrophically regress in production—a risk for agentic codegen vendors.",
+          "quote": "Agents need real data and full execution context to generate optimizations that hold up in production.",
+          "locator": "Furthermore, synthetic inputs misled agents.",
+          "quote_verified": true
+        },
+        {
+          "claim": "Together AI found that by March coding agents had become remarkably capable at writing GPU kernels, shifting its approach from a rule-based compiler to an agent-centric compiler.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "thesis",
+          "entities": [
+            "Together AI",
+            "Coding agents",
+            "GPU kernels"
+          ],
+          "conviction": "high",
+          "so_what": "Frontier coding agents are now credible GPU kernel engineers, threatening scarce-human-expertise moats in CUDA optimization.",
+          "quote": "coding agents had become remarkably capable at writing GPU kernels",
+          "locator": "In March when these experiments were taking place",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Bitter lessons: less scaffolding, better agents",
+      "insights": [
+        {
+          "claim": "Together AI's custom BlockIR (driver-level kernel capture via CUPTI/rocProf with symbolic pointer mapping) was abandoned because agents spent more time debugging pointer tracking than optimizing; agents now edit forward-pass source code directly.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "contrarian",
+          "entities": [
+            "Together AI",
+            "BlockIR",
+            "CUPTI",
+            "rocProf",
+            "AMD"
+          ],
+          "conviction": "high",
+          "so_what": "As frontier models improve, elaborate IRs become liabilities; simpler source-level agent loops win.",
+          "quote": "agents were spending more time debugging pointer tracking than identifying optimizations",
+          "locator": "Phase 1: Capturing a sequence of kernels",
+          "quote_verified": true
+        },
+        {
+          "claim": "In Kimi K2.6 on TensorRT-LLM, 23 of 24 decoder-layer kernels are dispatched through C++ as custom torch ops and are opaque to Torch Inductor, limiting what PyTorch's FX graph compilers can optimize.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "Kimi K2.6",
+            "TensorRT-LLM",
+            "Torch Inductor",
+            "PyTorch"
+          ],
+          "conviction": "medium",
+          "so_what": "Production engines largely bypass PyTorch compilers, so compiler-level optimization tools must work beyond FX graphs.",
+          "quote": null,
+          "locator": "We started from PyTorch's FX Graph IR.",
+          "quote_verified": false
+        },
+        {
+          "claim": "Host-side optimizations outside kernel IRs matter: rewriting Kimi K3's MLA metadata planning to split long sequences across thread blocks sped the MLA kernel 1.7-2.5x.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "Kimi K3",
+            "MLA"
+          ],
+          "conviction": "medium",
+          "so_what": "Agentic optimizers with full source access can capture gains invisible to kernel-only compilers.",
+          "quote": null,
+          "locator": "A limited optimization space.",
+          "quote_verified": false
+        },
+        {
+          "claim": "On GLM 5.3 on AMD, clock drift up to 325 µs between launch hooks and PyTorch's allocator history mislabeled pointers, illustrating brittleness of pointer-level IR capture.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "anecdote",
+          "entities": [
+            "GLM 5.3",
+            "AMD",
+            "PyTorch"
+          ],
+          "conviction": "low",
+          "so_what": "AMD tooling paths remain rougher, adding friction for cross-vendor optimization.",
+          "quote": null,
+          "locator": "Even identifying pointers in the first place was fragile.",
+          "quote_verified": false
+        },
+        {
+          "claim": "An expert-curated knowledge hub made agents 25-31% worse by anchoring them to known patterns; on MiniMax-M3 layer 3 (B200, TP4, batch 1) it cut ensemble speedup from 5.85x to 4.75x.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "contrarian",
+          "entities": [
+            "MiniMax-M3",
+            "B200",
+            "Together AI"
+          ],
+          "conviction": "high",
+          "so_what": "Retrieval-augmented 'expert knowledge' can harm agent search—relevant to RAG/agent tooling vendors' value propositions.",
+          "quote": null,
+          "locator": "Knowledge hub. Our system used a knowledge hub",
+          "quote_verified": false
+        },
+        {
+          "claim": "A naive prompt to 'make this forward pass as fast as possible' outperformed six expert-written strategy ensembles (6.20x vs 4.92x, 26% better), as prescribing optimization order traps agents in local minima (phase-ordering problem).",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "contrarian",
+          "entities": [
+            "Together AI",
+            "Coding agents"
+          ],
+          "conviction": "high",
+          "so_what": "Human-prescribed workflows can cap agent performance; value shifts to measurement infrastructure and compute throughput.",
+          "quote": null,
+          "locator": "Expert strategies. We initially seeded each parallel agent",
+          "quote_verified": false
+        },
+        {
+          "claim": "Enforced DAG-style research logging consumed up to 43% of agents' CLI/tool calls per trial with little optimization value, so it was removed.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "Coding agents"
+          ],
+          "conviction": "medium",
+          "so_what": "Agent bookkeeping overhead is a measurable tax; lean scaffolds improve compute efficiency.",
+          "quote": null,
+          "locator": "Research and logging data structures.",
+          "quote_verified": false
+        },
+        {
+          "claim": "Parallel agents communicating frequently via a lightweight message board reached 7.72x speedup vs 6.20x with infrequent and 4.82x with no communication, because isolation caused redundant duplicate work.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "Together AI",
+            "Coding agents"
+          ],
+          "conviction": "high",
+          "so_what": "Multi-agent systems benefit from continuous coordination—a design signal for agent orchestration platforms.",
+          "quote": null,
+          "locator": "Agent ensembling.",
+          "quote_verified": false
+        },
+        {
+          "claim": "Systems built around agents should anticipate improving model capabilities, because scaffolding that helps early can later become a constraint.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "framework",
+          "entities": [
+            "Coding agents",
+            "Together AI"
+          ],
+          "conviction": "high",
+          "so_what": "Bet on minimal, measurement-centric agent infrastructure that scales with model progress rather than heavy bespoke frameworks.",
+          "quote": "frameworks that help early on can later become constraints",
+          "locator": "Wrapping Up",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Together Compiler results and positioning",
+      "insights": [
+        {
+          "claim": "Together Compiler (TKCC), an agent-driven continual inference optimizer, runs in under 24 hours on no more than two nodes and generates up to 1.7x higher TPS than Together's megakernel baseline (over 1,100 TPS for Llama 1B on H100).",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "Together AI",
+            "Together Compiler",
+            "TKCC",
+            "Llama 1B",
+            "H100"
+          ],
+          "conviction": "high",
+          "so_what": "Together AI is productizing automated per-customer inference optimization as a differentiator vs other inference clouds; offered in early access.",
+          "quote": null,
+          "locator": "This minimal system is what powers Together Compiler today.",
+          "quote_verified": false
+        },
+        {
+          "claim": "Together Compiler claims to beat highly optimized baselines by up to 2.6x, setting low-latency state of the art at 1,111 TPS on MiniMax M3.1-Flash and 1,205 TPS on DeepSeek v4.1-Flash, and speedups up to 6.4x on open-source codebases in weather modeling, PDEs, time-series and biology.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "data_point",
+          "entities": [
+            "Together Compiler",
+            "MiniMax M3.1-Flash",
+            "DeepSeek v4.1-Flash",
+            "Together AI"
+          ],
+          "conviction": "medium",
+          "so_what": "If generalizable, agentic optimization expands beyond LLM serving into scientific computing, widening Together AI's TAM; claims are vendor self-reported.",
+          "quote": "setting state-of-the-art low-latency performance with 1,111 TPS on MiniMax M3.1-Flash and 1,205 TPS on DeepSeek v4.1-Flash",
+          "locator": "Tops engine leaderboards",
+          "quote_verified": true
+        },
+        {
+          "claim": "Together AI argues inference is becoming heterogeneous—new architectures weekly, shifting batch sizes and sequence lengths, proliferating hardware—so the winning approach is continual, workload-specific optimization rather than monolithic kernels or static compiler heuristics.",
+          "speaker": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+          "type": "thesis",
+          "entities": [
+            "Together AI",
+            "Together Compiler",
+            "AI inference"
+          ],
+          "conviction": "high",
+          "so_what": "Hardware/model fragmentation increases value of optimization software layers and erodes single-vendor lock-in; watch inference providers' compiler moats.",
+          "quote": "there is no one-size-fits-all kernel",
+          "locator": "Introduction / Wrapping Up",
+          "quote_verified": true
+        }
+      ]
+    }
+  ],
+  "insight_total": 33,
+  "top_entities": [
+    "Together AI",
+    "Together Compiler",
+    "Megakernels",
+    "Torch Inductor",
+    "CUDA Graphs",
+    "PDL",
+    "Llama 1B",
+    "H100",
+    "B200",
+    "Kimi K3",
+    "Coding agents",
+    "MoE"
+  ],
+  "source_meta": {
+    "author": "Dylan Lim, Reyna Abhyankar, Simran Arora",
+    "word_count": 6189,
+    "paywalled": false
+  }
+}
