@@ -8,71 +8,218 @@
   "language": "en",
   "processed_at": "2026-11-25T11:05:14Z",
   "processor": "claude-code-sub-opus",
-  "tags": ["AI", "Tech"],
+  "tags": [
+    "AI",
+    "Tech"
+  ],
   "gist": "Ray Train and Ray Data add mid-epoch resumption: the data loader checkpoints which row IDs each worker consumed alongside the model, so a restarted job resumes mid-epoch with exactly-once row coverage. In an ImageNet/ResNet-50 benchmark on 16 A100s with a failure at 75% of an epoch, it cut end-to-end runtime and cost by 9% versus skip-batch resumption; it ships in open-source Ray 2.61 and is already in the Anyscale Runtime from Ray 2.50.",
   "themes": [
-    {"theme": "Cost of mid-epoch failures",
-     "insights": [
-       {"claim": "Restarting an epoch from the beginning after a mid-epoch training failure causes data imbalance, because previously consumed rows are trained on twice in the same epoch, skewing what the model learns.",
-        "speaker": "Jason Li", "type": "causal", "entities": ["Ray Train", "Ray Data"], "conviction": "high",
-        "so_what": "Fault recovery is a model-quality issue, not only a compute-cost issue, for large-scale training runs.",
-        "quote": null, "locator": "The cost of mid-epoch training failures", "quote_verified": false},
-       {"claim": "The GPU cost of replaying an epoch after failure grows with epoch size: on a dataset that takes a day to traverse, a single late failure can cost another full day of GPU time.",
-        "speaker": "Jason Li", "type": "causal", "entities": ["GPU"], "conviction": "high",
-        "so_what": "Training-infra resilience features become more valuable as datasets and runs scale, supporting demand for fault-tolerant orchestration layers.",
-        "quote": "on a dataset that takes a day to get through, a single late failure can cost another day of GPU time", "locator": "Both of these costs grow with the size of your epoch", "quote_verified": false},
-       {"claim": "Fast-forwarding past already-seen batches cannot guarantee exactly-once training with streaming loaders like Ray Data, because they process data on the fly without a guaranteed row order and skipped rows still need to be recomputed.",
-        "speaker": "Jason Li", "type": "contrarian", "entities": ["Ray Data"], "conviction": "high",
-        "so_what": "The common skip-batch workaround is both wasteful and incorrect for non-deterministic streaming pipelines.",
-        "quote": null, "locator": "To avoid these costs, teams often fast-forward", "quote_verified": false},
-       {"claim": "Anyscale frames training infrastructure as increasingly judged by how quickly it recovers from failures, since training failures are increasingly common at scale.",
-        "speaker": "Jason Li", "type": "thesis", "entities": ["Anyscale", "Ray Train"], "conviction": "medium",
-        "so_what": "Recovery speed is positioned as a competitive axis for AI training platforms.",
-        "quote": "effective training infrastructure is judged by how quickly it recovers from them", "locator": "Training failures are increasingly common at scale", "quote_verified": false}
-     ]},
-    {"theme": "Row-ID checkpointing design",
-     "insights": [
-       {"claim": "Ray Data's mid-epoch resumption tracks which specific rows were consumed (by unique row ID) rather than a position or batch count, because Ray Data does not hand out rows in a fixed order.",
-        "speaker": "Jason Li", "type": "framework", "entities": ["Ray Data"], "conviction": "high",
-        "so_what": "Set-based progress tracking is the design pattern that makes exactly-once resumption work for unordered streaming data loaders.",
-        "quote": "The key idea is to track consumed rows rather than a position.", "locator": "How it works", "quote_verified": false},
-       {"claim": "With data checkpointing enabled, a background thread writes each yielded batch's row IDs to Parquet files in shared storage, organized by rank, epoch and checkpoint index; calling state_dict() returns a small JSON-serializable dictionary saved alongside model and optimizer state so the two are committed together.",
-        "speaker": "Jason Li", "type": "framework", "entities": ["Ray Train", "Ray Data", "Parquet"], "conviction": "high",
-        "so_what": "Coupling data-loader state to model checkpoints removes drift between what was trained and what the loader thinks was trained.",
-        "quote": null, "locator": "Saving progress", "quote_verified": false},
-       {"claim": "On restore, Ray Data loads and sorts all consumed row IDs across ranks and filters them out right after the read via binary search, so skipped rows never reach preprocessing or the training loop, and the remaining rows are redistributed across whatever workers the restarted run has.",
-        "speaker": "Jason Li", "type": "causal", "entities": ["Ray Data", "Ray Train"], "conviction": "high",
-        "so_what": "Savings come from skipping preprocessing and transfer, and the design tolerates elastic worker counts after restart.",
-        "quote": null, "locator": "Restoring progress", "quote_verified": false},
-       {"claim": "Mid-epoch resumption in Ray requires a unique, preprocessing-surviving row ID column (auto-generated IDs work only with Parquet), only row-preserving transformations such as map, map_batches and filter, shared cloud or network storage, and FailureConfig(max_failures=...) for automatic restarts.",
-        "speaker": "Jason Li", "type": "data_point", "entities": ["Ray Train", "Ray Data", "Parquet"], "conviction": "high",
-        "so_what": "Adoption constraints limit the feature for pipelines that expand rows or use non-Parquet data without native IDs.",
-        "quote": null, "locator": "Requirements", "quote_verified": false},
-       {"claim": "Ray Data's iterator counts a batch as consumed once it is handed to the training loop, so frameworks that queue batches before training must drain the queue before checkpointing or the data checkpoint will run ahead of what the model actually trained on.",
-        "speaker": "Jason Li", "type": "causal", "entities": ["Ray Data", "Ray Train"], "conviction": "high",
-        "so_what": "A correctness caveat for teams integrating prefetching frameworks with Ray's data checkpointing.",
-        "quote": null, "locator": "Finish consuming a batch before you checkpoint", "quote_verified": false}
-     ]},
-    {"theme": "Benchmark results",
-     "insights": [
-       {"claim": "In an Anyscale benchmark of ResNet-50 on a modified 1M-row ImageNet using 16 A100 GPUs plus 10 CPU nodes, with a simulated failure 75% through an epoch, mid-epoch resumption cut end-to-end time from 594 s to 542 s and cost from $1.45 to $1.32 (about 9%) versus skipping batches.",
-        "speaker": "Jason Li", "type": "data_point", "entities": ["Anyscale", "ResNet-50", "ImageNet", "A100"], "conviction": "high",
-        "so_what": "Modest 9% gain on a small benchmark; the vendor claims savings scale with epoch size and preprocessing weight.",
-        "quote": null, "locator": "Evaluating the impact", "quote_verified": false},
-       {"claim": "Skipping batches to resume, which Hugging Face Transformers does by default, still reads, preprocesses and transfers every row before the restore point only to discard it, so mid-epoch resumption's savings grow with larger epochs and heavier preprocessing.",
-        "speaker": "Jason Li", "type": "causal", "entities": ["Hugging Face Transformers", "Ray Data"], "conviction": "high",
-        "so_what": "Positions Ray against the Hugging Face default for heavy-preprocessing workloads such as large images or multimodal data.",
-        "quote": null, "locator": "Without mid-epoch resumption, skipping batches", "quote_verified": false}
-     ]},
-    {"theme": "Release and commercial packaging",
-     "insights": [
-       {"claim": "Mid-epoch resumption ships in open-source Ray starting with Ray 2.61 but has been available earlier in the commercial Anyscale Runtime starting with Ray 2.50.",
-        "speaker": "Jason Li", "type": "data_point", "entities": ["Anyscale", "Ray", "Anyscale Runtime"], "conviction": "high",
-        "so_what": "Anyscale uses early access to features in its paid runtime as a differentiator over open-source Ray.",
-        "quote": null, "locator": "Mid-epoch resumption will ship with Ray 2.61", "quote_verified": false}
-     ]}
+    {
+      "theme": "Cost of mid-epoch failures",
+      "insights": [
+        {
+          "claim": "Restarting an epoch from the beginning after a mid-epoch training failure causes data imbalance, because previously consumed rows are trained on twice in the same epoch, skewing what the model learns.",
+          "speaker": "Jason Li",
+          "type": "causal",
+          "entities": [
+            "Ray Train",
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "Fault recovery is a model-quality issue, not only a compute-cost issue, for large-scale training runs.",
+          "quote": null,
+          "locator": "The cost of mid-epoch training failures",
+          "quote_verified": false
+        },
+        {
+          "claim": "The GPU cost of replaying an epoch after failure grows with epoch size: on a dataset that takes a day to traverse, a single late failure can cost another full day of GPU time.",
+          "speaker": "Jason Li",
+          "type": "causal",
+          "entities": [
+            "GPU"
+          ],
+          "conviction": "high",
+          "so_what": "Training-infra resilience features become more valuable as datasets and runs scale, supporting demand for fault-tolerant orchestration layers.",
+          "quote": "on a dataset that takes a day to get through, a single late failure can cost another day of GPU time",
+          "locator": "Both of these costs grow with the size of your epoch",
+          "quote_verified": true
+        },
+        {
+          "claim": "Fast-forwarding past already-seen batches cannot guarantee exactly-once training with streaming loaders like Ray Data, because they process data on the fly without a guaranteed row order and skipped rows still need to be recomputed.",
+          "speaker": "Jason Li",
+          "type": "contrarian",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "The common skip-batch workaround is both wasteful and incorrect for non-deterministic streaming pipelines.",
+          "quote": null,
+          "locator": "To avoid these costs, teams often fast-forward",
+          "quote_verified": false
+        },
+        {
+          "claim": "Anyscale frames training infrastructure as increasingly judged by how quickly it recovers from failures, since training failures are increasingly common at scale.",
+          "speaker": "Jason Li",
+          "type": "thesis",
+          "entities": [
+            "Anyscale",
+            "Ray Train"
+          ],
+          "conviction": "medium",
+          "so_what": "Recovery speed is positioned as a competitive axis for AI training platforms.",
+          "quote": "effective training infrastructure is judged by how quickly it recovers from them",
+          "locator": "Training failures are increasingly common at scale",
+          "quote_verified": true
+        }
+      ]
+    },
+    {
+      "theme": "Row-ID checkpointing design",
+      "insights": [
+        {
+          "claim": "Ray Data's mid-epoch resumption tracks which specific rows were consumed (by unique row ID) rather than a position or batch count, because Ray Data does not hand out rows in a fixed order.",
+          "speaker": "Jason Li",
+          "type": "framework",
+          "entities": [
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "Set-based progress tracking is the design pattern that makes exactly-once resumption work for unordered streaming data loaders.",
+          "quote": "The key idea is to track consumed rows rather than a position.",
+          "locator": "How it works",
+          "quote_verified": true
+        },
+        {
+          "claim": "With data checkpointing enabled, a background thread writes each yielded batch's row IDs to Parquet files in shared storage, organized by rank, epoch and checkpoint index; calling state_dict() returns a small JSON-serializable dictionary saved alongside model and optimizer state so the two are committed together.",
+          "speaker": "Jason Li",
+          "type": "framework",
+          "entities": [
+            "Ray Train",
+            "Ray Data",
+            "Parquet"
+          ],
+          "conviction": "high",
+          "so_what": "Coupling data-loader state to model checkpoints removes drift between what was trained and what the loader thinks was trained.",
+          "quote": null,
+          "locator": "Saving progress",
+          "quote_verified": false
+        },
+        {
+          "claim": "On restore, Ray Data loads and sorts all consumed row IDs across ranks and filters them out right after the read via binary search, so skipped rows never reach preprocessing or the training loop, and the remaining rows are redistributed across whatever workers the restarted run has.",
+          "speaker": "Jason Li",
+          "type": "causal",
+          "entities": [
+            "Ray Data",
+            "Ray Train"
+          ],
+          "conviction": "high",
+          "so_what": "Savings come from skipping preprocessing and transfer, and the design tolerates elastic worker counts after restart.",
+          "quote": null,
+          "locator": "Restoring progress",
+          "quote_verified": false
+        },
+        {
+          "claim": "Mid-epoch resumption in Ray requires a unique, preprocessing-surviving row ID column (auto-generated IDs work only with Parquet), only row-preserving transformations such as map, map_batches and filter, shared cloud or network storage, and FailureConfig(max_failures=...) for automatic restarts.",
+          "speaker": "Jason Li",
+          "type": "data_point",
+          "entities": [
+            "Ray Train",
+            "Ray Data",
+            "Parquet"
+          ],
+          "conviction": "high",
+          "so_what": "Adoption constraints limit the feature for pipelines that expand rows or use non-Parquet data without native IDs.",
+          "quote": null,
+          "locator": "Requirements",
+          "quote_verified": false
+        },
+        {
+          "claim": "Ray Data's iterator counts a batch as consumed once it is handed to the training loop, so frameworks that queue batches before training must drain the queue before checkpointing or the data checkpoint will run ahead of what the model actually trained on.",
+          "speaker": "Jason Li",
+          "type": "causal",
+          "entities": [
+            "Ray Data",
+            "Ray Train"
+          ],
+          "conviction": "high",
+          "so_what": "A correctness caveat for teams integrating prefetching frameworks with Ray's data checkpointing.",
+          "quote": null,
+          "locator": "Finish consuming a batch before you checkpoint",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Benchmark results",
+      "insights": [
+        {
+          "claim": "In an Anyscale benchmark of ResNet-50 on a modified 1M-row ImageNet using 16 A100 GPUs plus 10 CPU nodes, with a simulated failure 75% through an epoch, mid-epoch resumption cut end-to-end time from 594 s to 542 s and cost from $1.45 to $1.32 (about 9%) versus skipping batches.",
+          "speaker": "Jason Li",
+          "type": "data_point",
+          "entities": [
+            "Anyscale",
+            "ResNet-50",
+            "ImageNet",
+            "A100"
+          ],
+          "conviction": "high",
+          "so_what": "Modest 9% gain on a small benchmark; the vendor claims savings scale with epoch size and preprocessing weight.",
+          "quote": null,
+          "locator": "Evaluating the impact",
+          "quote_verified": false
+        },
+        {
+          "claim": "Skipping batches to resume, which Hugging Face Transformers does by default, still reads, preprocesses and transfers every row before the restore point only to discard it, so mid-epoch resumption's savings grow with larger epochs and heavier preprocessing.",
+          "speaker": "Jason Li",
+          "type": "causal",
+          "entities": [
+            "Hugging Face Transformers",
+            "Ray Data"
+          ],
+          "conviction": "high",
+          "so_what": "Positions Ray against the Hugging Face default for heavy-preprocessing workloads such as large images or multimodal data.",
+          "quote": null,
+          "locator": "Without mid-epoch resumption, skipping batches",
+          "quote_verified": false
+        }
+      ]
+    },
+    {
+      "theme": "Release and commercial packaging",
+      "insights": [
+        {
+          "claim": "Mid-epoch resumption ships in open-source Ray starting with Ray 2.61 but has been available earlier in the commercial Anyscale Runtime starting with Ray 2.50.",
+          "speaker": "Jason Li",
+          "type": "data_point",
+          "entities": [
+            "Anyscale",
+            "Ray",
+            "Anyscale Runtime"
+          ],
+          "conviction": "high",
+          "so_what": "Anyscale uses early access to features in its paid runtime as a differentiator over open-source Ray.",
+          "quote": null,
+          "locator": "Mid-epoch resumption will ship with Ray 2.61",
+          "quote_verified": false
+        }
+      ]
+    }
   ],
   "insight_total": 12,
-  "top_entities": ["Ray Train", "Ray Data", "Anyscale", "Anyscale Runtime", "ResNet-50", "ImageNet", "A100", "Hugging Face Transformers", "Parquet"],
-  "source_meta": {"author": "https://www.anyscale.com/blog?author=jason-li", "word_count": 1881, "paywalled": false}
+  "top_entities": [
+    "Ray Train",
+    "Ray Data",
+    "Anyscale",
+    "Anyscale Runtime",
+    "ResNet-50",
+    "ImageNet",
+    "A100",
+    "Hugging Face Transformers",
+    "Parquet"
+  ],
+  "source_meta": {
+    "author": "Anyscale / Ray",
+    "word_count": 1881,
+    "paywalled": false
+  }
 }
